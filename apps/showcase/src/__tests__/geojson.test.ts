@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import type { FeatureCollection, Polygon } from 'geojson'
 import type { CellBoundaries } from 'react-native-nitro-h3'
-import { cellsToFeatureCollection, featureIdOf } from '../engine/geojson'
+import { cellsToFeatureCollection } from '../engine/geojson'
 
 const STRIDE = 20
 
@@ -29,21 +29,13 @@ function polygon(count: number, lat: number, lng: number): number[] {
 const HEXAGON = polygon(6, 52.5, 13.4)
 const PENTAGON = polygon(5, 10, 20)
 
-const ONE = new BigUint64Array([0x8758e119affffffn])
-const PAIR = new BigUint64Array([0x8758e119affffffn, 0x85283473fffffffn])
-const TRIPLE = new BigUint64Array([0x8758e119affffffn, 0n, 0x85283473fffffffn])
-
 function parse(json: string): FeatureCollection<Polygon> {
   return JSON.parse(json) as FeatureCollection<Polygon>
 }
 
 describe('cellsToFeatureCollection', () => {
   test('builds one feature per cell of a parsable collection', () => {
-    const json = cellsToFeatureCollection(
-      boundaries([HEXAGON, PENTAGON]),
-      new Uint8Array([0, 0]),
-      PAIR,
-    )
+    const json = cellsToFeatureCollection(boundaries([HEXAGON, PENTAGON]), new Uint8Array([0, 0]))
 
     const collection = parse(json)
     expect(collection.type).toBe('FeatureCollection')
@@ -53,7 +45,7 @@ describe('cellsToFeatureCollection', () => {
 
   test('closes every ring on the vertex it started at', () => {
     const collection = parse(
-      cellsToFeatureCollection(boundaries([HEXAGON, PENTAGON]), new Uint8Array([0, 0]), PAIR),
+      cellsToFeatureCollection(boundaries([HEXAGON, PENTAGON]), new Uint8Array([0, 0])),
     )
 
     const [hexagon, pentagon] = collection.features.map(
@@ -66,9 +58,7 @@ describe('cellsToFeatureCollection', () => {
   })
 
   test('writes each vertex in lng, lat order', () => {
-    const collection = parse(
-      cellsToFeatureCollection(boundaries([HEXAGON]), new Uint8Array([0]), ONE),
-    )
+    const collection = parse(cellsToFeatureCollection(boundaries([HEXAGON]), new Uint8Array([0])))
 
     const ring = collection.features[0].geometry.coordinates[0]
     expect(ring[0]).toEqual([HEXAGON[1], HEXAGON[0]])
@@ -77,19 +67,15 @@ describe('cellsToFeatureCollection', () => {
 
   test('carries the bucket of every cell as a property', () => {
     const collection = parse(
-      cellsToFeatureCollection(boundaries([HEXAGON, PENTAGON]), new Uint8Array([15, 3]), PAIR),
+      cellsToFeatureCollection(boundaries([HEXAGON, PENTAGON]), new Uint8Array([15, 3])),
     )
 
-    expect(collection.features[0].properties?.bucket).toBe(15)
-    expect(collection.features[1].properties?.bucket).toBe(3)
+    expect(collection.features[0].properties).toEqual({ bucket: 15 })
+    expect(collection.features[1].properties).toEqual({ bucket: 3 })
   })
 
   test('never emits the padding the layout leaves behind', () => {
-    const json = cellsToFeatureCollection(
-      boundaries([HEXAGON, PENTAGON]),
-      new Uint8Array([0, 0]),
-      PAIR,
-    )
+    const json = cellsToFeatureCollection(boundaries([HEXAGON, PENTAGON]), new Uint8Array([0, 0]))
 
     expect(json).not.toContain('NaN')
     expect(json).not.toContain('null')
@@ -97,42 +83,17 @@ describe('cellsToFeatureCollection', () => {
 
   test('leaves a cell without vertices out of the collection', () => {
     const collection = parse(
-      cellsToFeatureCollection(
-        boundaries([HEXAGON, [], PENTAGON]),
-        new Uint8Array([1, 2, 3]),
-        TRIPLE,
-      ),
+      cellsToFeatureCollection(boundaries([HEXAGON, [], PENTAGON]), new Uint8Array([1, 2, 3])),
     )
 
     expect(collection.features).toHaveLength(2)
     expect(collection.features[1].properties?.bucket).toBe(3)
-    expect(collection.features[1].properties?.id).toBe(featureIdOf(TRIPLE[2]))
-  })
-
-  test('carries the identity of every cell as a property', () => {
-    const collection = parse(
-      cellsToFeatureCollection(boundaries([HEXAGON, PENTAGON]), new Uint8Array([0, 0]), PAIR),
-    )
-
-    expect(collection.features[0].properties).toEqual({
-      bucket: 0,
-      id: featureIdOf(PAIR[0]),
-    })
-    expect(collection.features[1].properties?.id).toBe(featureIdOf(PAIR[1]))
   })
 
   test('answers an empty collection for no cells at all', () => {
-    const collection = parse(
-      cellsToFeatureCollection(boundaries([]), new Uint8Array(), new BigUint64Array()),
-    )
+    const collection = parse(cellsToFeatureCollection(boundaries([]), new Uint8Array()))
 
     expect(collection.features).toEqual([])
-  })
-})
-
-describe('featureIdOf', () => {
-  test('answers the decimal index the highlight filter matches on', () => {
-    expect(featureIdOf(0x8758e119affffffn)).toBe('609549530844626943')
   })
 })
 
@@ -143,7 +104,7 @@ const SOUTH_POLE = [-89.5, -150, -89.5, -90, -89.5, -30, -89.5, 30, -89.5, 90, -
 describe('cellsToFeatureCollection across the world edge', () => {
   test('keeps a ring on the antimeridian in one copy of the hemisphere', () => {
     const collection = parse(
-      cellsToFeatureCollection(boundaries([ANTIMERIDIAN]), new Uint8Array([0]), ONE),
+      cellsToFeatureCollection(boundaries([ANTIMERIDIAN]), new Uint8Array([0])),
     )
 
     const ring = collection.features[0].geometry.coordinates[0]
@@ -155,7 +116,7 @@ describe('cellsToFeatureCollection across the world edge', () => {
 
   test('closes a ring around the north pole over the cap', () => {
     const collection = parse(
-      cellsToFeatureCollection(boundaries([NORTH_POLE]), new Uint8Array([0]), ONE),
+      cellsToFeatureCollection(boundaries([NORTH_POLE]), new Uint8Array([0])),
     )
 
     const ring = collection.features[0].geometry.coordinates[0]
@@ -167,7 +128,7 @@ describe('cellsToFeatureCollection across the world edge', () => {
 
   test('closes a ring around the south pole over its own cap', () => {
     const collection = parse(
-      cellsToFeatureCollection(boundaries([SOUTH_POLE]), new Uint8Array([0]), ONE),
+      cellsToFeatureCollection(boundaries([SOUTH_POLE]), new Uint8Array([0])),
     )
 
     const ring = collection.features[0].geometry.coordinates[0]
@@ -176,9 +137,7 @@ describe('cellsToFeatureCollection across the world edge', () => {
   })
 
   test('leaves a ring that never crosses the edge alone', () => {
-    const collection = parse(
-      cellsToFeatureCollection(boundaries([HEXAGON]), new Uint8Array([0]), ONE),
-    )
+    const collection = parse(cellsToFeatureCollection(boundaries([HEXAGON]), new Uint8Array([0])))
 
     expect(collection.features[0].geometry.coordinates[0]).toHaveLength(7)
   })

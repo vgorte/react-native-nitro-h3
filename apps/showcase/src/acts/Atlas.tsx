@@ -1,7 +1,6 @@
 import {
   Camera,
   type FillLayerSpecification,
-  type FilterSpecification,
   GeoJSONSource,
   type InitialViewState,
   Layer,
@@ -14,7 +13,7 @@ import {
   type ViewState,
   type ViewStateChangeEvent,
 } from '@maplibre/maplibre-react-native'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { type NativeSyntheticEvent, StyleSheet, View } from 'react-native'
 import {
   cellToCenterChild,
@@ -25,7 +24,7 @@ import {
   latLngToCell,
 } from 'react-native-nitro-h3'
 import { boundariesOf, diskAround, timed } from '../engine/cells'
-import { cellsToFeatureCollection, featureIdOf } from '../engine/geojson'
+import { cellsToFeatureCollection } from '../engine/geojson'
 import { bucketForDistance, PATCH_RINGS } from '../engine/mesh'
 import { DEG_TO_RAD, EARTH_RADIUS_M, resolutionForZoom } from '../engine/projection'
 import { formatCount, formatMs } from '../engine/stats'
@@ -75,11 +74,13 @@ const PANEL_TOP = 104
 const PRINT_WIDTH = 268
 
 const EMPTY_COLLECTION = '{"type":"FeatureCollection","features":[]}'
+// the highlight's own cell carries no ring distance, and its layer draws no fill
+const ONE_BUCKET = new Uint8Array(1)
 
 const NOTES = [
   'the classic path: cells become a GeoJSON string the renderer parses; the Skia acts skip this step',
   'the applied rows run to the last frame the map drew for it, basemap tiles it fetched included',
-  'a tap moves one layer filter, so the highlight never rebuilds the source',
+  'a tap hands the map one cell of its own, which it draws sooner than a filter over the whole set',
 ]
 
 // frames of nothing after which the map counts as done with what it was handed
@@ -104,11 +105,6 @@ function rampExpression(stops: readonly string[]): FillPaint['fill-color'] {
 const CELL_FILL: FillPaint = {
   'fill-color': rampExpression(rampColours(PATCH_BUCKETS)),
   'fill-opacity': CELL_FILL_OPACITY,
-}
-
-/** Answers the filter that leaves the highlight on the tapped cell, and on nothing before a tap. */
-function pickFilter(id: string): FilterSpecification {
-  return ['==', ['get', 'id'], id]
 }
 
 const CELL_LINE: LinePaint = {
@@ -181,9 +177,9 @@ function noteFrame(wait: Wait, at: number, report: (ms: number) => void): void {
   }, QUIET_MS)
 }
 
-/** Holds the cell a tap landed on: what the filter matches and what the HUD shows. */
+/** Holds the cell a tap landed on: the outline the map draws and the index the HUD shows. */
 interface Picked {
-  id: string
+  data: string
   index: string
 }
 
@@ -307,7 +303,7 @@ export function Atlas({ active, onCellPress }: AtlasProps) {
   const scene = useRef<Scene | null>(null)
   const mapWait = useRef<Wait>({ from: 0, last: 0, timer: null })
   const pickWait = useRef<Wait>({ from: 0, last: 0, timer: null })
-  const pickedId = useRef('')
+  const pickedIndex = useRef('')
 
   const [opening, setOpening] = useState<InitialViewState | null>(null)
   const [basemap, setBasemap] = useState<Basemap | null>(null)
@@ -316,9 +312,6 @@ export function Atlas({ active, onCellPress }: AtlasProps) {
   const [highlightMs, setHighlightMs] = useState<number | null>(null)
   const [picked, setPicked] = useState<Picked | null>(null)
   const [collapsed, setCollapsed] = useState(false)
-
-  // an empty identity matches no feature, so the highlight is off until the first tap
-  const highlight = useMemo(() => pickFilter(picked?.id ?? ''), [picked])
 
   // the act reaches for the map only once it has been opened, and keeps it afterwards
   useEffect(() => {
@@ -343,9 +336,7 @@ export function Atlas({ active, onCellPress }: AtlasProps) {
 
     const patched = patchBuckets(cells, res)
     const boundaries = boundariesOf(cells)
-    const json = timed('geojson', () =>
-      cellsToFeatureCollection(boundaries.value, patched.buckets, cells),
-    )
+    const json = timed('geojson', () => cellsToFeatureCollection(boundaries.value, patched.buckets))
 
     const next: Scene = {
       data: json.value,
@@ -405,12 +396,13 @@ export function Atlas({ active, onCellPress }: AtlasProps) {
       const cell = latLngToCell(lat, lng, current.res)
       onCellPress?.(cell)
 
-      // a second tap on the same cell moves the filter nowhere, so it opens no wait either
-      const id = featureIdOf(cell)
-      if (id === pickedId.current) return
-      pickedId.current = id
+      // a second tap on the same cell hands the map what it already holds, so it opens no wait
+      const index = cellToString(cell)
+      if (index === pickedIndex.current) return
+      pickedIndex.current = index
+      const boundaries = boundariesOf(new BigUint64Array([cell]))
       openWait(pickWait.current, at)
-      setPicked({ id, index: cellToString(cell) })
+      setPicked({ data: cellsToFeatureCollection(boundaries.value, ONE_BUCKET), index })
     },
     [onCellPress],
   )
@@ -436,7 +428,10 @@ export function Atlas({ active, onCellPress }: AtlasProps) {
           <GeoJSONSource id="atlas-cells" data={built?.data ?? EMPTY_COLLECTION}>
             <Layer id="atlas-cells-fill" type="fill" paint={CELL_FILL} />
             <Layer id="atlas-cells-line" type="line" paint={CELL_LINE} />
-            <Layer id="atlas-pick-line" type="line" paint={PICK_LINE} filter={highlight} />
+          </GeoJSONSource>
+          {/* the highlight is its own one-feature source, which the map applies sooner */}
+          <GeoJSONSource id="atlas-pick" data={picked?.data ?? EMPTY_COLLECTION}>
+            <Layer id="atlas-pick-line" type="line" paint={PICK_LINE} />
           </GeoJSONSource>
         </MapLibreMap>
       )}
