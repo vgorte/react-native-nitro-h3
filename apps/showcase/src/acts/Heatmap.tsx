@@ -83,12 +83,13 @@ const PRINT_WIDTH = 268
 // clears the blocked readout, which stands on the same line at the other edge
 const CONTROL_BOTTOM = 118
 
+// each note inside the print width, because the panel already carries eleven rows and a control
 const NOTES = [
-  'the points are synthetic, twelve gaussian hotspots over the Berlin box',
-  'past 100,000 points the run works in blocks, and keeps them for the next resolution',
-  'the sort and the count then run unchunked on purpose, so the readout shows their cost',
-  'above 20,000 cells the grid comes off and every cell is drawn inset',
-  'on the test emulator pans over the push-it scene ran near 40 fps; the simulator held 60',
+  'the points are synthetic: twelve hotspots over Berlin',
+  'past 100,000 points the run works in blocks',
+  'the sort and the count then run unchunked on purpose',
+  'above 20,000 cells the grid comes off, cells go inset',
+  'pans over the push-it scene ran near 40 fps on the emulator, 60 on the simulator',
 ]
 
 /** Holds what one run has measured, a field per stage, filled in as the stages finish. */
