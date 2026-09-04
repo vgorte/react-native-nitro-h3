@@ -1,67 +1,83 @@
-import { type SkPoint, Vertices } from '@shopify/react-native-skia'
+import { Skia } from '@shopify/react-native-skia'
 import { useFonts } from 'expo-font'
 import { StatusBar } from 'expo-status-bar'
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { StyleSheet, useWindowDimensions, View } from 'react-native'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { cellsToBoundaries, gridDisk, latLngToCell } from 'react-native-nitro-h3'
-import { buildMesh } from './engine/mesh'
-import { type Bounds, projectCells } from './engine/projection'
+import { buildMesh, buildOutlinePath } from './engine/mesh'
+import { projectCells } from './engine/projection'
 import { resetWorstGap } from './render/BlockedReadout'
+import { CellPictures, type CellScene, recordCellScene } from './render/CellPictures'
 import { EngineCanvas } from './render/EngineCanvas'
-import { type CameraAnchor, useCamera } from './render/useCamera'
+import { type GlowImage, GlowLayer, renderGlow } from './render/GlowLayer'
+import { type Camera, type CameraAnchor, screenToScene, useCamera } from './render/useCamera'
 import { fontAssets } from './theme/fonts'
-import { BUCKETS, colours, rampColours } from './theme/tokens'
+import { BUCKETS, colours } from './theme/tokens'
 
 const BERLIN: CameraAnchor = { lat: 52.52, lng: 13.405 }
 const RESOLUTION = 9
-const DISK_K = 82
+const DISK_K = 81
 const CHUNK_SIZE = 10_000
 const INSET = 0.08
+const OUTLINE_EDGES = 3
+const OUTLINE_LIMIT = 20_000
 
-/** Holds one drawable batch of the scene, ready for a Skia vertex draw. */
-interface Batch {
-  key: string
-  points: SkPoint[]
-  indices: number[]
-  colour: string
-}
-
-interface Scene {
-  batches: Batch[]
-  bounds: Bounds
-}
-
-function buildScene(anchor: CameraAnchor): Scene {
+function buildScene(anchor: CameraAnchor): CellScene {
   const cells = gridDisk(latLngToCell(anchor.lat, anchor.lng, RESOLUTION), DISK_K)
   const projected = projectCells(cellsToBoundaries(cells), anchor)
-  const mesh = buildMesh(projected, { chunkSize: CHUNK_SIZE, buckets: BUCKETS, inset: INSET })
-  const palette = rampColours(BUCKETS)
-
-  const batches = mesh.groups.map((group) => {
-    const points = new Array<SkPoint>(group.positions.length / 2)
-    for (let point = 0; point < points.length; point++) {
-      points[point] = { x: group.positions[point * 2], y: group.positions[point * 2 + 1] }
-    }
-    return {
-      key: `${group.chunk}-${group.bucket}`,
-      points,
-      indices: Array.from(group.indices),
-      colour: palette[group.bucket],
-    }
+  // the inset stands in for the outline above the ceiling
+  const outlined = projected.cellCount <= OUTLINE_LIMIT
+  const mesh = buildMesh(projected, {
+    chunkSize: CHUNK_SIZE,
+    buckets: BUCKETS,
+    inset: outlined ? 0 : INSET,
   })
+  const outline = outlined ? buildOutlinePath(projected, OUTLINE_EDGES) : null
+  return recordCellScene(mesh, projected.bounds, outline)
+}
 
-  return { batches, bounds: projected.bounds }
+/** Answers the scene rectangle the viewport covers at the camera's current values. */
+function sceneViewport(camera: Camera, width: number, height: number) {
+  const scale = camera.scale.value
+  const origin = screenToScene(0, 0, {
+    translateX: camera.translateX.value,
+    translateY: camera.translateY.value,
+    scale,
+  })
+  return Skia.XYWHRect(origin.x, origin.y, width / scale, height / scale)
 }
 
 export default function App() {
   const [fontsLoaded] = useFonts(fontAssets)
   const { width, height } = useWindowDimensions()
-  // the disk is fixed, so a settle only starts the gap count over
-  const onSettle = useCallback(() => resetWorstGap(), [])
+  const [glow, setGlow] = useState<GlowImage | null>(null)
+  const cameraRef = useRef<Camera | null>(null)
+  const sceneRef = useRef<CellScene | null>(null)
+
+  const paintGlow = useCallback(
+    (scene: CellScene) => {
+      const camera = cameraRef.current
+      if (camera === null) return
+      setGlow(renderGlow(scene, sceneViewport(camera, width, height), camera.scale.value))
+    },
+    [width, height],
+  )
+
+  const onSettle = useCallback(() => {
+    resetWorstGap()
+    const scene = sceneRef.current
+    if (scene !== null) paintGlow(scene)
+  }, [paintGlow])
+
   const camera = useCamera({ anchor: BERLIN, onSettle })
   const scene = useMemo(() => buildScene(camera.anchor), [camera.anchor])
   const fitted = useRef(false)
+
+  useEffect(() => {
+    cameraRef.current = camera
+    sceneRef.current = scene
+  })
 
   useEffect(() => {
     // the fit follows the data, never a re-anchor's reprojection
@@ -71,7 +87,8 @@ export default function App() {
     }
     // the build blocks the thread before the first frame, and is no run
     resetWorstGap()
-  }, [camera.fit, scene, width, height])
+    paintGlow(scene)
+  }, [camera.fit, scene, width, height, paintGlow])
 
   // the ground colour already fills the window, so an unstyled first frame is worse than none
   if (!fontsLoaded) return <View style={styles.root} />
@@ -79,15 +96,8 @@ export default function App() {
   return (
     <GestureHandlerRootView style={styles.root}>
       <EngineCanvas camera={camera}>
-        {scene.batches.map((batch) => (
-          <Vertices
-            key={batch.key}
-            mode="triangles"
-            vertices={batch.points}
-            indices={batch.indices}
-            color={batch.colour}
-          />
-        ))}
+        <GlowLayer glow={glow} />
+        <CellPictures scene={scene} />
       </EngineCanvas>
       <StatusBar style="light" />
     </GestureHandlerRootView>
