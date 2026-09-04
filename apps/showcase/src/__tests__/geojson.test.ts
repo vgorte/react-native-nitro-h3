@@ -169,14 +169,7 @@ describe('cellsToFeatureCollection across the world edge', () => {
     // the ring reaches its smallest longitude first, so the cap runs forward from it
     expect(capped[0][0]).toBeLessThan(capped[1][0])
     expect(ring.filter(([, lat]) => lat === 90)).toHaveLength(0)
-  })
-
-  test('leaves the real south polar cell a ring that never crosses itself', () => {
-    const collection = parse(
-      cellsToFeatureCollection(boundaries([SOUTH_POLE]), new Uint8Array([0])),
-    )
-
-    expect(selfIntersects(collection.features[0].geometry.coordinates[0])).toBe(false)
+    expect(selfIntersects(ring)).toBe(false)
   })
 
   test('leaves a ring that never crosses the edge alone', () => {

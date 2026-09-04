@@ -18,14 +18,20 @@ import { Gesture } from 'react-native-gesture-handler'
 import {
   cellToCenterChild,
   cellToParent,
-  getBaseCellNumber,
   getHexagonEdgeLengthAvgM,
   gridDiskDistances,
   type LatLng,
   latLngToCell,
 } from 'react-native-nitro-h3'
 import { runOnJS, useDerivedValue, useFrameCallback, useSharedValue } from 'react-native-reanimated'
-import { boundariesOf, centresOf, diskAround, earthAt, timed } from '../engine/cells'
+import {
+  boundariesOf,
+  bucketOfBaseCell,
+  centresOf,
+  diskAround,
+  earthAt,
+  timed,
+} from '../engine/cells'
 import {
   buildGlobeFrame,
   createGlobeFrame,
@@ -234,7 +240,7 @@ function buildGlobe(res: number): GlobeData {
   const buckets = timed('getBaseCellNumber', () => {
     const values = new Uint8Array(earth.value.length)
     for (let cell = 0; cell < values.length; cell++) {
-      values[cell] = getBaseCellNumber(earth.value[cell]) % BUCKETS
+      values[cell] = bucketOfBaseCell(earth.value[cell], BUCKETS)
     }
     return values
   })

@@ -256,14 +256,13 @@ function openingView(): InitialViewState {
  */
 function patchBuckets(cells: BigUint64Array, res: number): PatchBuckets {
   if (res < PATCH_DEPTH) {
+    const buckets = new Uint8Array(cells.length)
     const global = timed('getBaseCellNumber', () => {
-      const buckets = new Uint8Array(cells.length)
       for (let cell = 0; cell < cells.length; cell++) {
         buckets[cell] = bucketOfBaseCell(cells[cell], PATCH_BUCKETS)
       }
-      return buckets
     })
-    return { buckets: global.value, call: 'getBaseCellNumber', patchMs: 0, ringsMs: global.ms }
+    return { buckets, call: 'getBaseCellNumber', patchMs: null, ringsMs: global.ms }
   }
 
   const patches = timed('cellToParent', () => {
@@ -434,6 +433,8 @@ export function Atlas({ active, onCellPress }: AtlasProps) {
       const index = cellToString(cell)
       if (index === pickedIndex.current) return
       pickedIndex.current = index
+      // a tap this early leaves the map wait no frame to report, and the guard below stops it
+      if (mapWait.current.timer === null) mapWait.current.from = 0
       const boundaries = boundariesOf(new BigUint64Array([cell]))
       openWait(pickWait.current, at)
       setPicked({ data: cellsToFeatureCollection(boundaries.value, ONE_BUCKET), index })
