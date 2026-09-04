@@ -333,6 +333,22 @@ describe('cullCells', () => {
     expect(culled.bounds).toEqual({ minX: -0.5, minY: -0.5, maxX: 1.5, maxY: 1.5 })
   })
 
+  test('answers where every kept cell came from', () => {
+    const sources = new Uint32Array(3)
+    const culled = cullCells(
+      squares([
+        [0, 0],
+        [8, 0],
+        [1, 1],
+      ]),
+      rect,
+      sources,
+    )
+
+    expect(culled.cellCount).toBe(2)
+    expect(Array.from(sources.slice(0, 2))).toEqual([0, 2])
+  })
+
   test('answers an empty set when nothing touches the rectangle', () => {
     const culled = cullCells(squares([[8, 8]]), rect)
 

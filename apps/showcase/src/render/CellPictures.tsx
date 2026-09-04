@@ -1,5 +1,6 @@
 import {
   BlendMode,
+  Group,
   Path,
   Picture,
   Skia,
@@ -25,6 +26,8 @@ export interface CellScene {
 /** Configures {@linkcode CellPictures}. */
 export interface CellPicturesProps {
   scene: CellScene | null
+  /** Opacity of the filled cells; the outline always draws at full strength. */
+  opacity?: number
 }
 
 const paints = rampColours(BUCKETS).map((colour) => {
@@ -80,14 +83,16 @@ export function recordCellScene(
 }
 
 /** Draws a recorded scene; it carries no camera, because it renders inside the camera group. */
-export function CellPictures({ scene }: CellPicturesProps) {
+export function CellPictures({ scene, opacity = 1 }: CellPicturesProps) {
   if (scene === null) return null
   return (
     <>
-      {scene.pictures.map((picture, index) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: the pictures are a fixed positional list.
-        <Picture key={index} picture={picture} />
-      ))}
+      <Group opacity={opacity}>
+        {scene.pictures.map((picture, index) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: the pictures are a fixed positional list.
+          <Picture key={index} picture={picture} />
+        ))}
+      </Group>
       {scene.outline === null ? null : (
         <Path path={scene.outline} color={colours.hairline} style="stroke" strokeWidth={0} />
       )}

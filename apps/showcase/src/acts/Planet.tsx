@@ -1,11 +1,8 @@
 import {
-  BackdropBlur,
   BlendMode,
   Circle,
   PaintStyle,
   Picture,
-  rect,
-  rrect,
   Skia,
   type SkPaint,
   type SkPicture,
@@ -13,17 +10,16 @@ import {
   VertexMode,
 } from '@shopify/react-native-skia'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { type LayoutRectangle, StyleSheet, useWindowDimensions, View } from 'react-native'
+import { StyleSheet, useWindowDimensions, View } from 'react-native'
 import { Gesture } from 'react-native-gesture-handler'
 import {
-  type CellBoundaries,
   getBaseCellNumber,
   getHexagonEdgeLengthAvgM,
   type LatLng,
   latLngToCell,
 } from 'react-native-nitro-h3'
 import { runOnJS, useDerivedValue, useFrameCallback, useSharedValue } from 'react-native-reanimated'
-import { boundariesOf, centresOf, diskAround, earthAt, timed } from '../engine/cells'
+import { boundariesOf, centresOf, diskDistancesAround, earthAt, timed } from '../engine/cells'
 import {
   buildGlobeFrame,
   createGlobeFrame,
@@ -32,7 +28,7 @@ import {
   toGlobeCells,
 } from '../engine/globe'
 import { createLandRuns, type LandRuns, loadLand, projectLand } from '../engine/land'
-import { buildMesh, buildOutlinePath } from '../engine/mesh'
+import { buildMesh, buildOutlinePath, fillMesh, type MeshOptions } from '../engine/mesh'
 import {
   cullCells,
   DEG_TO_RAD,
@@ -70,7 +66,7 @@ import { Panel } from '../render/hud/Panel'
 import { Row } from '../render/hud/Row'
 import { TileLayer } from '../render/TileLayer'
 import { type CameraAnchor, SETTLE_MS, sceneViewport, useCamera } from '../render/useCamera'
-import { BUCKETS, colours, glass, rampColours } from '../theme/tokens'
+import { BUCKETS, colours, rampColours } from '../theme/tokens'
 import { rememberPlanetPosition } from './planetPosition'
 import type { ActProps } from './types'
 
@@ -100,9 +96,7 @@ const GLOBE_MAX_SCALE = 8
 const GLOBE_TARGET_PX = 18
 const PANEL_TOP = 104
 const PANEL_GAP = 16
-const PANEL_MARGIN = 16
 // the panel is measured, and this is what it takes before the first layout
-const PANEL_WIDTH = 240
 const PANEL_HEIGHT = 268
 // clears the blocked readout, which stands 58 pt tall 48 pt off the bottom
 const READOUT_GAP = 122
@@ -113,6 +107,8 @@ const OUTLINE_LIMIT = 20_000
 // the mesh reaches past the viewport, so a small pan needs no rebuild
 const CULL_MARGIN = 1.5
 const REBUILD_DRIFT = 0.25
+// the basemap has to read through the cells, which carry the ring index and nothing else
+const CITY_OPACITY = 0.35
 const FRAME_SAMPLES = 120
 const FRAME_REPORT_MS = 250
 // the tilt stops at the Web Mercator limit, so the handoff always lands on a usable camera
@@ -131,7 +127,7 @@ const BUCKET_PAINTS: SkPaint[] = rampColours(BUCKETS).map((colour) => {
 
 const COAST_PAINT = (() => {
   const paint = Skia.Paint()
-  paint.setColor(Skia.Color(colours.muted))
+  paint.setColor(Skia.Color(colours.hairline))
   paint.setStyle(PaintStyle.Stroke)
   paint.setStrokeWidth(1)
   paint.setAntiAlias(true)
@@ -171,8 +167,8 @@ interface BuildRequest {
 interface CityScene {
   cells: CellScene
   cellCount: number
-  disk: string
-  diskMs: number
+  rings: string
+  ringsMs: number
   boundariesMs: number
   meshMs: number
   res: number
@@ -208,24 +204,65 @@ function buildGlobe(res: number): GlobeData {
   }
 }
 
+/**
+ * Flattens the rings of a disk into one cell list and the colour bucket of each cell.
+ *
+ * The ramp runs from the brightest stop at the view centre outward, so the colour carries the ring
+ * distance and nothing else.
+ */
+function ringBuckets(rings: BigUint64Array[]): { cells: BigUint64Array; buckets: Uint8Array } {
+  let total = 0
+  for (const ring of rings) total += ring.length
+  const cells = new BigUint64Array(total)
+  const buckets = new Uint8Array(total)
+  const last = Math.max(1, rings.length - 1)
+  let cursor = 0
+
+  for (let ring = 0; ring < rings.length; ring++) {
+    cells.set(rings[ring], cursor)
+    buckets.fill(
+      BUCKETS - 1 - Math.round((ring / last) * (BUCKETS - 1)),
+      cursor,
+      cursor + rings[ring].length,
+    )
+    cursor += rings[ring].length
+  }
+
+  return { cells, buckets }
+}
+
 /** Builds the city-mode disk of a request, culled to the viewport it was requested for. */
 function buildCity(anchor: CameraAnchor, request: BuildRequest): CityScene {
   const { centre, res, k } = request
-  const disk = diskAround(latLngToCell(centre.lat, centre.lng, res), k)
-  const boundaries = boundariesOf(disk.value)
+  const rings = diskDistancesAround(latLngToCell(centre.lat, centre.lng, res), k)
+  const disk = ringBuckets(rings.value)
+  const boundaries = boundariesOf(disk.cells)
   const projected = projectCells(boundaries.value, anchor)
   const offsetX = mercatorX(centre.lng) - mercatorX(anchor.lng)
   const offsetY = mercatorY(anchor.lat) - mercatorY(centre.lat)
-  const culled = cullCells(projected, {
-    minX: offsetX - request.halfWidthM * CULL_MARGIN,
-    maxX: offsetX + request.halfWidthM * CULL_MARGIN,
-    minY: offsetY - request.halfHeightM * CULL_MARGIN,
-    maxY: offsetY + request.halfHeightM * CULL_MARGIN,
-  })
+  const sources = new Uint32Array(projected.cellCount)
+  const culled = cullCells(
+    projected,
+    {
+      minX: offsetX - request.halfWidthM * CULL_MARGIN,
+      maxX: offsetX + request.halfWidthM * CULL_MARGIN,
+      minY: offsetY - request.halfHeightM * CULL_MARGIN,
+      maxY: offsetY + request.halfHeightM * CULL_MARGIN,
+    },
+    sources,
+  )
+  const bucketOf = new Uint8Array(culled.cellCount)
+  for (let cell = 0; cell < culled.cellCount; cell++) bucketOf[cell] = disk.buckets[sources[cell]]
+
   // the inset stands in for the outline above the ceiling
   const outlined = culled.cellCount <= OUTLINE_LIMIT
   const mesh = timed('mesh', () =>
-    buildMesh(culled, { chunkSize: CHUNK_SIZE, buckets: BUCKETS, inset: outlined ? 0 : INSET }),
+    buildMesh(culled, {
+      chunkSize: CHUNK_SIZE,
+      buckets: BUCKETS,
+      inset: outlined ? 0 : INSET,
+      bucketOf,
+    }),
   )
 
   return {
@@ -235,30 +272,12 @@ function buildCity(anchor: CameraAnchor, request: BuildRequest): CityScene {
       outlined ? buildOutlinePath(culled, OUTLINE_EDGES) : null,
     ),
     cellCount: culled.cellCount,
-    disk: disk.label,
-    diskMs: disk.ms,
+    rings: rings.label,
+    ringsMs: rings.ms,
     boundariesMs: boundaries.ms,
     meshMs: mesh.ms,
     res,
   }
-}
-
-/** Records the blended handoff geometry, which is already in screen coordinates. */
-function recordHandoff(
-  boundaries: CellBoundaries,
-  points: Float32Array,
-  width: number,
-  height: number,
-): CellScene {
-  const projected: ProjectedCells = {
-    stride: boundaries.stride,
-    points,
-    vertexCounts: boundaries.vertexCounts,
-    cellCount: boundaries.vertexCounts.length,
-    bounds: { minX: 0, minY: 0, maxX: width, maxY: height },
-  }
-  const mesh = buildMesh(projected, { chunkSize: CHUNK_SIZE, buckets: BUCKETS, inset: 0 })
-  return recordCellScene(mesh, projected.bounds, null)
 }
 
 /** Records the filled frame buffers as one picture, one batch per colour bucket. */
@@ -302,7 +321,9 @@ function recordGlobe(frame: GlobeFrame, runs: LandRuns, view: GlobeView): SkPict
   }
   canvas.drawPath(builder.detach(), COAST_PAINT)
 
-  return recorder.finishRecordingAsPicture()
+  const picture = recorder.finishRecordingAsPicture()
+  recorder.dispose()
+  return picture
 }
 
 /** Answers the resolution a zoom asks for, capped where the act stops following it. */
@@ -373,14 +394,9 @@ function wrapLng(lng: number): number {
  */
 export function Planet({ active }: ActProps) {
   const { width, height } = useWindowDimensions()
-  const [panelBox, setPanelBox] = useState<LayoutRectangle>(() => ({
-    x: width - PANEL_MARGIN - PANEL_WIDTH,
-    y: PANEL_TOP,
-    width: PANEL_WIDTH,
-    height: PANEL_HEIGHT,
-  }))
+  const [panelHeight, setPanelHeight] = useState(PANEL_HEIGHT)
   // the globe takes the space the HUD leaves, so no reading sits over a cell
-  const globeTop = PANEL_TOP + panelBox.height + PANEL_GAP
+  const globeTop = PANEL_TOP + panelHeight + PANEL_GAP
   const globeBottom = height - READOUT_GAP
   const cx = width / 2
   const cy = (globeTop + globeBottom) / 2
@@ -544,18 +560,31 @@ export function Planet({ active }: ActProps) {
   function startHandoff(view: GlobeView, centre: LatLng): void {
     const target = handoffCamera(view, centre)
     const request = requestFor(centre, CITY_MIN_RESOLUTION, target.scale, width, height)
-    const disk = diskAround(latLngToCell(centre.lat, centre.lng, request.res), request.k)
-    const boundaries = boundariesOf(disk.value).value
+    const disk = ringBuckets(
+      diskDistancesAround(latLngToCell(centre.lat, centre.lng, request.res), request.k).value,
+    )
+    const boundaries = boundariesOf(disk.cells).value
     const from = projectCellsOrthographic(boundaries, view)
     const to = projectCellsCity(boundaries, target)
-    const blended = new Float32Array(from.length)
+    const blended = new Float32Array(from)
+    const blending: ProjectedCells = {
+      stride: boundaries.stride,
+      points: blended,
+      vertexCounts: boundaries.vertexCounts,
+      cellCount: boundaries.vertexCounts.length,
+      bounds: { minX: 0, minY: 0, maxX: width, maxY: height },
+    }
+    // the grouping and the fans do not move, so a step rewrites the vertices and records again
+    const options: MeshOptions = { chunkSize: CHUNK_SIZE, buckets: BUCKETS, inset: 0 }
+    const mesh = buildMesh(blending, options)
     const started = performance.now()
 
     setMode('handoff')
     const step = (): void => {
       const t = Math.min(1, (performance.now() - started) / HANDOFF_MS)
       lerpPositions(from, to, handoffEase(t), blended)
-      setHandoff(recordHandoff(boundaries, blended, width, height))
+      fillMesh(mesh, blending, options)
+      setHandoff(recordCellScene(mesh, blending.bounds, null))
       if (t < 1) {
         requestAnimationFrame(step)
         return
@@ -665,7 +694,7 @@ export function Planet({ active }: ActProps) {
         <>
           <TileLayer source={source} tiles={tiles} classes={classes} anchor={anchor} />
           <GlowLayer glow={glow} />
-          <CellPictures scene={scene.cells} />
+          <CellPictures scene={scene.cells} opacity={CITY_OPACITY} />
         </>
       ),
     [source, tiles, classes, anchor, glow, scene],
@@ -688,18 +717,9 @@ export function Planet({ active }: ActProps) {
             />
           </>
         )}
-        {/* the glass of the HUD panel, which React Native cannot blur on its own */}
-        <BackdropBlur
-          blur={glass.blur}
-          clip={rrect(
-            rect(panelBox.x, panelBox.y, panelBox.width, panelBox.height),
-            glass.radius,
-            glass.radius,
-          )}
-        />
       </>
     ),
-    [mode, cx, cy, radius, picture, handoff, panelBox],
+    [mode, cx, cy, radius, picture, handoff],
   )
 
   // an act off screen keeps its mesh and draws nothing
@@ -714,13 +734,16 @@ export function Planet({ active }: ActProps) {
       >
         {mode === 'city' ? cityLayers : null}
       </EngineCanvas>
-      <View style={styles.panel} onLayout={(event) => setPanelBox(event.nativeEvent.layout)}>
+      <View
+        style={styles.panel}
+        onLayout={(event) => setPanelHeight(event.nativeEvent.layout.height)}
+      >
         <Panel>
           {mode === 'city' && scene !== null ? (
             <>
               <Metric value={formatCount(scene.cellCount)} caption="cells drawn" />
               <Row label="resolution" value={`${scene.res}`} />
-              <Row label="disk" value={formatMs(scene.diskMs)} call={scene.disk} />
+              <Row label="rings" value={formatMs(scene.ringsMs)} call={scene.rings} />
               <Row
                 label="boundaries"
                 value={formatMs(scene.boundariesMs)}

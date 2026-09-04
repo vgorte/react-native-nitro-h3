@@ -52,22 +52,25 @@ export function EngineCanvas({
   const radius = Math.max(width, height) * VIGNETTE_REACH
 
   return (
-    <GestureDetector gesture={composed}>
-      <Canvas style={StyleSheet.absoluteFill}>
-        <Fill color={colours.ground} />
-        {vignette ? (
-          <Circle cx={width / 2} cy={height / 2} r={radius}>
-            <RadialGradient
-              c={vec(width / 2, height / 2)}
-              r={radius}
-              colors={[colours.vignette, colours.ground]}
-            />
-          </Circle>
-        ) : null}
-        <Group transform={camera.transform}>{children}</Group>
-        {overlay}
-        <BlockedReadout />
-      </Canvas>
-    </GestureDetector>
+    <>
+      <GestureDetector gesture={composed}>
+        <Canvas style={StyleSheet.absoluteFill}>
+          <Fill color={colours.ground} />
+          {vignette ? (
+            <Circle cx={width / 2} cy={height / 2} r={radius}>
+              <RadialGradient
+                c={vec(width / 2, height / 2)}
+                r={radius}
+                colors={[colours.vignette, colours.ground]}
+              />
+            </Circle>
+          ) : null}
+          <Group transform={camera.transform}>{children}</Group>
+          {overlay}
+        </Canvas>
+      </GestureDetector>
+      {/* its own surface, so a readout frame does not replay the act's canvas */}
+      <BlockedReadout />
+    </>
   )
 }

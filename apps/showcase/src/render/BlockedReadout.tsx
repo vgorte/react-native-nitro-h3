@@ -1,14 +1,7 @@
-import {
-  BackdropBlur,
-  Rect,
-  RoundedRect,
-  rect,
-  rrect,
-  Text,
-  useFont,
-} from '@shopify/react-native-skia'
+import { Canvas, Rect, Text, useFont } from '@shopify/react-native-skia'
+import { BlurView } from 'expo-blur'
 import { useEffect } from 'react'
-import { useWindowDimensions } from 'react-native'
+import { StyleSheet, View } from 'react-native'
 import {
   makeMutable,
   useDerivedValue,
@@ -33,6 +26,8 @@ const SWEEP_WIDTH = 32
 const SWEEP_HEIGHT = 2
 const SWEEP_MS = 1600
 
+const BLUR_INTENSITY = 60
+
 // the readout outlives every act, so the worst gap is held outside it
 const worst = makeMutable(0)
 
@@ -46,9 +41,10 @@ export function resetWorstGap(): void {
  *
  * A JS-side interval writes the clock into a shared value; the UI thread compares it with its own
  * clock every frame, so both the sweep and the numbers keep moving while the JS thread is blocked.
+ * The panel owns its own small surface, because Skia replays a whole canvas whenever one shared
+ * value in it changes and these two change every frame.
  */
 export function BlockedReadout() {
-  const { height } = useWindowDimensions()
   const labelFont = useFont(fontAssets[fontFamily.regular], type.value.fontSize)
   const peakFont = useFont(fontAssets[fontFamily.regular], type.label.fontSize)
 
@@ -71,13 +67,6 @@ export function BlockedReadout() {
     sweep.value = (now % SWEEP_MS) / SWEEP_MS
   })
 
-  const top = height - PANEL_BOTTOM - PANEL_HEIGHT
-  const panel = rrect(
-    rect(PANEL_MARGIN, top, PANEL_WIDTH, PANEL_HEIGHT),
-    glass.radius,
-    glass.radius,
-  )
-
   const label = useDerivedValue(() =>
     // the beat is one period old at rest, so a beat of slack keeps jitter quiet
     gap.value - BEAT_MS > BLOCKED_THRESHOLD_MS
@@ -85,35 +74,43 @@ export function BlockedReadout() {
       : 'JS thread free',
   )
   const peak = useDerivedValue(() => `worst ${worst.value.toFixed(0)} ms`)
-  const sweepX = useDerivedValue(() => PANEL_MARGIN + sweep.value * (PANEL_WIDTH - SWEEP_WIDTH))
+  const sweepX = useDerivedValue(() => sweep.value * (PANEL_WIDTH - SWEEP_WIDTH))
 
   return (
-    <>
-      <BackdropBlur blur={glass.blur} clip={panel}>
-        <RoundedRect rect={panel} color={glass.fill} />
-      </BackdropBlur>
-      <RoundedRect rect={panel} color={glass.border} style="stroke" strokeWidth={1} />
-      <Text
-        x={PANEL_MARGIN + TEXT_INSET}
-        y={top + 24}
-        text={label}
-        font={labelFont}
-        color={colours.muted}
+    <View style={styles.panel} pointerEvents="none">
+      <BlurView
+        intensity={BLUR_INTENSITY}
+        tint="dark"
+        experimentalBlurMethod="dimezisBlurView"
+        style={StyleSheet.absoluteFill}
       />
-      <Text
-        x={PANEL_MARGIN + TEXT_INSET}
-        y={top + 42}
-        text={peak}
-        font={peakFont}
-        color={colours.muted}
-      />
-      <Rect
-        x={sweepX}
-        y={top + PANEL_HEIGHT - SWEEP_HEIGHT * 2}
-        width={SWEEP_WIDTH}
-        height={SWEEP_HEIGHT}
-        color={colours.muted}
-      />
-    </>
+      <View style={styles.tint} />
+      <Canvas style={StyleSheet.absoluteFill}>
+        <Text x={TEXT_INSET} y={24} text={label} font={labelFont} color={colours.muted} />
+        <Text x={TEXT_INSET} y={42} text={peak} font={peakFont} color={colours.muted} />
+        <Rect
+          x={sweepX}
+          y={PANEL_HEIGHT - SWEEP_HEIGHT * 2}
+          width={SWEEP_WIDTH}
+          height={SWEEP_HEIGHT}
+          color={colours.muted}
+        />
+      </Canvas>
+    </View>
   )
 }
+
+const styles = StyleSheet.create({
+  panel: {
+    position: 'absolute',
+    left: PANEL_MARGIN,
+    bottom: PANEL_BOTTOM,
+    width: PANEL_WIDTH,
+    height: PANEL_HEIGHT,
+    borderColor: glass.border,
+    borderWidth: 1,
+    borderRadius: glass.radius,
+    overflow: 'hidden',
+  },
+  tint: { position: 'absolute', inset: 0, backgroundColor: glass.fill },
+})

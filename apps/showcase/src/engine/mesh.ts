@@ -30,6 +30,8 @@ export interface MeshOptions {
   buckets: number
   /** Fraction every cell shrinks toward its centre, `0` for full size. */
   inset: number
+  /** Colour bucket of each cell, `0` to `buckets - 1`; by default a cell's index modulo `buckets`. */
+  bucketOf?: Uint8Array
 }
 
 /**
@@ -65,8 +67,8 @@ export function writeFan(
  * and a pentagon three.
  */
 export function buildMesh(projected: ProjectedCells, options: MeshOptions): MeshBuild {
-  const { stride, points, vertexCounts, cellCount } = projected
-  const { chunkSize, buckets, inset } = options
+  const { vertexCounts, cellCount } = projected
+  const { chunkSize, buckets, bucketOf } = options
   const chunkCount = Math.max(1, Math.ceil(cellCount / chunkSize))
   const groupCount = chunkCount * buckets
 
@@ -77,19 +79,19 @@ export function buildMesh(projected: ProjectedCells, options: MeshOptions): Mesh
   for (let cell = 0; cell < cellCount; cell++) {
     const count = vertexCounts[cell]
     if (count < 3) continue
-    const group = Math.floor(cell / chunkSize) * buckets + (cell % buckets)
+    const group =
+      Math.floor(cell / chunkSize) * buckets +
+      (bucketOf === undefined ? cell % buckets : bucketOf[cell])
     cellTotals[group] += 1
     pointTotals[group] += count
     indexTotals[group] += (count - 2) * 3
   }
 
   const groups: MeshGroup[] = []
-  const groupOf = new Int32Array(groupCount).fill(-1)
   let pointCount = 0
   let indexCount = 0
   for (let group = 0; group < groupCount; group++) {
     if (cellTotals[group] === 0) continue
-    groupOf[group] = groups.length
     groups.push({
       bucket: group % buckets,
       chunk: Math.floor(group / buckets),
@@ -101,6 +103,27 @@ export function buildMesh(projected: ProjectedCells, options: MeshOptions): Mesh
     indexCount += indexTotals[group]
   }
 
+  const build = { groups, chunkCount, pointCount, indexCount }
+  fillMesh(build, projected, options)
+  return build
+}
+
+/**
+ * Rewrites the vertices of a built mesh from a new projection of the same cells.
+ *
+ * The grouping and the triangle fans do not depend on the positions, so an animation that only
+ * moves the vertices reuses the buffers {@linkcode buildMesh} allocated.
+ */
+export function fillMesh(build: MeshBuild, projected: ProjectedCells, options: MeshOptions): void {
+  const { stride, points, vertexCounts, cellCount } = projected
+  const { chunkSize, buckets, inset, bucketOf } = options
+  const { groups } = build
+
+  const groupOf = new Int32Array(build.chunkCount * buckets).fill(-1)
+  for (let index = 0; index < groups.length; index++) {
+    groupOf[groups[index].chunk * buckets + groups[index].bucket] = index
+  }
+
   const pointCursors = new Int32Array(groups.length)
   const indexCursors = new Int32Array(groups.length)
   const scale = 1 - inset
@@ -108,7 +131,11 @@ export function buildMesh(projected: ProjectedCells, options: MeshOptions): Mesh
   for (let cell = 0; cell < cellCount; cell++) {
     const count = vertexCounts[cell]
     if (count < 3) continue
-    const target = groupOf[Math.floor(cell / chunkSize) * buckets + (cell % buckets)]
+    const target =
+      groupOf[
+        Math.floor(cell / chunkSize) * buckets +
+          (bucketOf === undefined ? cell % buckets : bucketOf[cell])
+      ]
     const group = groups[target]
     const base = cell * stride
     const first = pointCursors[target]
@@ -136,8 +163,6 @@ export function buildMesh(projected: ProjectedCells, options: MeshOptions): Mesh
 
     indexCursors[target] = writeFan(group.indices, indexCursors[target], first, count)
   }
-
-  return { groups, chunkCount, pointCount, indexCount }
 }
 
 /**

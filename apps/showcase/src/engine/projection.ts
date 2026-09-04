@@ -179,8 +179,14 @@ export function projectCells(boundaries: CellBoundaries, centre: LatLng): Projec
  *
  * @param projected The cells to cull, as {@linkcode projectCells} answers them.
  * @param rect The rectangle to keep, in the metre space of `projected`.
+ * @param sources Receives the index each kept cell had before the cull, so per-cell data can
+ *   follow the cells; it needs `projected.cellCount` slots.
  */
-export function cullCells(projected: ProjectedCells, rect: Bounds): ProjectedCells {
+export function cullCells(
+  projected: ProjectedCells,
+  rect: Bounds,
+  sources?: Uint32Array,
+): ProjectedCells {
   const { stride, points, vertexCounts, cellCount } = projected
   const kept = new Uint8Array(cellCount)
   let keptCount = 0
@@ -206,9 +212,13 @@ export function cullCells(projected: ProjectedCells, rect: Bounds): ProjectedCel
     keptCount += 1
   }
 
-  if (keptCount === cellCount) return projected
+  if (keptCount === cellCount) {
+    if (sources !== undefined) for (let cell = 0; cell < cellCount; cell++) sources[cell] = cell
+    return projected
+  }
 
-  const culled = new Float32Array(keptCount * stride)
+  // the rest of the file pads with `NaN`, and a consumer must read `vertexCounts` either way
+  const culled = new Float32Array(keptCount * stride).fill(Number.NaN)
   const counts = new Uint8Array(keptCount)
   let minX = Number.POSITIVE_INFINITY
   let minY = Number.POSITIVE_INFINITY
@@ -219,6 +229,7 @@ export function cullCells(projected: ProjectedCells, rect: Bounds): ProjectedCel
   for (let cell = 0; cell < cellCount; cell++) {
     if (kept[cell] === 0) continue
     const count = vertexCounts[cell]
+    if (sources !== undefined) sources[target] = cell
     counts[target] = count
     const from = cell * stride
     const to = target * stride
