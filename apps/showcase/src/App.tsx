@@ -40,12 +40,9 @@ export default function App() {
   const pager = useRef<PagerView>(null)
   const [current, setCurrent] = useState(0)
 
+  // the page follows the pager, so the outgoing act keeps drawing
   const select = useCallback((index: number) => {
     pager.current?.setPage(index)
-    // the incoming act draws while the pager slides it in
-    setCurrent(index)
-    // the worst gap belongs to the act that caused it
-    resetWorstGap()
   }, [])
 
   // an unstyled first frame is worse than the bare ground
@@ -59,7 +56,11 @@ export default function App() {
         style={StyleSheet.absoluteFill}
         initialPage={0}
         scrollEnabled={false}
-        onPageSelected={(event) => setCurrent(event.nativeEvent.position)}
+        onPageSelected={(event) => {
+          setCurrent(event.nativeEvent.position)
+          // the worst gap belongs to the act that caused it
+          resetWorstGap()
+        }}
       >
         {PAGES.map((Act, index) => (
           <View key={ACTS[index]} style={styles.page} collapsable={false}>

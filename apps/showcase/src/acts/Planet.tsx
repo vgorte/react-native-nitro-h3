@@ -62,7 +62,11 @@ function buildScene(anchor: CameraAnchor, k: number): PlanetScene {
   }
 }
 
-/** Draws the city-mode disk over the basemap, with the disk radius under one slider. */
+/**
+ * Draws the city-mode disk over the basemap under the shared camera.
+ *
+ * The disk radius slider is a stand-in that the act's own controls replace.
+ */
 export function Planet({ active }: ActProps) {
   const { width, height } = useWindowDimensions()
   const [glow, setGlow] = useState<GlowImage | null>(null)
@@ -137,16 +141,24 @@ export function Planet({ active }: ActProps) {
     resetWorstGap()
   }, [active, camera.fit, scene, width, height, paintGlow, refreshTiles])
 
-  // an act off screen keeps its mesh and runs no loop
+  // a slider step must not rebuild the layers under the camera
+  const layers = useMemo(
+    () => (
+      <>
+        <TileLayer source={source} tiles={tiles} classes={classes} anchor={camera.anchor} />
+        <GlowLayer glow={glow} />
+        <CellPictures scene={scene.cells} />
+      </>
+    ),
+    [source, tiles, classes, camera.anchor, glow, scene.cells],
+  )
+
+  // an act off screen keeps its mesh and draws nothing
   if (!active) return <View style={styles.root} />
 
   return (
     <View style={styles.root}>
-      <EngineCanvas camera={camera}>
-        <TileLayer source={source} tiles={tiles} classes={classes} anchor={camera.anchor} />
-        <GlowLayer glow={glow} />
-        <CellPictures scene={scene.cells} />
-      </EngineCanvas>
+      <EngineCanvas camera={camera}>{layers}</EngineCanvas>
       <View style={styles.panel}>
         <Panel>
           <Metric value={formatCount(scene.cellCount)} caption="cells drawn" />
@@ -160,6 +172,7 @@ export function Planet({ active }: ActProps) {
             width={SLIDER_WIDTH}
             onChange={setRadius}
             onSettle={setBuiltRadius}
+            blocks={camera.gesture}
           />
         </Panel>
       </View>

@@ -1,7 +1,7 @@
 import { Canvas, Circle, Rect } from '@shopify/react-native-skia'
 import { useEffect, useMemo } from 'react'
 import { View } from 'react-native'
-import { Gesture, GestureDetector } from 'react-native-gesture-handler'
+import { type ComposedGesture, Gesture, GestureDetector } from 'react-native-gesture-handler'
 import { runOnJS, useDerivedValue, useSharedValue } from 'react-native-reanimated'
 import { colours, ramp } from '../../theme/tokens'
 import { sliderValueAt } from './track'
@@ -19,6 +19,8 @@ export interface SliderProps {
   onChange(next: number): void
   /** Called once the drag ends, which is when a rebuild is allowed. */
   onSettle(next: number): void
+  /** The gesture of the canvas underneath, which the drag must win against. */
+  blocks?: ComposedGesture
 }
 
 const KNOB_RADIUS = 5
@@ -32,7 +34,7 @@ const ROW_HEIGHT = 28
  * The knob follows the finger on the UI thread; `onChange` reaches the act only when the drag
  * crosses a whole step, and `onSettle` once it ends, so no rebuild happens inside a gesture.
  */
-export function Slider({ min, max, value, width, onChange, onSettle }: SliderProps) {
+export function Slider({ min, max, value, width, onChange, onSettle, blocks }: SliderProps) {
   const position = useSharedValue(value)
   const canvasWidth = width + KNOB_RADIUS * 2
 
@@ -40,28 +42,28 @@ export function Slider({ min, max, value, width, onChange, onSettle }: SliderPro
     position.value = value
   }, [value, position])
 
-  const gesture = useMemo(
-    () =>
-      Gesture.Pan()
-        .minDistance(0)
-        .onBegin((event) => {
-          'worklet'
-          position.value = sliderValueAt(event.x - KNOB_RADIUS, width, min, max)
-          runOnJS(onChange)(position.value)
-        })
-        .onChange((event) => {
-          'worklet'
-          const next = sliderValueAt(event.x - KNOB_RADIUS, width, min, max)
-          if (next === position.value) return
-          position.value = next
-          runOnJS(onChange)(next)
-        })
-        .onFinalize(() => {
-          'worklet'
-          runOnJS(onSettle)(position.value)
-        }),
-    [min, max, width, position, onChange, onSettle],
-  )
+  const gesture = useMemo(() => {
+    const pan = Gesture.Pan()
+      .minDistance(0)
+      .onBegin((event) => {
+        'worklet'
+        position.value = sliderValueAt(event.x - KNOB_RADIUS, width, min, max)
+        runOnJS(onChange)(position.value)
+      })
+      .onChange((event) => {
+        'worklet'
+        const next = sliderValueAt(event.x - KNOB_RADIUS, width, min, max)
+        if (next === position.value) return
+        position.value = next
+        runOnJS(onChange)(next)
+      })
+      .onFinalize(() => {
+        'worklet'
+        runOnJS(onSettle)(position.value)
+      })
+    // the canvas below overlaps the track, so activation order must not decide
+    return blocks === undefined ? pan : pan.blocksExternalGesture(...blocks.toGestureArray())
+  }, [min, max, width, position, onChange, onSettle, blocks])
 
   const fraction = useDerivedValue(() => (position.value - min) / (max - min))
   const fillWidth = useDerivedValue(() => fraction.value * width)
