@@ -1,4 +1,4 @@
-import { Group, Path, Skia, type SkPath, type SkPoint } from '@shopify/react-native-skia'
+import { Group, Path, type SkPath } from '@shopify/react-native-skia'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { StyleSheet, Text, useWindowDimensions, View } from 'react-native'
 import { Gesture } from 'react-native-gesture-handler'
@@ -9,7 +9,6 @@ import {
   cellToParent,
   getHexagonEdgeLengthAvgM,
   getResolution,
-  type LatLng,
   latLngToCell,
 } from 'react-native-nitro-h3'
 import {
@@ -19,19 +18,40 @@ import {
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated'
-import { boundariesOf, childrenOf, diskAround } from '../engine/cells'
-import { buildMesh } from '../engine/mesh'
+import { childrenOf, diskAround } from '../engine/cells'
 import {
-  DEG_TO_RAD,
-  mercatorX,
-  mercatorY,
-  type ProjectedCells,
-  projectCells,
-} from '../engine/projection'
+  CEILING_NOTE,
+  coverage,
+  FLOOR_NOTE,
+  FRACTAL_CELL_CAP,
+  leafFrom,
+  leavesOf,
+  MAX_RES,
+  MIN_RES,
+  OPEN_CELL_PX,
+  openingScale,
+  type Reach,
+  reachOf,
+  replaceLeaf,
+  START_RES,
+  TARGET_CELL_PX,
+  TOP_NOTE,
+  type Tree,
+  withoutBranch,
+} from '../engine/fractal'
 import { formatCount, formatMs } from '../engine/stats'
 import { resetWorstGap } from '../render/BlockedReadout'
-import { CellPictures, type CellScene, recordCellScene } from '../render/CellPictures'
+import { CellPictures, type CellScene } from '../render/CellPictures'
 import { EngineCanvas } from '../render/EngineCanvas'
+import {
+  bucketsOf,
+  buildScene,
+  inDepthOrder,
+  outlinePath,
+  record,
+  sceneOf,
+  shapeOf,
+} from '../render/fractalScene'
 import { growthTransform } from '../render/growth'
 import { FinePrint } from '../render/hud/FinePrint'
 import { Metric } from '../render/hud/Metric'
@@ -42,71 +62,25 @@ import { BUCKETS, colours, type } from '../theme/tokens'
 import { lastPlanetPosition } from './planetPosition'
 import type { ActProps } from './types'
 
+// the act's published contract names these; the rules that use them live in engine/fractal.ts
+export { MAX_RES, MIN_RES, TARGET_CELL_PX } from '../engine/fractal'
+
 /** Milliseconds the children take to grow out of the parent centre. */
 export const GROWTH_MS = 300
 
 /** Milliseconds the parent outline stays as a ghost before it is gone. */
 export const GHOST_FADE_MS = 1_000
 
-/** Points across which a tapped cell is zoomed to, wide enough to read its children inside it. */
-export const TARGET_CELL_PX = 120
-
-/** The coarsest resolution a long press can fold up to. */
-export const MIN_RES = 0
-
-/** The finest resolution a tap can split down to. */
-export const MAX_RES = 15
-
-/** Caps the leaf cells the act draws, the interactive ceiling every act shares. */
-export const FRACTAL_CELL_CAP = 20_000
-
 const BERLIN: CameraAnchor = { lat: 52.52, lng: 13.405 }
-const START_RES = 6
-// H3 has an aperture of 7, so a hexagon splits into seven children and a pentagon into six
-const APERTURE = 7
-// the act opens at the size a child settles at, so the first tap changes the depth and not the scale
-const OPEN_CELL_PX = TARGET_CELL_PX / Math.sqrt(APERTURE)
-// resolutions between the opening set and the floor, over which the ramp is spread
-const DEPTH_STEPS = MAX_RES - START_RES
-const CHUNK_SIZE = 10_000
-const CELL_SPACING = Math.sqrt(3)
-// a disk of k rings is a hexagon of cells, and only its apothem is covered in every direction
-const DISK_APOTHEM = Math.sqrt(3) / 2
-// the largest k whose disk of 3k(k + 1) + 1 cells still fits under the cap, k = 81
-const MAX_K = Math.floor((Math.sqrt((4 * FRACTAL_CELL_CAP - 1) / 3) - 1) / 2)
 // long enough that a fold is deliberate, short enough that a held finger answers
 const LONG_PRESS_MS = 400
 const PANEL_TOP = 104
 const PRINT_WIDTH = 268
 
-const FLOOR_NOTE = `resolution ${MAX_RES} is the floor, so this cell does not split`
-const TOP_NOTE = `resolution ${MIN_RES} is the ceiling, so there is nothing to fold up to`
-const CEILING_NOTE = `the ceiling of ${formatCount(FRACTAL_CELL_CAP)} leaf cells stops the next split`
-
 const NOTES = [
   'a tap splits the cell under it, a long press folds a cell and its siblings back into the parent',
   'the children do not tile the parent exactly, because the aperture is 7 and the grid is rotated',
 ]
-
-/** Holds the leaf cells the act draws, which stand at every resolution the visitor has opened. */
-interface Leaves {
-  cells: BigUint64Array
-  /** The ramp bucket of every cell, how far its resolution stands below the opening one. */
-  buckets: Uint8Array
-  member: Set<bigint>
-  deepest: number
-  shallowest: number
-}
-
-/** Holds a built scene: the recorded fills, the grid over them and what the build cost. */
-interface Scene {
-  cells: CellScene
-  outline: SkPath
-  leafCount: number
-  boundariesMs: number
-  /** Everything the rebuild took: the boundaries, the projection, the mesh and the recording. */
-  buildMs: number
-}
 
 /** Holds the children of one split while they grow, in the scene's own metre frame. */
 interface Growth {
@@ -115,7 +89,7 @@ interface Growth {
   centre: { x: number; y: number }
 }
 
-/** Holds what the HUD says about the cell in focus: the tapped one, or the centre before a tap. */
+/** Holds what the HUD says about the cell in focus: the one last touched, or the opening centre. */
 interface Focus {
   res: number
   areaKm2: number
@@ -125,114 +99,8 @@ interface Focus {
   childrenMs: number | null
 }
 
-/** Holds how far a leaf set can still be taken, and the one line that says where it stops. */
-interface Reach {
-  split: boolean
-  fold: boolean
-  note: string | null
-}
-
 const NO_CENTRE = { x: 0, y: 0 }
 const NO_REACH: Reach = { split: false, fold: false, note: null }
-
-/**
- * Answers the ramp bucket of a leaf, the ramp spread over the resolutions below the opening one.
- *
- * The opening set takes the darkest step and the floor the brightest, so the depth a visitor has
- * opened is what the colour carries; a cell folded above the opening resolution keeps the darkest.
- */
-function bucketOfResolution(res: number): number {
-  const depth = Math.max(0, Math.min(DEPTH_STEPS, res - START_RES))
-  return Math.round((depth / DEPTH_STEPS) * (BUCKETS - 1))
-}
-
-/** Reads the resolutions of a cell set once, into the colours and the range the gestures ask for. */
-function leavesOf(cells: BigUint64Array): Leaves {
-  const buckets = new Uint8Array(cells.length)
-  const member = new Set<bigint>()
-  let deepest = MIN_RES
-  let shallowest = MAX_RES
-  for (let cell = 0; cell < cells.length; cell++) {
-    const res = getResolution(cells[cell])
-    buckets[cell] = bucketOfResolution(res)
-    member.add(cells[cell])
-    if (res > deepest) deepest = res
-    if (res < shallowest) shallowest = res
-  }
-  return { cells, buckets, member, deepest, shallowest }
-}
-
-/** Answers the scene position of a coordinate, the inverse of `sceneToLatLng`. */
-function sceneOf(at: LatLng, anchor: CameraAnchor): { x: number; y: number } {
-  return {
-    x: mercatorX(at.lng) - mercatorX(anchor.lng),
-    y: mercatorY(anchor.lat) - mercatorY(at.lat),
-  }
-}
-
-/**
- * Builds the closed outline of every projected cell, which is what makes the nesting read.
- *
- * A mixed-resolution tiling has no direction every cell shares, so no run of edges covers it the way
- * three consecutive ones cover a grid of one resolution, and every cell carries its own ring.
- */
-function outlinePath(projected: ProjectedCells): SkPath {
-  const { stride, points, vertexCounts, cellCount } = projected
-  const builder = Skia.PathBuilder.Make()
-  for (let cell = 0; cell < cellCount; cell++) {
-    const count = vertexCounts[cell]
-    if (count < 3) continue
-    const base = cell * stride
-    const ring = new Array<SkPoint>(count)
-    for (let vertex = 0; vertex < count; vertex++) {
-      ring[vertex] = { x: points[base + vertex * 2], y: points[base + vertex * 2 + 1] }
-    }
-    builder.addPoly(ring, true)
-  }
-  return builder.detach()
-}
-
-/** Holds one recorded cell set: what is drawn, and what the H3 call behind it took. */
-interface Recorded {
-  scene: CellScene
-  outline: SkPath
-  boundariesMs: number
-}
-
-/** Projects a cell set into the scene's metre frame and records it as pictures and an outline. */
-function record(cells: BigUint64Array, buckets: Uint8Array, anchor: CameraAnchor): Recorded {
-  const boundaries = boundariesOf(cells)
-  const projected = projectCells(boundaries.value, anchor)
-  const mesh = buildMesh(projected, {
-    chunkSize: CHUNK_SIZE,
-    buckets: BUCKETS,
-    inset: 0,
-    bucketOf: buckets,
-  })
-  return {
-    scene: recordCellScene(mesh, projected.bounds, null),
-    outline: outlinePath(projected),
-    boundariesMs: boundaries.ms,
-  }
-}
-
-/** Projects one cell on its own, for the outline it leaves and the span the camera zooms to. */
-function shapeOf(cell: bigint, anchor: CameraAnchor): ProjectedCells {
-  return projectCells(boundariesOf(new BigUint64Array([cell])).value, anchor)
-}
-
-/** Builds the scene of one leaf set. */
-function buildScene(leaves: Leaves, anchor: CameraAnchor): Scene {
-  const started = performance.now()
-  const built = record(leaves.cells, leaves.buckets, anchor)
-  return {
-    cells: built.scene,
-    outline: built.outline,
-    leafCount: leaves.cells.length,
-    boundariesMs: built.boundariesMs,
-    buildMs: performance.now() - started,
-  }
-}
 
 /** Answers everything the HUD says about one cell, and the split duration that produced it. */
 function focusOf(cell: bigint, childrenMs: number | null): Focus {
@@ -245,35 +113,6 @@ function focusOf(cell: bigint, childrenMs: number | null): Focus {
   }
 }
 
-/** Answers the pixel scale at which a cell of the opening resolution reads at its settled size. */
-function openingScale(lat: number): number {
-  return (OPEN_CELL_PX * Math.cos(lat * DEG_TO_RAD)) / (2 * getHexagonEdgeLengthAvgM(START_RES))
-}
-
-/** Answers the ring count whose disk reaches every corner of the viewport, under the cap. */
-function coverage(width: number, height: number, scale: number, lat: number): number {
-  const reach = ((Math.hypot(width, height) / 2) * Math.cos(lat * DEG_TO_RAD)) / scale
-  const spacing = CELL_SPACING * getHexagonEdgeLengthAvgM(START_RES)
-  return Math.max(1, Math.min(MAX_K, Math.ceil(reach / (spacing * DISK_APOTHEM)) + 1))
-}
-
-/**
- * Answers what the gestures may still do with a leaf set, and the line that says why one may not.
- *
- * A tap that no leaf set can answer leaves its gesture disabled rather than letting a call reach
- * the resolution ladder's end and come back as an `H3Error`.
- */
-function reachOf(leaves: Leaves): Reach {
-  // every split but a pentagon's adds six leaves, so this is the last set a tap could act on
-  const room = leaves.cells.length + APERTURE - 1 <= FRACTAL_CELL_CAP
-  const split = room && leaves.shallowest < MAX_RES
-  const fold = leaves.deepest > MIN_RES
-  if (!room) return { split, fold, note: CEILING_NOTE }
-  if (!split) return { split, fold, note: FLOOR_NOTE }
-  if (!fold) return { split, fold, note: TOP_NOTE }
-  return { split, fold, note: null }
-}
-
 /** Formats a cell area, which spans nine orders of magnitude between the two ends of the ladder. */
 function formatAreaKm2(km2: number): string {
   return `${km2 < 0.001 ? km2.toExponential(2) : km2.toPrecision(4)} km²`
@@ -284,21 +123,23 @@ function formatAreaKm2(km2: number): string {
  *
  * A tap replaces the cell it lands on with its children, which grow out of the parent centre while
  * the parent outline fades behind them and the camera zooms until that cell reads at
- * {@linkcode TARGET_CELL_PX}. A long press does the reverse. What is drawn is therefore a tree of
- * leaves at many resolutions at once, coloured by how far down each one stands.
+ * {@linkcode TARGET_CELL_PX}. A long press does the reverse, framing the cell it produces at the
+ * size that cell had before it was split, so a descent and its climb land on the same view. What is
+ * drawn is a tree: leaves at many resolutions at once over the fills of every cell already split,
+ * both coloured by how far down they stand.
  */
 export function FractalCity({ active }: ActProps) {
   const { width, height } = useWindowDimensions()
   // the pixel scale the act opened at, which doubles as the flag that it has opened
   const [openScale, setOpenScale] = useState<number | null>(null)
-  const [leaves, setLeaves] = useState<Leaves | null>(null)
+  const [tree, setTree] = useState<Tree | null>(null)
   const [growth, setGrowth] = useState<Growth | null>(null)
   const [ghost, setGhost] = useState<SkPath | null>(null)
   const [focus, setFocus] = useState<Focus | null>(null)
   const [refusal, setRefusal] = useState<string | null>(null)
   const [collapsed, setCollapsed] = useState(false)
 
-  const merged = useRef<Leaves | null>(null)
+  const merged = useRef<Tree | null>(null)
   const fading = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const progress = useSharedValue(0)
@@ -311,26 +152,27 @@ export function FractalCity({ active }: ActProps) {
   const heldX = useSharedValue(0)
   const heldY = useSharedValue(0)
 
-  // the geometry is the leaf set alone, so a settle has nothing to rebuild and only re-anchors
+  // the geometry is the tree alone, so a settle has nothing to rebuild and only re-anchors
   const settle = useCallback(() => {}, [])
   const camera = useCamera({ anchor: BERLIN, onSettle: settle })
   const { anchor, setAnchor, translateX, translateY, scale } = camera
 
-  const scene = useMemo(
-    () => (leaves === null ? null : buildScene(leaves, anchor)),
-    [leaves, anchor],
-  )
+  const scene = useMemo(() => (tree === null ? null : buildScene(tree, anchor)), [tree, anchor])
 
   // the act reaches for the position store only once it is on screen, where Atlas has written it
   useEffect(() => {
     if (!active || openScale !== null) return
     const last = lastPlanetPosition()
     const centre = last === null ? BERLIN : { lat: last.centre.lat, lng: last.centre.lng }
-    const pixels = openingScale(centre.lat)
+    const pixels = openingScale(centre.lat, getHexagonEdgeLengthAvgM)
     const middle = latLngToCell(centre.lat, centre.lng, START_RES)
+    const k = coverage(width, height, pixels, centre.lat, getHexagonEdgeLengthAvgM)
     setAnchor(centre)
     setOpenScale(pixels)
-    setLeaves(leavesOf(diskAround(middle, coverage(width, height, pixels, centre.lat)).value))
+    setTree({
+      leaves: leavesOf(diskAround(middle, k).value, BUCKETS, getResolution),
+      ancestors: new BigUint64Array(0),
+    })
     setFocus(focusOf(middle, null))
   }, [active, openScale, width, height, setAnchor])
 
@@ -382,29 +224,25 @@ export function FractalCity({ active }: ActProps) {
     [fromScale, toScale, pivotX, pivotY, heldX, heldY, zoom, scale, translateX, translateY],
   )
 
-  /** Answers the leaf under a screen point, by climbing from the deepest resolution drawn. */
+  /** Answers the leaf under a screen point, from the cell the deepest resolution drawn holds. */
   const leafAt = useCallback(
     (x: number, y: number): bigint | null => {
-      if (leaves === null) return null
+      if (tree === null) return null
       const point = screenToScene(x, y, {
         translateX: translateX.value,
         translateY: translateY.value,
         scale: scale.value,
       })
       const at = sceneToLatLng(point.x, point.y, anchor)
-      let cell = latLngToCell(at.lat, at.lng, leaves.deepest)
-      for (let res = leaves.deepest; res >= leaves.shallowest; res--) {
-        if (leaves.member.has(cell)) return cell
-        if (res > leaves.shallowest) cell = cellToParent(cell, res - 1)
-      }
-      return null
+      const deepest = latLngToCell(at.lat, at.lng, tree.leaves.deepest)
+      return leafFrom(deepest, tree.leaves, cellToParent)
     },
-    [leaves, anchor, translateX, translateY, scale],
+    [tree, anchor, translateX, translateY, scale],
   )
 
   const merge = useCallback((): void => {
     if (merged.current === null) return
-    setLeaves(merged.current)
+    setTree(merged.current)
     merged.current = null
     setGrowth(null)
   }, [])
@@ -412,46 +250,45 @@ export function FractalCity({ active }: ActProps) {
   const split = useCallback(
     (x: number, y: number): void => {
       // a split still growing owns the scene, and a second one would grow out of a stale centre
-      if (leaves === null || growth !== null) return
+      if (tree === null || growth !== null) return
       const cell = leafAt(x, y)
       if (cell === null) return
 
+      // the HUD describes the cell last touched, so a refused tap moves the focus onto it too
       const next = focusOf(cell, null)
+      setFocus(next)
       if (next.childrenSize === 0) {
         setRefusal(FLOOR_NOTE)
         return
       }
-      if (leaves.cells.length - 1 + next.childrenSize > FRACTAL_CELL_CAP) {
+      if (tree.leaves.cells.length - 1 + next.childrenSize > FRACTAL_CELL_CAP) {
         setRefusal(CEILING_NOTE)
         return
       }
       setRefusal(null)
 
       const children = childrenOf(cell, next.res + 1)
-      const kept = new BigUint64Array(leaves.cells.length - 1)
-      let cursor = 0
-      for (const leaf of leaves.cells) if (leaf !== cell) kept[cursor++] = leaf
-      const whole = new BigUint64Array(kept.length + children.value.length)
-      whole.set(kept)
-      whole.set(children.value, kept.length)
-
-      const grown = record(
-        children.value,
-        new Uint8Array(children.value.length).fill(bucketOfResolution(next.res + 1)),
-        anchor,
-      )
+      const grown = record(children.value, bucketsOf(children.value), anchor)
       const parent = shapeOf(cell, anchor)
       const centre = sceneOf(cellToLatLng(cell), anchor)
 
-      merged.current = leavesOf(whole)
-      setLeaves(leavesOf(kept))
-      setGrowth({ cells: grown.scene, outline: grown.outline, centre })
+      // the cell stays a leaf while its children grow over it, and becomes an underlay at the merge
+      merged.current = {
+        leaves: leavesOf(
+          replaceLeaf(tree.leaves.cells, cell, children.value),
+          BUCKETS,
+          getResolution,
+        ),
+        ancestors: inDepthOrder([...tree.ancestors, cell]),
+      }
+      setGrowth({ cells: grown.scene, outline: outlinePath(grown.projected), centre })
       setFocus({ ...next, childrenMs: children.ms })
 
       progress.value = 0
-      progress.value = withTiming(1, { duration: GROWTH_MS }, (finished) => {
+      progress.value = withTiming(1, { duration: GROWTH_MS }, () => {
         'worklet'
-        if (finished) runOnJS(merge)()
+        // an interrupted growth merges too, so no scene is left half open
+        runOnJS(merge)()
       })
 
       setGhost(outlinePath(parent))
@@ -463,49 +300,51 @@ export function FractalCity({ active }: ActProps) {
       const span = parent.bounds.maxX - parent.bounds.minX
       zoomAbout(centre, TARGET_CELL_PX / span)
     },
-    [leaves, growth, anchor, leafAt, merge, zoomAbout, progress, ghostAlpha],
+    [tree, growth, anchor, leafAt, merge, zoomAbout, progress, ghostAlpha],
   )
 
   const fold = useCallback(
     (x: number, y: number): void => {
-      if (leaves === null || growth !== null) return
+      if (tree === null || growth !== null) return
       const cell = leafAt(x, y)
       if (cell === null) return
       const res = getResolution(cell)
       if (res <= MIN_RES) {
+        setFocus(focusOf(cell, null))
         setRefusal(TOP_NOTE)
         return
       }
       setRefusal(null)
 
       const parent = cellToParent(cell, res - 1)
-      const kept: bigint[] = []
-      for (const leaf of leaves.cells) {
-        if (getResolution(leaf) >= res - 1 && cellToParent(leaf, res - 1) === parent) continue
-        kept.push(leaf)
-      }
+      const kept = withoutBranch(tree.leaves.cells, parent, res - 1, getResolution, cellToParent)
       kept.push(parent)
+      const ancestors = withoutBranch(tree.ancestors, parent, res - 1, getResolution, cellToParent)
 
-      setLeaves(leavesOf(BigUint64Array.from(kept)))
+      setTree({
+        leaves: leavesOf(BigUint64Array.from(kept), BUCKETS, getResolution),
+        ancestors: BigUint64Array.from(ancestors),
+      })
       setFocus(focusOf(parent, null))
 
+      // the parent is framed at the size it had before its split, which undoes that split's zoom
       const shape = shapeOf(parent, anchor)
       const span = shape.bounds.maxX - shape.bounds.minX
-      zoomAbout(sceneOf(cellToLatLng(parent), anchor), TARGET_CELL_PX / span)
+      zoomAbout(sceneOf(cellToLatLng(parent), anchor), OPEN_CELL_PX / span)
     },
-    [leaves, growth, anchor, leafAt, zoomAbout],
+    [tree, growth, anchor, leafAt, zoomAbout],
   )
 
-  const reach = leaves === null ? NO_REACH : reachOf(leaves)
+  const reach = tree === null ? NO_REACH : reachOf(tree.leaves)
   // a refused tap outranks the standing line, because it answers the gesture the visitor just made
   const note = refusal ?? reach.note
 
   const gesture = useMemo(() => {
     const tap = Gesture.Tap()
       .enabled(reach.split)
-      .onEnd((event) => {
+      .onEnd((event, success) => {
         'worklet'
-        runOnJS(split)(event.x, event.y)
+        if (success) runOnJS(split)(event.x, event.y)
       })
     // the fold has to fail before a pan starts, which it does as soon as the finger moves
     const press = Gesture.LongPress()
@@ -532,6 +371,8 @@ export function FractalCity({ active }: ActProps) {
       <EngineCanvas camera={camera} gesture={gesture}>
         {scene === null ? null : (
           <>
+            {/* the cells already split, so the ground never shows where children miss a corner */}
+            <CellPictures scene={scene.under} />
             <CellPictures scene={scene.cells} />
             <Path
               path={scene.outline}
@@ -566,7 +407,11 @@ export function FractalCity({ active }: ActProps) {
       <View style={styles.panel} pointerEvents="box-none">
         <Panel collapsible collapsed={collapsed} onToggle={() => setCollapsed((held) => !held)}>
           <Metric value={formatCount(scene?.leafCount ?? 0)} caption="leaf cells" />
-          <Row label="resolution" value={focus === null ? '-' : `${focus.res}`} />
+          <Row
+            label="resolution"
+            value={focus === null ? '-' : `${focus.res}`}
+            call="getResolution"
+          />
           <Row
             label="cell area"
             value={focus === null ? '-' : formatAreaKm2(focus.areaKm2)}
