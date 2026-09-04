@@ -8,7 +8,8 @@
     "ios": "expo run:ios",
     "android": "expo run:android",
     "prebuild": "expo prebuild",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "bun test ./spikes/__tests__/mesh.test.ts"
   },
   "dependencies": {
     "@shopify/react-native-skia": "2.6.2",
