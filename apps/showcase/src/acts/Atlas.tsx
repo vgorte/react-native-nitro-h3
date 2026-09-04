@@ -9,34 +9,21 @@ import {
   type MapRef,
   type PressEvent,
   type PressEventWithFeatures,
-  type StyleSpecification,
   type ViewState,
   type ViewStateChangeEvent,
 } from '@maplibre/maplibre-react-native'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { type NativeSyntheticEvent, StyleSheet, View } from 'react-native'
-import {
-  cellToCenterChild,
-  cellToParent,
-  cellToString,
-  getHexagonEdgeLengthAvgM,
-  gridDiskDistances,
-  latLngToCell,
-} from 'react-native-nitro-h3'
-import {
-  boundariesOf,
-  bucketOfBaseCell,
-  diskAround,
-  NEIGHBOURHOOD_CALLS,
-  timed,
-} from '../engine/cells'
+import { cellToString, getHexagonEdgeLengthAvgM, latLngToCell } from 'react-native-nitro-h3'
+import { ATLAS_CELL_CAP, coverage, noteFrame, noWait, openWait, type Wait } from '../engine/atlas'
+import { boundariesOf, diskAround, NEIGHBOURHOOD_CALLS, timed } from '../engine/cells'
 import { cellsToFeatureCollection } from '../engine/geojson'
 import { type Highlight, neighbourhoodOf } from '../engine/inspect'
-import { bucketForDistance, PATCH_RINGS } from '../engine/mesh'
-import { DEG_TO_RAD, EARTH_RADIUS_M, resolutionForZoom } from '../engine/projection'
+import { resolutionForZoom } from '../engine/projection'
 import { formatCount, formatMs } from '../engine/stats'
-import { plainAttribution } from '../engine/tiles/source'
+import { PATCH_BUCKETS, patchBuckets } from '../render/atlasColours'
 import { BlockedReadout } from '../render/BlockedReadout'
+import { type Basemap, loadBasemap, PLAIN_BASEMAP } from '../render/basemap'
 import { Attribution } from '../render/hud/Attribution'
 import { FinePrint } from '../render/hud/FinePrint'
 import { Metric } from '../render/hud/Metric'
@@ -46,11 +33,8 @@ import { CELL_FILL_OPACITY, colours, ramp, rampColours } from '../theme/tokens'
 import { lastMapPosition, rememberMapPosition } from './mapPosition'
 import type { ActProps } from './types'
 
-/** Caps the disk this act asks for, the interactive ceiling every act shares. */
-export const ATLAS_CELL_CAP = 20_000
-
-const STYLE_URL = 'https://tiles.openfreemap.org/styles/dark'
-const DEFAULT_ATTRIBUTION = 'OpenFreeMap © OpenMapTiles, data from OpenStreetMap'
+// the act's published contract names this; the rules that use it live in engine/atlas.ts
+export { ATLAS_CELL_CAP } from '../engine/atlas'
 
 const BERLIN = { lat: 52.52, lng: 13.405 }
 const START_ZOOM = 11
@@ -59,16 +43,6 @@ const MAX_START_ZOOM = 16
 
 // MapLibre counts zoom against a 512 point tile, the projection helpers against a 256 point one
 const ZOOM_OFFSET = 1
-const CELL_SPACING = Math.sqrt(3)
-// a disk of k rings is a hexagon of cells, and only its apothem is covered in every direction
-const DISK_APOTHEM = Math.sqrt(3) / 2
-// the largest k whose disk of 3k(k + 1) + 1 cells still fits under the cap, k = 81
-const MAX_K = Math.floor((Math.sqrt((4 * ATLAS_CELL_CAP - 1) / 3) - 1) / 2)
-
-// resolutions between a cell and the patch it is coloured in, so a patch holds 343 cells
-const PATCH_DEPTH = 3
-// one ramp step per ring of a patch, plus the step every cell outside one takes
-const PATCH_BUCKETS = PATCH_RINGS + 1
 
 const CELL_LINE_WIDTH = 0.5
 const PICK_LINE_WIDTH = 1.5
@@ -90,9 +64,6 @@ const NOTES = [
   'the applied rows run to the last frame the map drew for it, basemap tiles it fetched included',
   'a tap hands the map one cell of its own, which it draws sooner than a filter over the whole set',
 ]
-
-// frames of nothing after which the map counts as done with what it was handed
-const QUIET_MS = 200
 
 type FillPaint = NonNullable<FillLayerSpecification['paint']>
 type LinePaint = NonNullable<LineLayerSpecification['paint']>
@@ -147,13 +118,6 @@ const GHOST_LINE: LinePaint = {
   'line-opacity': GHOST_LINE_OPACITY,
 }
 
-/** Holds the basemap the act draws on and the line its licence requires. */
-interface Basemap {
-  /** The recoloured style, or the plain URL where the style could not be read. */
-  style: string | StyleSpecification
-  attribution: string
-}
-
 /** Holds one settle's cells together with what every step of the classic path cost. */
 interface Scene {
   data: string
@@ -166,49 +130,6 @@ interface Scene {
   boundariesMs: number
   jsonMs: number
   bytes: number
-}
-
-/** Holds the colour of every cell and what the calls behind it cost. */
-interface PatchBuckets {
-  buckets: Uint8Array
-  /** The call the second duration belongs to, which a global view answers differently. */
-  call: string
-  /** Absent where the view is global and no ancestor was climbed to. */
-  patchMs: number | null
-  ringsMs: number
-}
-
-/**
- * Holds one wait on the map: when it was handed something and how long it has been drawing since.
- *
- * The map renders on its own thread and a frame already in flight lands in the same queue, so a
- * wait cannot end on the first frame it sees. It ends where the frames stop instead, which covers
- * the parse and the re-tile the renderer does off the main thread.
- */
-interface Wait {
-  from: number
-  last: number
-  timer: ReturnType<typeof setTimeout> | null
-}
-
-/** Opens a wait, dropping whatever an unfinished one had collected. */
-function openWait(wait: Wait, at: number): void {
-  if (wait.timer !== null) clearTimeout(wait.timer)
-  wait.timer = null
-  wait.from = at
-  wait.last = 0
-}
-
-/** Notes a rendered frame and reports the wait once the map has been quiet for a moment. */
-function noteFrame(wait: Wait, at: number, report: (ms: number) => void): void {
-  if (wait.from === 0) return
-  wait.last = at - wait.from
-  if (wait.timer !== null) clearTimeout(wait.timer)
-  wait.timer = setTimeout(() => {
-    wait.timer = null
-    wait.from = 0
-    report(wait.last)
-  }, QUIET_MS)
 }
 
 /** Holds the cell a tap landed on: the outline the map draws and the index the HUD shows. */
@@ -235,50 +156,6 @@ function highlightOf(cell: bigint): AtlasHighlight {
   }
 }
 
-/** Pulls the style's ground and water toward the theme, which is all the spec lets us restate. */
-function recolour(style: StyleSpecification): StyleSpecification {
-  const layers = style.layers.map((layer) => {
-    if (layer.type === 'background') {
-      return { ...layer, paint: { ...layer.paint, 'background-color': colours.ground } }
-    }
-    if (layer.type === 'fill' && layer.id === 'water') {
-      return { ...layer, paint: { ...layer.paint, 'fill-color': colours.vignette } }
-    }
-    if (layer.type === 'line' && layer.id === 'waterway') {
-      return { ...layer, paint: { ...layer.paint, 'line-color': colours.vignette } }
-    }
-    return layer
-  })
-  return { ...style, layers }
-}
-
-/** Reads the licence line off the style's sources, following a source's TileJSON where it has one. */
-async function attributionOf(style: StyleSpecification): Promise<string> {
-  const sources = Object.values(style.sources)
-  for (const source of sources) {
-    if ('attribution' in source && typeof source.attribution === 'string') {
-      return plainAttribution(source.attribution)
-    }
-  }
-  for (const source of sources) {
-    if (!('url' in source) || typeof source.url !== 'string') continue
-    const json = (await (await fetch(source.url)).json()) as { attribution?: string }
-    if (typeof json.attribution === 'string') return plainAttribution(json.attribution)
-  }
-  return DEFAULT_ATTRIBUTION
-}
-
-/** Loads the basemap once: the style JSON in the theme's colours and the line under the map. */
-async function loadBasemap(): Promise<Basemap> {
-  const style = recolour((await (await fetch(STYLE_URL)).json()) as StyleSpecification)
-  try {
-    return { style, attribution: await attributionOf(style) }
-  } catch {
-    // a source whose TileJSON will not answer costs the licence line, not the recoloured style
-    return { style, attribution: DEFAULT_ATTRIBUTION }
-  }
-}
-
 /** Answers the camera the act opens on, the position the shared store holds or Berlin without one. */
 function openingView(): InitialViewState {
   const last = lastMapPosition()
@@ -288,84 +165,6 @@ function openingView(): InitialViewState {
     return { center: [BERLIN.lng, BERLIN.lat], zoom: START_ZOOM }
   }
   return { center: [last.centre.lng, last.centre.lat], zoom: Math.min(MAX_START_ZOOM, zoom) }
-}
-
-/**
- * Answers the ramp bucket of every cell, its ring distance to the centre of the patch it lies in.
- *
- * A patch is the {@linkcode PATCH_DEPTH} generations up of a cell, so the pattern is anchored to
- * the grid rather than to the view: panning slides the bullseyes, it does not move them. Under that
- * depth there is no ancestor to climb to and the patches would overlap, so a global view falls back
- * on the base cell, which is what the globe colours by.
- *
- * @param cells The cells the collection is built from.
- * @param res The resolution they were asked for.
- */
-function patchBuckets(cells: BigUint64Array, res: number): PatchBuckets {
-  if (res < PATCH_DEPTH) {
-    const buckets = new Uint8Array(cells.length)
-    const global = timed('getBaseCellNumber', () => {
-      for (let cell = 0; cell < cells.length; cell++) {
-        buckets[cell] = bucketOfBaseCell(cells[cell], PATCH_BUCKETS)
-      }
-    })
-    return { buckets, call: 'getBaseCellNumber', patchMs: null, ringsMs: global.ms }
-  }
-
-  const patches = timed('cellToParent', () => {
-    const ancestors = new BigUint64Array(cells.length)
-    for (let cell = 0; cell < cells.length; cell++) {
-      ancestors[cell] = cellToParent(cells[cell], res - PATCH_DEPTH)
-    }
-    return ancestors
-  })
-
-  // the distinct ancestors are counted outside the window, so the row times H3 and nothing else
-  const seen = new Set<bigint>()
-  const ancestors: bigint[] = []
-  for (const ancestor of patches.value) {
-    if (seen.has(ancestor)) continue
-    seen.add(ancestor)
-    ancestors.push(ancestor)
-  }
-
-  const rings = timed('gridDiskDistances', () => {
-    const walked = new Array<BigUint64Array[]>(ancestors.length)
-    for (let patch = 0; patch < ancestors.length; patch++) {
-      walked[patch] = gridDiskDistances(cellToCenterChild(ancestors[patch], res), PATCH_RINGS)
-    }
-    return walked
-  })
-
-  const index = new Map<bigint, number>()
-  for (let cell = 0; cell < cells.length; cell++) index.set(cells[cell], cell)
-  const buckets = new Uint8Array(cells.length)
-  for (const patch of rings.value) {
-    for (let ring = 0; ring < patch.length; ring++) {
-      const bucket = bucketForDistance(ring, PATCH_BUCKETS)
-      for (const member of patch[ring]) {
-        const found = index.get(member)
-        if (found !== undefined) buckets[found] = bucket
-      }
-    }
-  }
-
-  return { buckets, call: 'gridDiskDistances', patchMs: patches.ms, ringsMs: rings.ms }
-}
-
-/** Answers the ring count whose disk reaches every corner of the viewport, under the cap. */
-function coverage(view: ViewState, res: number): number {
-  const [west, south, east, north] = view.bounds
-  const [lng, lat] = view.center
-  // a viewport across the antimeridian answers an east that has wrapped
-  const rightEdge = east < west ? east + 360 : east
-  const centreLng = lng < west ? lng + 360 : lng
-  const halfLat = Math.max(north - lat, lat - south)
-  const halfLng = Math.max(rightEdge - centreLng, centreLng - west)
-  const reach =
-    EARTH_RADIUS_M * DEG_TO_RAD * Math.hypot(halfLat, halfLng * Math.cos(lat * DEG_TO_RAD))
-  const spacing = CELL_SPACING * getHexagonEdgeLengthAvgM(res)
-  return Math.max(1, Math.min(MAX_K, Math.ceil(reach / (spacing * DISK_APOTHEM)) + 1))
 }
 
 /**
@@ -379,8 +178,8 @@ function coverage(view: ViewState, res: number): number {
 export function Atlas({ active, inspected, onInspect }: ActProps) {
   const map = useRef<MapRef>(null)
   const scene = useRef<Scene | null>(null)
-  const mapWait = useRef<Wait>({ from: 0, last: 0, timer: null })
-  const pickWait = useRef<Wait>({ from: 0, last: 0, timer: null })
+  const mapWait = useRef<Wait>(noWait())
+  const pickWait = useRef<Wait>(noWait())
   const pickedIndex = useRef('')
 
   const [opening, setOpening] = useState<InitialViewState | null>(null)
@@ -399,7 +198,7 @@ export function Atlas({ active, inspected, onInspect }: ActProps) {
       .then(setBasemap)
       .catch(() => {
         // a style that will not load leaves the map on the plain URL and the known licence line
-        setBasemap({ style: STYLE_URL, attribution: DEFAULT_ATTRIBUTION })
+        setBasemap(PLAIN_BASEMAP)
       })
   }, [active, opening])
 
@@ -408,7 +207,8 @@ export function Atlas({ active, inspected, onInspect }: ActProps) {
     // the store keeps the app's own zoom, so a later act reads it the way the projection does
     rememberMapPosition({ centre: { lat, lng }, zoom: view.zoom + ZOOM_OFFSET })
     const res = resolutionForZoom(view.zoom + ZOOM_OFFSET, lat, getHexagonEdgeLengthAvgM)
-    const disk = diskAround(latLngToCell(lat, lng, res), coverage(view, res))
+    const k = coverage(view, res, getHexagonEdgeLengthAvgM)
+    const disk = diskAround(latLngToCell(lat, lng, res), k)
     const cells = disk.value
     if (cells.length > ATLAS_CELL_CAP) return
 
@@ -506,7 +306,8 @@ export function Atlas({ active, inspected, onInspect }: ActProps) {
           onPress={press}
           onRegionDidChange={settle}
           onDidFinishLoadingMap={loaded}
-          onDidFinishRenderingFrameFully={applied}
+          // the map stays mounted off screen, where a frame it draws has no wait to report
+          onDidFinishRenderingFrameFully={active ? applied : undefined}
         >
           <Camera initialViewState={opening} />
           <GeoJSONSource id="atlas-cells" data={built?.data ?? EMPTY_COLLECTION}>
