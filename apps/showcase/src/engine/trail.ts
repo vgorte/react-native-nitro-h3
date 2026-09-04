@@ -59,8 +59,8 @@ export function extendTrail(
  * Answers the cells from `from` to `to`, or the two ends alone where H3 cannot walk a path.
  *
  * `gridPathCells` refuses a path it cannot express, and a location feed that was away for a while
- * comes back with exactly that: a fix on the other side of the country. The trail then holds the
- * jump as a jump rather than losing the fix to a call that threw. Only H3's own refusal is a jump;
+ * comes back with exactly that: a fix on the other side of the country, which the trail then holds
+ * as a jump rather than losing the fix to a call that threw. Only H3's own refusal is a jump;
  * `refuses` says which error that is, and anything else is a defect and goes back to the caller.
  *
  * @param from The head of the trail.

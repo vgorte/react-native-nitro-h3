@@ -146,12 +146,12 @@ function walkRoute(fixes: readonly TrailFix[], res: number): Walk {
 /**
  * Draws the route the visitor walks as the cells it passes through, gap by gap.
  *
- * Every fix becomes one cell through `latLngToCell`. A fix that is not a neighbour of the head is
- * joined to it with `gridPathCells`, and those cells draw on the lower half of the ramp, which is
- * the act's whole point: what was measured and what was inferred are told apart on screen. The
- * trail keeps its last {@linkcode AGE_SPAN} cells and fades over whatever it holds, and the camera
- * follows the head until the visitor takes it over, after which the recentre control gives it back.
- * Refusing the location plays {@linkcode REPLAY_ROUTE} instead, at the pace it was recorded.
+ * Every fix becomes one cell through `latLngToCell`, and a fix that is not a neighbour of the head
+ * is joined to it with `gridPathCells`, whose cells draw on the lower half of the ramp: what was
+ * measured and what was inferred are told apart on screen. The trail keeps its last
+ * {@linkcode AGE_SPAN} cells and fades over them, the camera follows the head until the visitor
+ * takes it over and the recentre control gives it back, and refusing the location plays
+ * {@linkcode REPLAY_ROUTE} at the pace it was recorded.
  */
 export function Trail({ active, inspected, onInspect }: ActProps) {
   const { width, height } = useWindowDimensions()
@@ -288,8 +288,8 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
     setReading((before) => ({ ...before, locateMs: walked.locateMs, gap: walked.gap }))
   }, [res])
 
-  // The act asks for the location once it is on screen, and anything but a granted permission
-  // starts the replay: a refusal, and a request that fails outright, leave the same act to draw.
+  // anything but a granted permission starts the replay, so a refusal and a request that fails
+  // outright leave the same act to draw
   useEffect(() => {
     if (!active || source !== null) return
     let cancelled = false
@@ -305,8 +305,8 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
     }
   }, [active, source])
 
-  // The watcher belongs to the act on screen, and is torn down on every other transition. It fails
-  // where the device has location switched off altogether, and the replay stands in for it.
+  // the watcher belongs to the act on screen, and a device with location switched off altogether
+  // fails the request, where the replay stands in for it
   useEffect(() => {
     if (!active || source !== 'live') return
     let watcher: Location.LocationSubscription | null = null
@@ -366,8 +366,8 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
     resetWorstGap()
   }, [active])
 
-  // A camera the visitor has moved is theirs until the recentre control hands it back. A pan begins
-  // on touch down, so it is the movement under the finger and not the touch that takes it away.
+  // a pan begins on touch down, so it is the movement under the finger and not the touch itself
+  // that takes the camera away from the follow
   useAnimatedReaction(
     () => ({
       now: { x: translateX.value, y: translateY.value, scale: scale.value },
@@ -384,9 +384,8 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
     },
   )
 
-  // The first fix frames the trail and every one after it glides the head back into the band. A
-  // change of resolution re-frames too, so a cell keeps reading at the size the act opened on,
-  // unless the visitor is holding the camera, in which case the frame stays theirs.
+  // the opening fix and a change of resolution both re-frame, so a cell keeps reading at the size
+  // the act opened on, unless the visitor is holding the camera
   useEffect(() => {
     const head = trail[trail.length - 1]
     if (head === undefined) return

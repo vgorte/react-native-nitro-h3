@@ -15,7 +15,7 @@ export interface Basemap {
 /** The basemap an act falls back on where the style itself will not load. */
 export const PLAIN_BASEMAP: Basemap = { style: STYLE_URL, attribution: DEFAULT_ATTRIBUTION }
 
-/** Pulls the style's ground and water toward the theme, which is all the spec lets us restate. */
+/** Pulls the style's ground and water toward the theme, which is all the spec lets an app set. */
 function recolour(style: StyleSpecification): StyleSpecification {
   const layers = style.layers.map((layer) => {
     if (layer.type === 'background') {

@@ -26,7 +26,9 @@ export interface ProjectedCells {
   bounds: Bounds
 }
 
-/** Holds a point on the unit sphere, `x` toward `[0, 0]`, `y` toward `[0, 90]`, `z` toward the pole. */
+/**
+ * Holds a point on the unit sphere, `x` toward `[0, 0]`, `y` toward `[0, 90]`, `z` toward the pole.
+ */
 export interface Xyz {
   x: number
   y: number
@@ -137,7 +139,7 @@ export function resolutionForZoom(
  * from the resolution it hands over at.
  *
  * @param res The resolution the answer is the threshold of.
- * @param edgeLengthM The average edge length of a resolution, as `getHexagonEdgeLengthAvgM` gives it.
+ * @param edgeLengthM The average edge length of a resolution, from `getHexagonEdgeLengthAvgM`.
  * @param targetPx The cell width the ladder aims for, as {@linkcode resolutionForZoom} takes it.
  */
 export function radiusForResolution(

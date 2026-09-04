@@ -100,7 +100,7 @@ export const GLOBE_LOOP_MAX_RES = 2
 /**
  * States whether the globe turns on its own, which it does not.
  *
- * Spike 3 measured the worklet frame at 8.51 ms on the simulator, above the 8 ms bar, so the
+ * The frame was measured at 8.51 ms on the iPhone 17 Pro simulator, above the 8 ms bar, so the
  * globe turns under a finger and stands still otherwise.
  */
 export const IDLE_ROTATION = false

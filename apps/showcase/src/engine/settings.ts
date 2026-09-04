@@ -28,7 +28,7 @@ export const PUSH_POINTS = 1_000_000
  * The resolution of the push-it step.
  *
  * A million points of this mixture land in about 123,000 distinct cells at resolution 11, which is
- * the size the mesh spike measured the inset variant at 60 fps for.
+ * the size the inset geometry was measured holding 60 fps at.
  */
 export const PUSH_RES = 11
 
@@ -46,7 +46,7 @@ export function isPushed(settings: Settings): boolean {
  * The push-it step is a preset of two values, so neither of them ever stands alone: leaving it by
  * the point count takes its resolution with it, and asking for its resolution sets its point count.
  * The resolution row therefore always lights one of the items it offers, and no run is ever asked
- * for a size the step alone describes. Leaving it by one of the plain resolutions keeps the million
+ * for a size the step alone describes; leaving it by one of the plain resolutions keeps the million
  * points, which is a state the row can light and the act can build.
  */
 export function nextSettings(current: Settings, change: Change): Settings {

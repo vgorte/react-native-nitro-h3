@@ -29,7 +29,7 @@ const ADAPTIVE_SAFE_DIAMETER = 66
 
 const LEGACY_DENSITIES = { mdpi: 48, hdpi: 72, xhdpi: 96, xxhdpi: 144, xxxhdpi: 192 }
 
-// Share of the icon's width the mark's bounding circle spans on the pre-adaptive launcher icons.
+// share of the icon's width the mark's bounding circle spans on the pre-adaptive launcher icons
 const LEGACY_FILL = 0.8
 
 // Expo's own asset sizes: 1024 for the square icon, 512 for the two adaptive layers and 432 for
@@ -514,7 +514,7 @@ async function writeNativeIcons(mark: Mark, target: NativeTarget): Promise<void>
   const { polygons, viewBox, radius, fill, write } = mark
   const background = target.background
 
-  // iOS: one universal 1024 slot, opaque, the viewBox filling the canvas.
+  // iOS: one universal 1024 slot, opaque, the viewBox filling the canvas
   await write(
     join(target.iconset, 'AppIcon.png'),
     encodePng(render(polygons, viewBox, { size: 1024, contentScale: 1, background }), 1024, false),
@@ -533,7 +533,7 @@ async function writeNativeIcons(mark: Mark, target: NativeTarget): Promise<void>
     )}\n`,
   )
 
-  // Android: PNGs for API 24 and 25, which predate the adaptive icon.
+  // Android: PNGs for API 24 and 25, which predate the adaptive icon
   for (const [density, size] of Object.entries(LEGACY_DENSITIES)) {
     const directory = join(target.res, `mipmap-${density}`)
     const contentScale = fill(LEGACY_FILL)
@@ -551,7 +551,7 @@ async function writeNativeIcons(mark: Mark, target: NativeTarget): Promise<void>
     )
   }
 
-  // Android: the adaptive icon stays vector, so no density loses detail.
+  // Android: the adaptive icon stays vector, so no density loses detail
   const foreground = polygons
     .map((polygon) => {
       const path = toAdaptivePath(polygon.points, viewBox, radius)
@@ -561,8 +561,8 @@ async function writeNativeIcons(mark: Mark, target: NativeTarget): Promise<void>
   const drawable = join(target.res, 'drawable')
   await write(join(drawable, 'ic_launcher_foreground.xml'), vectorDrawable(foreground))
 
-  // The themed icon is the outer hexagon with the seven children punched out, so the system
-  // can tint one shape. `evenOdd` over a single path is what makes the holes holes.
+  // the themed icon is one shape the system tints, so the seven children are punched out of the
+  // outer hexagon and `evenOdd` over a single path is what makes the holes holes
   const monochromePath = polygons
     .map((polygon) => toAdaptivePath(polygon.points, viewBox, radius))
     .join(' ')

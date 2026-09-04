@@ -164,7 +164,7 @@ function highlightOf(cell: bigint): AtlasHighlight {
   }
 }
 
-/** Answers the camera the act opens on, the position the shared store holds or Berlin without one. */
+/** Answers the camera the act opens on: the position the shared store holds, or Berlin. */
 function openingView(): InitialViewState {
   const last = lastMapPosition()
   const zoom = last === null ? 0 : last.zoom - ZOOM_OFFSET
@@ -181,7 +181,7 @@ function openingView(): InitialViewState {
  * Every rebuild waits for the map to settle, walks the grid around the view centre, turns the
  * boundaries into one GeoJSON string and hands that to a `GeoJSONSource`. The HUD keeps the H3
  * calls and the two costs the classic path adds apart, because the second pair is what this act
- * exists to show. Nothing here animates on its own.
+ * exists to show, and nothing here animates on its own.
  */
 export function Atlas({ active, inspected, onInspect }: ActProps) {
   const map = useRef<MapRef>(null)

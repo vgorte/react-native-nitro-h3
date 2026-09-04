@@ -86,8 +86,8 @@ function walkOf(centre: bigint, k: number): Walk {
  * The slider sets k, and every step it crosses builds the rings that step adds and nothing else: a
  * ring is its own recorded picture, fades in over {@linkcode RING_FADE_MS} and is kept until a
  * smaller k drops it. Colour is the ring's own distance from the centre on a triangle wave over the
- * ramp, so the disk reads as a bullseye at every k and a ring keeps the colour it was recorded in.
- * The act opens framed on {@linkcode OPEN_K}, where a cell carries its own grid line, and re-fits
+ * ramp, so the disk reads as a bullseye at every k and a ring keeps the colour it was recorded in;
+ * the act opens framed on {@linkcode OPEN_K}, where a cell carries its own grid line, and re-fits
  * the frame whenever a raised k outgrows it, until the visitor pinches and takes the camera over.
  */
 export function MagneticGrid({ active }: ActProps) {
@@ -153,10 +153,8 @@ export function MagneticGrid({ active }: ActProps) {
     [framed, refitting, refits, scale],
   )
 
-  // A scale the act did not write itself can only have come from a pinch, and the visitor who made
-  // it owns the camera from then on. The reaction waits for the first frame the act writes, so the
-  // camera's own opening scale is never read as one, and it sits out the act's own animation, which
-  // says when it has landed rather than being predicted to.
+  // only a pinch can leave a scale the act did not write, and waiting for the act's own first
+  // frame keeps the opening scale and the re-fit animation from reading as one
   useAnimatedReaction(
     () => scale.value,
     (now) => {
@@ -182,9 +180,8 @@ export function MagneticGrid({ active }: ActProps) {
     setWalk(walkOf(cell, MIN_K))
   }, [active, centre])
 
-  // The opening frame holds the disk of `OPEN_K`, where a cell reads at about two dozen points. It
-  // stands in the middle of what the act indicator leaves rather than of the viewport, so the
-  // smallest disks are clear of the panel instead of under it.
+  // the opening disk stands in the middle of what the act indicator leaves rather than of the
+  // viewport, so the smallest disks are clear of the panel instead of under it
   useEffect(() => {
     if (centre === null) return
     translateX.value = width / 2
@@ -246,9 +243,8 @@ export function MagneticGrid({ active }: ActProps) {
     }
     setAppend({ ringMs, boundariesMs, buildMs: performance.now() - started })
 
-    // One timer an append rather than one a ring, so a step that adds many ends in one render. The
-    // append a ring belongs to is held with it, because a ring dropped and re-added inside the fade
-    // window is a new fade, and the timer of the append that first added it must leave it alone.
+    // one timer an append rather than one a ring, so a step that adds many ends in one render, and
+    // a ring re-added inside the window carries the newer append its fade belongs to
     appends.current += 1
     const generation = appends.current
     setFading((current) => {

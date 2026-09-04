@@ -10,7 +10,7 @@ import type { CameraAnchor } from './useCamera'
 const CHUNK_SIZE = 10_000
 // three edges a cell cover a tiling of one resolution once, which halves the anti-aliasing work
 const OUTLINE_EDGES = 3
-// the fraction spike 1 measured the inset variant at, where it held 60 fps at 128,000 cells
+// the inset measured at 60 fps on the emulator with 128,000 cells, where the strip fell to 33.5
 const INSET = 0.08
 
 /** Holds the recorded cells of one run together with what the two stages behind them took. */
@@ -28,8 +28,8 @@ export interface HeatScene {
  * Records the cells of one run, each in the colour the points that landed in it stand for.
  *
  * Up to {@linkcode OUTLINE_MAX_CELLS} the cells are drawn full size under an outline strip. Above
- * it the strip comes off and every cell is drawn inset instead, which is the split spike 1
- * measured: the strip at that size cost a third of the frame rate, the inset none of it.
+ * it the strip comes off and every cell is drawn inset instead: the strip at that size cost a
+ * third of the frame rate, the inset none of it.
  *
  * @param cells The distinct cells of the run, in the order their colours are given in.
  * @param buckets The ramp bucket of every cell, from the counts on the logarithmic ramp.

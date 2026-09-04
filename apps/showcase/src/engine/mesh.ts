@@ -30,7 +30,7 @@ export interface MeshOptions {
   buckets: number
   /** Fraction every cell shrinks toward its centre, `0` for full size. */
   inset: number
-  /** Colour bucket of each cell, `0` to `buckets - 1`; by default a cell's index modulo `buckets`. */
+  /** Colour bucket of each cell, `0` to `buckets - 1`; by default its index modulo `buckets`. */
   bucketOf?: Uint8Array
 }
 

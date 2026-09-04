@@ -127,7 +127,7 @@ function focusOf(cell: bigint, childrenMs: number | null): Focus {
  *
  * A tap replaces the cell it lands on with its children, which grow out of the parent centre while
  * the parent outline fades behind them and the camera zooms until that cell reads at
- * {@linkcode TARGET_CELL_PX}. A long press does the reverse, framing the cell it produces at the
+ * {@linkcode TARGET_CELL_PX}; a long press does the reverse, framing the cell it produces at the
  * size that cell had before it was split, so a descent and its climb land on the same view. What is
  * drawn is a tree: leaves at many resolutions at once over the fills of every cell already split,
  * both coloured by how far down they stand.
@@ -200,9 +200,8 @@ export function FractalCity({ active, inspected, onInspect }: ActProps) {
     }
   }, [])
 
-  // The zoom drives the scale and holds the pivot where it was, which is a pinch about that point.
-  // The mapper runs once when it is registered, where every value below still carries the camera's
-  // own identity, so that first run writes back exactly what the camera already holds.
+  // the mapper runs once at registration, where the values below still carry the camera's own
+  // identity, so that first run writes back exactly what the camera already holds
   useAnimatedReaction(
     () => zoom.value,
     (moved) => {
@@ -250,9 +249,8 @@ export function FractalCity({ active, inspected, onInspect }: ActProps) {
     setGrowth(null)
   }, [])
 
-  // A re-anchor moves the metre frame the scene is rebuilt in, and the ghost and the growing
-  // children stand in the one before it. Dropping the ghost and merging what is growing puts both
-  // in the new frame rather than leaving them to jump off the geography.
+  // the ghost and the growing children stand in the frame before a re-anchor, so dropping the one
+  // and merging the other keeps both from jumping off the geography
   useEffect(() => {
     if (frame.current === anchor) return
     frame.current = anchor

@@ -15,7 +15,7 @@ import { bucketBatches } from './pictures'
 
 export { bucketBatches } from './pictures'
 
-/** Holds a recorded scene: one picture per colour bucket, the outline, and the extent they cover. */
+/** Holds a recorded scene: a picture per colour bucket, the outline, and the extent covered. */
 export interface CellScene {
   pictures: SkPicture[]
   outline: SkPath | null
