@@ -83,7 +83,7 @@ const NOTES = [
     'answers a gap in the feed',
   'those filled cells draw on the lower half of the ramp, the measured ones on the whole of it',
   `the trail keeps its last ${formatCount(AGE_SPAN)} cells, and fades over what it holds`,
-  'with the location refused, a recorded route plays at the pace it was walked',
+  'without a live location, a recorded route plays at the pace it was walked',
 ]
 
 /** Names where the fixes come from: the device itself, or the route recorded on a simulated run. */

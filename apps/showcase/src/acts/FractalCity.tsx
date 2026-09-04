@@ -85,7 +85,7 @@ const DISABLED_OPACITY = 0.4
 const NOTES = [
   'a tap splits the cell under it, a long press folds a cell and its siblings back into the parent',
   'the children do not tile the parent exactly, because the aperture is 7 and the grid is rotated',
-  'the boundaries row sums two calls, the leaves and the fills of the cells already split',
+  'the boundaries row covers the leaves and, once a split has merged, the fills under them',
 ]
 
 /** Holds the children of one split while they grow, in the scene's own metre frame. */

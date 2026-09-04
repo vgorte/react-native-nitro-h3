@@ -42,9 +42,13 @@ const BARS_TOP = 3
 // the vignette reaches past the corners, as it does under every other act
 const VIGNETTE_REACH = 0.7
 
+// the published figures in docs/benchmark.md were measured on this version
+const BENCHMARK_VERSION = '0.87.0'
+
 const NOTES = [
   'h3-js is Emscripten output shipped as plain JavaScript, so both sides block the JS thread',
   'h3-js loads under Hermes behind a TextDecoder stand-in, removed before timing',
+  `the documented factors were measured on a release build, React Native ${BENCHMARK_VERSION}`,
 ]
 
 /** Holds what a row has measured, live while the workload runs. */

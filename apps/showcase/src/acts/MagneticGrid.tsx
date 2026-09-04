@@ -56,8 +56,8 @@ const NO_RINGS: ReadonlyMap<number, number> = new Map()
 // one line each, so the panel stops short of the disk the smallest k draws under it
 const NOTES = [
   'a ring is built once, kept until a smaller k drops it',
-  'the last three rows are what the last step built',
-  'the camera re-fits the disk until you pinch it',
+  'the last three rows sum every ring the last step added',
+  'the camera re-fits the disk until a pinch takes it over',
   'the grid lines stand while a cell can carry them',
 ]
 
