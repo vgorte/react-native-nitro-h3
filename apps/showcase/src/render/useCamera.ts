@@ -153,6 +153,8 @@ export function useCamera({ anchor, onSettle }: CameraOptions): Camera {
     const pan = Gesture.Pan()
       .onBegin(() => {
         'worklet'
+        // an interrupted re-anchor must not eat the settle of this gesture
+        reanchoring.value = false
         interacting.value = true
       })
       .onChange((event) => {
@@ -167,6 +169,7 @@ export function useCamera({ anchor, onSettle }: CameraOptions): Camera {
     const pinch = Gesture.Pinch()
       .onBegin(() => {
         'worklet'
+        reanchoring.value = false
         interacting.value = true
       })
       .onChange((event) => {
@@ -182,7 +185,7 @@ export function useCamera({ anchor, onSettle }: CameraOptions): Camera {
         interacting.value = false
       })
     return Gesture.Simultaneous(pan, pinch)
-  }, [translateX, translateY, scale, interacting])
+  }, [translateX, translateY, scale, interacting, reanchoring])
 
   return {
     translateX,
