@@ -16,8 +16,10 @@ import {
   AGE_SPAN,
   type CameraPlacement,
   cameraTaken,
+  capFixes,
   capTrail,
   extendTrail,
+  FIX_HISTORY,
   filledCells,
   headHeight,
   MAX_TRAIL_RES,
@@ -162,9 +164,13 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
   const [collapsed, setCollapsed] = useState(false)
   // the panel's own height, measured, because what it says decides it and the viewport does not
   const [panelHeight, setPanelHeight] = useState(0)
+  // set when a fix arrived during a gesture, where the rebuild waits for the camera to settle
+  const [pending, setPending] = useState(false)
 
-  // the fixes the act has taken, which a change of resolution walks again
+  // the fixes the act still holds, which a change of resolution walks again
   const fixes = useRef<TrailFix[]>([])
+  // every fix the act has taken, which the row counts and the bounded history no longer can
+  const counted = useRef(0)
   // the standing trail, so a fix extends what is drawn without waiting for a render
   const held = useRef<TrailStep[]>([])
   const anchored = useRef<CameraAnchor>(BERLIN)
@@ -174,13 +180,13 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
   const played = useRef(0)
   // when the next replay fix is due, so a return to the act waits out the rest of that interval
   const due = useRef(0)
-  // set when a fix arrived during a gesture, where the rebuild waits for the camera to settle
-  const pending = useRef(false)
+  // counts the glides, so the callback of one that was interrupted knows it is no longer the last
+  const glides = useRef(0)
 
+  // a settle can re-anchor the camera in the same turn, so it only clears the debt and leaves the
+  // build to the effect below, which stands in the frame the act holds by then
   const rebuild = useCallback(() => {
-    if (!pending.current) return
-    pending.current = false
-    if (held.current.length > 0) setScene(buildTrailScene(held.current, anchored.current))
+    setPending(false)
   }, [])
 
   const camera = useCamera({ anchor: BERLIN, onSettle: rebuild })
@@ -188,10 +194,24 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
 
   // where the act itself last put the camera; a camera found anywhere else was moved by a gesture
   const placed = useSharedValue<CameraPlacement>({ x: 0, y: 0, scale: 0 })
+  // true while the act's own glide is running, where a camera away from `placed` is the animation
+  const gliding = useSharedValue(false)
+  // the glide the flag belongs to, so a glide cut short by a newer one does not clear it
+  const glideAt = useSharedValue(0)
+  // set once a gesture has taken the camera, so the crossing to JS happens once and not per frame
+  const taken = useSharedValue(false)
 
   useEffect(() => {
+    const from = anchored.current
     anchored.current = anchor
-  }, [anchor])
+    // a re-anchor moves the camera to hold the view, and where the act placed it moves with it
+    if (from === anchor || placed.value.scale <= 0) return
+    placed.value = {
+      x: placed.value.x - (mercatorX(from.lng) - mercatorX(anchor.lng)) * scale.value,
+      y: placed.value.y - (mercatorY(anchor.lat) - mercatorY(from.lat)) * scale.value,
+      scale: placed.value.scale,
+    }
+  }, [anchor, placed, scale])
 
   /** Puts a cell in the band the panel and the readout leave open, where the head belongs. */
   const centreOn = useCallback(
@@ -203,32 +223,47 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
       const toX = width * HEAD_X - x * scale.value
       const toY =
         headHeight(height, PANEL_TOP + panelHeight, BLOCKED_READOUT_BAND) - y * scale.value
-      placed.value = { x: toX, y: toY, scale: scale.value }
       if (!animated) {
+        placed.value = { x: toX, y: toY, scale: scale.value }
         translateX.value = toX
         translateY.value = toY
         return
       }
+      // the glide is the act's own, so the placement is recorded where the camera lands rather
+      // than where it is headed, and until then a moving camera is this animation and not a pan
+      glides.current += 1
+      const generation = glides.current
+      gliding.value = true
+      glideAt.value = generation
       translateX.value = withTiming(toX, { duration: FOLLOW_MS })
-      translateY.value = withTiming(toY, { duration: FOLLOW_MS })
+      translateY.value = withTiming(toY, { duration: FOLLOW_MS }, (finished) => {
+        'worklet'
+        if (glideAt.value !== generation) return
+        gliding.value = false
+        if (finished === true) placed.value = { x: toX, y: toY, scale: scale.value }
+      })
     },
-    [width, height, panelHeight, translateX, translateY, scale, placed],
+    [width, height, panelHeight, translateX, translateY, scale, placed, gliding, glideAt],
   )
 
   const take = useCallback(
     (fix: TrailFix) => {
       fixes.current.push(fix)
+      capFixes(fixes.current, FIX_HISTORY)
+      counted.current += 1
       if (RECORDING) console.log('trail fix', JSON.stringify(fix))
       // the first fix says where the act stands, and the metre frame is measured from there
-      if (fixes.current.length === 1) {
+      if (counted.current === 1) {
         anchored.current = { lat: fix.lat, lng: fix.lng }
         setAnchor(anchored.current)
+        // the permission dialog and the first fix both hold the app, and neither gap is the act's
+        resetWorstGap()
       }
       const walked = walkFix(held.current, fix, res)
       held.current = walked.trail
       setTrail(walked.trail)
       setReading((before) => ({
-        fixes: fixes.current.length,
+        fixes: counted.current,
         locateMs: walked.locateMs,
         gap: walked.gap ?? before.gap,
       }))
@@ -258,8 +293,6 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
     let cancelled = false
     const answer = (next: Source) => {
       if (cancelled) return
-      // the system holds the app while its dialog stands, and that gap is not the act's to report
-      resetWorstGap()
       setSource(next)
     }
     void Location.requestForegroundPermissionsAsync()
@@ -339,7 +372,13 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
       touching: interacting.value,
     }),
     (state) => {
-      if (state.touching && cameraTaken(state.now, placed.value)) runOnJS(setFollowing)(false)
+      if (!state.touching) {
+        taken.value = false
+        return
+      }
+      if (taken.value || gliding.value || !cameraTaken(state.now, placed.value)) return
+      taken.value = true
+      runOnJS(setFollowing)(false)
     },
   )
 
@@ -372,12 +411,11 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
       return
     }
     if (interacting.value) {
-      pending.current = true
+      if (!pending) setPending(true)
       return
     }
-    pending.current = false
     setScene(buildTrailScene(trail, anchor))
-  }, [trail, anchor, interacting])
+  }, [trail, anchor, interacting, pending])
 
   // a tap opens the sheet on the cell under it, and lands on the ground where the trail is not
   const inspect = useCallback(

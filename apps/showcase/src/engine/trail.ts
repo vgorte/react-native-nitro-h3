@@ -93,6 +93,23 @@ export function capTrail(trail: TrailStep[], span: number): TrailStep[] {
   return trail.slice(trail.length - span)
 }
 
+/** Fixes the act remembers, roughly an hour of walking at a fix a second. */
+export const FIX_HISTORY = 4_000
+
+/**
+ * Drops the oldest fixes so a long session neither grows without bound nor walks longer each time.
+ *
+ * A resolution change walks the whole history again, which is the one cost that would otherwise
+ * scale with how long the act has been open. The cut happens in place, because the history is
+ * appended to on every fix and copying it each time is what this bound is there to avoid.
+ *
+ * @param fixes The fixes taken so far, oldest first.
+ * @param span Fixes to keep.
+ */
+export function capFixes(fixes: TrailFix[], span: number): void {
+  if (fixes.length > span) fixes.splice(0, fixes.length - span)
+}
+
 /**
  * Answers the ramp bucket of a trail cell from its age, filled cells on their own lower band.
  *

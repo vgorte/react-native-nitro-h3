@@ -4,9 +4,11 @@ import {
   bucketOfAge,
   bucketsOfTrail,
   cameraTaken,
+  capFixes,
   capTrail,
   cellsOfTrail,
   extendTrail,
+  FIX_HISTORY,
   filledCells,
   headHeight,
   MAX_TRAIL_RES,
@@ -162,6 +164,41 @@ describe('capTrail', () => {
 
   test('caps a gap that fills more cells than the span in one step', () => {
     expect(capTrail(measured(AGE_SPAN * 3), AGE_SPAN)).toHaveLength(AGE_SPAN)
+  })
+})
+
+describe('capFixes', () => {
+  const walked = (count: number) =>
+    Array.from({ length: count }, (_, index) => ({ lat: 0, lng: 0, t: index }))
+
+  test('leaves a history shorter than the span alone', () => {
+    const fixes = walked(3)
+
+    capFixes(fixes, FIX_HISTORY)
+
+    expect(fixes).toHaveLength(3)
+    expect(fixes[0].t).toBe(0)
+  })
+
+  test('drops the oldest fixes and keeps the newest, in place', () => {
+    const fixes = walked(FIX_HISTORY + 5)
+
+    capFixes(fixes, FIX_HISTORY)
+
+    expect(fixes).toHaveLength(FIX_HISTORY)
+    expect(fixes[0].t).toBe(5)
+    expect(fixes[fixes.length - 1].t).toBe(FIX_HISTORY + 4)
+  })
+
+  test('holds at the span however many fixes arrive after it', () => {
+    const fixes = walked(FIX_HISTORY)
+    for (let fix = 0; fix < 20; fix++) {
+      fixes.push({ lat: 0, lng: 0, t: FIX_HISTORY + fix })
+      capFixes(fixes, FIX_HISTORY)
+    }
+
+    expect(fixes).toHaveLength(FIX_HISTORY)
+    expect(fixes[fixes.length - 1].t).toBe(FIX_HISTORY + 19)
   })
 })
 
