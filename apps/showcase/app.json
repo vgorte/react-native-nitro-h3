@@ -24,6 +24,14 @@
       "expo-dev-client",
       "@maplibre/maplibre-react-native",
       [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#060911",
+          "image": "./assets/android-icon-foreground.png",
+          "imageWidth": 200
+        }
+      ],
+      [
         "expo-location",
         {
           "locationWhenInUsePermission": "The Trail act draws the route you walk as H3 cells while it is on screen."
