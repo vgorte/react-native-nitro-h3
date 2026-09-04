@@ -32,7 +32,9 @@ function recolour(style: StyleSpecification): StyleSpecification {
   return { ...style, layers }
 }
 
-/** Reads the licence line off the style's sources, following a source's TileJSON where it has one. */
+/**
+ * Reads the licence line off the style's sources, following a source's TileJSON where it has one.
+ */
 async function attributionOf(style: StyleSpecification): Promise<string> {
   const sources = Object.values(style.sources)
   for (const source of sources) {

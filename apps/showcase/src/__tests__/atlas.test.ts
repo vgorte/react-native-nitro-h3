@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import {
+  closeWait,
   coverage,
   MAX_K,
   noteFrame,
@@ -12,6 +13,14 @@ import {
 // the average edge of a resolution, an aperture of seven below the resolution 0 average
 const EDGE_M = (res: number) => 1_107_712.591 / 7 ** (res / 2)
 
+/** Waits until a condition holds, so a test on a real timer costs what it takes and no more. */
+async function until(holds: () => boolean, within: number): Promise<void> {
+  const deadline = performance.now() + within
+  while (!holds() && performance.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 5))
+  }
+}
+
 /** Answers a view of `span` degrees either side of a centre, the shape the map reports. */
 function viewAround(lat: number, lng: number, span: number): ViewExtent {
   return { bounds: [lng - span, lat - span, lng + span, lat + span], center: [lng, lat] }
@@ -21,10 +30,13 @@ const RES = 9
 
 describe('coverage', () => {
   test('reaches the corner of the view it is sized from', () => {
-    const view = viewAround(52.52, 13.405, 0.01)
+    const lat = 52.52
+    const span = 0.01
+    const view = viewAround(lat, 13.405, span)
     const rings = coverage(view, RES, EDGE_M)
     // the diagonal to the corner, in ground metres, which the disk has to cover
-    const metres = 6378137 * (Math.PI / 180) * Math.hypot(0.01, 0.01 * Math.cos(0.9167))
+    const latRad = (lat * Math.PI) / 180
+    const metres = 6378137 * (Math.PI / 180) * Math.hypot(span, span * Math.cos(latRad))
     const apothem = rings * Math.sqrt(3) * EDGE_M(RES) * (Math.sqrt(3) / 2)
 
     expect(apothem).toBeGreaterThan(metres)
@@ -82,6 +94,33 @@ describe('openWait', () => {
   })
 })
 
+describe('closeWait', () => {
+  test('leaves an open wait with nothing for a later frame to report', () => {
+    const wait = noWait()
+    let reported: number | null = null
+    openWait(wait, 1_000)
+
+    closeWait(wait)
+    noteFrame(wait, 9_000, (ms) => {
+      reported = ms
+    })
+
+    expect(wait.from).toBe(0)
+    expect(wait.timer).toBeNull()
+    expect(reported).toBeNull()
+  })
+
+  test('drops the frames a wait had already counted', () => {
+    const wait = noWait()
+    openWait(wait, 1_000)
+    noteFrame(wait, 1_040, () => {})
+
+    closeWait(wait)
+
+    expect(wait).toEqual({ from: 0, last: 0, timer: null })
+  })
+})
+
 describe('noteFrame', () => {
   test('ignores a frame while no wait is open', () => {
     const wait = noWait()
@@ -102,7 +141,7 @@ describe('noteFrame', () => {
     noteFrame(wait, performance.now() + 40, (ms) => reported.push(ms))
     noteFrame(wait, performance.now() + 90, (ms) => reported.push(ms))
 
-    await new Promise((resolve) => setTimeout(resolve, QUIET_MS * 2))
+    await until(() => reported.length > 0, QUIET_MS * 4)
 
     expect(reported).toHaveLength(1)
     expect(reported[0]).toBeGreaterThan(80)

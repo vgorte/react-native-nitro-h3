@@ -15,7 +15,15 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { type NativeSyntheticEvent, StyleSheet, View } from 'react-native'
 import { cellToString, getHexagonEdgeLengthAvgM, latLngToCell } from 'react-native-nitro-h3'
-import { ATLAS_CELL_CAP, coverage, noteFrame, noWait, openWait, type Wait } from '../engine/atlas'
+import {
+  ATLAS_CELL_CAP,
+  closeWait,
+  coverage,
+  noteFrame,
+  noWait,
+  openWait,
+  type Wait,
+} from '../engine/atlas'
 import { boundariesOf, diskAround, NEIGHBOURHOOD_CALLS, timed } from '../engine/cells'
 import { cellsToFeatureCollection } from '../engine/geojson'
 import { type Highlight, neighbourhoodOf } from '../engine/inspect'
@@ -259,13 +267,14 @@ export function Atlas({ active, inspected, onInspect }: ActProps) {
     noteFrame(pickWait.current, now, setHighlightMs)
   }, [])
 
-  // an act that goes away leaves no timer behind
+  // an act that goes away leaves no timer behind, and no open wait for its return to report
   useEffect(() => {
     const waits = [mapWait.current, pickWait.current]
+    if (!active) for (const wait of waits) closeWait(wait)
     return () => {
-      for (const wait of waits) if (wait.timer !== null) clearTimeout(wait.timer)
+      for (const wait of waits) closeWait(wait)
     }
-  }, [])
+  }, [active])
 
   const press = useCallback(
     (event: NativeSyntheticEvent<PressEvent | PressEventWithFeatures>): void => {

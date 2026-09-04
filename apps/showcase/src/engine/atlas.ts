@@ -70,12 +70,18 @@ export function noWait(): Wait {
   return { from: 0, last: 0, timer: null }
 }
 
-/** Opens a wait, dropping whatever an unfinished one had collected. */
-export function openWait(wait: Wait, at: number): void {
+/** Closes a wait and drops what it had collected, so a later frame reports nothing. */
+export function closeWait(wait: Wait): void {
   if (wait.timer !== null) clearTimeout(wait.timer)
   wait.timer = null
-  wait.from = at
+  wait.from = 0
   wait.last = 0
+}
+
+/** Opens a wait, dropping whatever an unfinished one had collected. */
+export function openWait(wait: Wait, at: number): void {
+  closeWait(wait)
+  wait.from = at
 }
 
 /** Notes a rendered frame and reports the wait once the map has been quiet for a moment. */

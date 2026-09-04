@@ -83,7 +83,7 @@ const PRINT_WIDTH = 268
 // clears the blocked readout, which stands on the same line at the other edge
 const CONTROL_BOTTOM = 118
 
-// each note inside the print width, because the panel already carries eleven rows and a control
+// the panel already carries eleven rows, so four notes fit a line each and only the last wraps
 const NOTES = [
   'the points are synthetic: twelve hotspots over Berlin',
   'past 100,000 points the run works in blocks',

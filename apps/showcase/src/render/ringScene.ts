@@ -21,7 +21,8 @@ export interface RingLayer {
    * Answers the grid over the ring, drawn by the act so it can carry the camera's own line width.
    *
    * The path is built on the first frame that asks for it and kept afterwards, because most rings
-   * are drawn at a scale where a line every cell would cover the colour it sits over.
+   * are drawn at a scale where a line every cell would cover the colour it sits over. The ring's
+   * projected points are held for that first build, which is the deliberate cost of waiting.
    */
   outlineOf(): SkPath | null
   /** What `gridRing` took. */

@@ -182,6 +182,8 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
   const due = useRef(0)
   // counts the glides, so the callback of one that was interrupted knows it is no longer the last
   const glides = useRef(0)
+  // what the standing scene was built from, which a second effect run over the same pair skips
+  const drawn = useRef<{ trail: TrailStep[]; anchor: CameraAnchor } | null>(null)
 
   // a settle can re-anchor the camera in the same turn, so it only clears the debt and leaves the
   // build to the effect below, which stands in the frame the act holds by then
@@ -407,6 +409,7 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
   // a rebuild during a pan would drop a frame under the finger, so it waits for the settle instead
   useEffect(() => {
     if (trail.length === 0) {
+      drawn.current = null
       setScene(null)
       return
     }
@@ -414,6 +417,9 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
       if (!pending) setPending(true)
       return
     }
+    // a settle that clears the debt after the trail was already drawn owes no second build
+    if (drawn.current?.trail === trail && drawn.current.anchor === anchor) return
+    drawn.current = { trail, anchor }
     setScene(buildTrailScene(trail, anchor))
   }, [trail, anchor, interacting, pending])
 

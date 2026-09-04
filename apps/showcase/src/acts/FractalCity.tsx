@@ -256,7 +256,10 @@ export function FractalCity({ active, inspected, onInspect }: ActProps) {
   useEffect(() => {
     if (frame.current === anchor) return
     frame.current = anchor
-    if (fading.current !== null) clearTimeout(fading.current)
+    if (fading.current !== null) {
+      clearTimeout(fading.current)
+      fading.current = null
+    }
     setGhost(null)
     merge()
   }, [anchor, merge])
