@@ -20,6 +20,6 @@
       },
       "predictiveBackGestureEnabled": false
     },
-    "plugins": ["expo-dev-client"]
+    "plugins": ["expo-dev-client", "@maplibre/maplibre-react-native"]
   }
 }

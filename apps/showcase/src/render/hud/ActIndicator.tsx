@@ -26,7 +26,7 @@ const TOP_INSET = Platform.select({ ios: 62, default: (StatusBar.currentHeight ?
 /**
  * Lists the acts along the top and moves to the one that is tapped.
  *
- * The six names are wider than a small phone, so the row scrolls and brings the current name into
+ * The names are wider than a small phone, so the row scrolls and brings the current name into
  * view whenever the page changes.
  */
 export function ActIndicator({ acts, current, onSelect }: ActIndicatorProps) {

@@ -4,11 +4,11 @@ import { useCallback, useRef, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import PagerView from 'react-native-pager-view'
+import { Atlas } from './acts/Atlas'
 import { Engine } from './acts/Engine'
 import { FractalCity } from './acts/FractalCity'
 import { Heatmap } from './acts/Heatmap'
 import { MagneticGrid } from './acts/MagneticGrid'
-import { Planet } from './acts/Planet'
 import { Trail } from './acts/Trail'
 import type { ActProps } from './acts/types'
 import { resetWorstGap } from './render/BlockedReadout'
@@ -18,7 +18,7 @@ import { colours } from './theme/tokens'
 
 /** Names the acts in the order they are paged through. */
 export const ACTS = [
-  'Planet',
+  'Atlas',
   'Engine',
   'Fractal city',
   'Magnetic grid',
@@ -27,7 +27,7 @@ export const ACTS = [
 ] as const
 
 const PAGES: ((props: ActProps) => React.JSX.Element)[] = [
-  Planet,
+  Atlas,
   Engine,
   FractalCity,
   MagneticGrid,

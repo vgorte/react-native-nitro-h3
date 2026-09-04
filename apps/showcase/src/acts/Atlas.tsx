@@ -1,0 +1,522 @@
+import {
+  Camera,
+  type FillLayerSpecification,
+  type FilterSpecification,
+  GeoJSONSource,
+  type InitialViewState,
+  Layer,
+  type LineLayerSpecification,
+  Map as MapLibreMap,
+  type MapRef,
+  type PressEvent,
+  type PressEventWithFeatures,
+  type StyleSpecification,
+  type ViewState,
+  type ViewStateChangeEvent,
+} from '@maplibre/maplibre-react-native'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { type NativeSyntheticEvent, StyleSheet, View } from 'react-native'
+import {
+  cellToCenterChild,
+  cellToParent,
+  cellToString,
+  getHexagonEdgeLengthAvgM,
+  gridDiskDistances,
+  latLngToCell,
+} from 'react-native-nitro-h3'
+import { boundariesOf, diskAround, timed } from '../engine/cells'
+import { cellsToFeatureCollection, featureIdOf } from '../engine/geojson'
+import { bucketForDistance, PATCH_RINGS } from '../engine/mesh'
+import { DEG_TO_RAD, EARTH_RADIUS_M, resolutionForZoom } from '../engine/projection'
+import { formatCount, formatMs } from '../engine/stats'
+import { plainAttribution } from '../engine/tiles/source'
+import { BlockedReadout } from '../render/BlockedReadout'
+import { Attribution } from '../render/hud/Attribution'
+import { FinePrint } from '../render/hud/FinePrint'
+import { Metric } from '../render/hud/Metric'
+import { Panel } from '../render/hud/Panel'
+import { Row } from '../render/hud/Row'
+import { CELL_FILL_OPACITY, colours, rampColours } from '../theme/tokens'
+import { lastPlanetPosition, rememberPlanetPosition } from './planetPosition'
+import type { ActProps } from './types'
+
+/** Caps the disk this act asks for, the interactive ceiling every act shares. */
+export const ATLAS_CELL_CAP = 20_000
+
+/** Configures {@linkcode Atlas}. */
+export interface AtlasProps extends ActProps {
+  /** Receives the cell a tap landed on, which the Inspector opens on. */
+  onCellPress?: (cell: bigint) => void
+}
+
+const STYLE_URL = 'https://tiles.openfreemap.org/styles/dark'
+const DEFAULT_ATTRIBUTION = 'OpenFreeMap © OpenMapTiles, data from OpenStreetMap'
+
+const BERLIN = { lat: 52.52, lng: 13.405 }
+const START_ZOOM = 11
+const MIN_START_ZOOM = 4
+const MAX_START_ZOOM = 16
+
+// MapLibre counts zoom against a 512 point tile, the projection helpers against a 256 point one
+const ZOOM_OFFSET = 1
+const CELL_SPACING = Math.sqrt(3)
+// a disk of k rings is a hexagon of cells, and only its apothem is covered in every direction
+const DISK_APOTHEM = Math.sqrt(3) / 2
+const MAX_K = Math.floor((Math.sqrt((4 * ATLAS_CELL_CAP - 1) / 3) - 1) / 2)
+
+// resolutions between a cell and the patch it is coloured in, so a patch holds 343 cells
+const PATCH_DEPTH = 3
+// one ramp step per ring of a patch, plus the step every cell outside one takes
+const PATCH_BUCKETS = PATCH_RINGS + 1
+
+const CELL_LINE_WIDTH = 0.5
+const PICK_LINE_WIDTH = 1.5
+const PANEL_TOP = 104
+const PRINT_WIDTH = 268
+
+const EMPTY_COLLECTION = '{"type":"FeatureCollection","features":[]}'
+
+const NOTES = [
+  'the classic path: cells become a GeoJSON string the renderer parses; the Skia acts skip this step',
+  'the applied rows run to the last frame the map drew for it, basemap tiles it fetched included',
+  'a tap moves one layer filter, so the highlight never rebuilds the source',
+]
+
+// frames of nothing after which the map counts as done with what it was handed
+const QUIET_MS = 200
+
+type FillPaint = NonNullable<FillLayerSpecification['paint']>
+type LinePaint = NonNullable<LineLayerSpecification['paint']>
+
+/**
+ * Builds the fill colour: one ramp stop per ring bucket, matched on the property the cells carry.
+ *
+ * The style spec types an expression as a union of tuples, which an array built in a loop cannot
+ * be inferred into, so the built expression is asserted here and nowhere else.
+ */
+function rampExpression(stops: readonly string[]): FillPaint['fill-color'] {
+  const match: (string | number | string[])[] = ['match', ['get', 'bucket']]
+  for (const [bucket, colour] of stops.entries()) match.push(bucket, colour)
+  match.push(stops[stops.length - 1])
+  return match as FillPaint['fill-color']
+}
+
+const CELL_FILL: FillPaint = {
+  'fill-color': rampExpression(rampColours(PATCH_BUCKETS)),
+  'fill-opacity': CELL_FILL_OPACITY,
+}
+
+/** Answers the filter that leaves the highlight on the tapped cell, and on nothing before a tap. */
+function pickFilter(id: string): FilterSpecification {
+  return ['==', ['get', 'id'], id]
+}
+
+const CELL_LINE: LinePaint = {
+  'line-color': colours.hairline,
+  'line-width': CELL_LINE_WIDTH,
+}
+
+const PICK_LINE: LinePaint = {
+  'line-color': colours.text,
+  'line-width': PICK_LINE_WIDTH,
+}
+
+/** Holds the basemap the act draws on and the line its licence requires. */
+interface Basemap {
+  /** The recoloured style, or the plain URL where the style could not be read. */
+  style: string | StyleSpecification
+  attribution: string
+}
+
+/** Holds one settle's cells together with what every step of the classic path cost. */
+interface Scene {
+  data: string
+  cells: number
+  res: number
+  diskMs: number
+  patchMs: number
+  ringsMs: number
+  boundariesMs: number
+  jsonMs: number
+  bytes: number
+}
+
+/** Holds the colour of every cell and what the two calls behind it cost. */
+interface PatchBuckets {
+  buckets: Uint8Array
+  patchMs: number
+  ringsMs: number
+}
+
+/**
+ * Holds one wait on the map: when it was handed something and how long it has been drawing since.
+ *
+ * The map renders on its own thread and a frame already in flight lands in the same queue, so a
+ * wait cannot end on the first frame it sees. It ends where the frames stop instead, which covers
+ * the parse and the re-tile the renderer does off the main thread.
+ */
+interface Wait {
+  from: number
+  last: number
+  timer: ReturnType<typeof setTimeout> | null
+}
+
+/** Opens a wait, dropping whatever an unfinished one had collected. */
+function openWait(wait: Wait, at: number): void {
+  if (wait.timer !== null) clearTimeout(wait.timer)
+  wait.timer = null
+  wait.from = at
+  wait.last = 0
+}
+
+/** Notes a rendered frame and reports the wait once the map has been quiet for a moment. */
+function noteFrame(wait: Wait, at: number, report: (ms: number) => void): void {
+  if (wait.from === 0) return
+  wait.last = at - wait.from
+  if (wait.timer !== null) clearTimeout(wait.timer)
+  wait.timer = setTimeout(() => {
+    wait.timer = null
+    wait.from = 0
+    report(wait.last)
+  }, QUIET_MS)
+}
+
+/** Holds the cell a tap landed on: what the filter matches and what the HUD shows. */
+interface Picked {
+  id: string
+  index: string
+}
+
+/** Pulls the style's ground and water toward the theme, which is all the spec lets us restate. */
+function recolour(style: StyleSpecification): StyleSpecification {
+  const layers = style.layers.map((layer) => {
+    if (layer.type === 'background') {
+      return { ...layer, paint: { ...layer.paint, 'background-color': colours.ground } }
+    }
+    if (layer.type === 'fill' && layer.id === 'water') {
+      return { ...layer, paint: { ...layer.paint, 'fill-color': colours.vignette } }
+    }
+    if (layer.type === 'line' && layer.id === 'waterway') {
+      return { ...layer, paint: { ...layer.paint, 'line-color': colours.vignette } }
+    }
+    return layer
+  })
+  return { ...style, layers }
+}
+
+/** Reads the licence line off the style's sources, following a source's TileJSON where it has one. */
+async function attributionOf(style: StyleSpecification): Promise<string> {
+  const sources = Object.values(style.sources)
+  for (const source of sources) {
+    if ('attribution' in source && typeof source.attribution === 'string') {
+      return plainAttribution(source.attribution)
+    }
+  }
+  for (const source of sources) {
+    if (!('url' in source) || typeof source.url !== 'string') continue
+    const json = (await (await fetch(source.url)).json()) as { attribution?: string }
+    if (typeof json.attribution === 'string') return plainAttribution(json.attribution)
+  }
+  return DEFAULT_ATTRIBUTION
+}
+
+/** Loads the basemap once: the style JSON in the theme's colours and the line under the map. */
+async function loadBasemap(): Promise<Basemap> {
+  const style = recolour((await (await fetch(STYLE_URL)).json()) as StyleSpecification)
+  return { style, attribution: await attributionOf(style) }
+}
+
+/** Answers the camera the act opens on, the position the shared store holds or Berlin without one. */
+function openingView(): InitialViewState {
+  const last = lastPlanetPosition()
+  const zoom = last === null ? 0 : last.zoom - ZOOM_OFFSET
+  // a global position names no place, so the act opens on a city rather than on an ocean
+  if (last === null || zoom < MIN_START_ZOOM) {
+    return { center: [BERLIN.lng, BERLIN.lat], zoom: START_ZOOM }
+  }
+  return { center: [last.centre.lng, last.centre.lat], zoom: Math.min(MAX_START_ZOOM, zoom) }
+}
+
+/**
+ * Answers the ramp bucket of every cell, its ring distance to the centre of the patch it lies in.
+ *
+ * A patch is the {@linkcode PATCH_DEPTH} generations up of a cell, so the pattern is anchored to
+ * the grid rather than to the view: panning slides the bullseyes, it does not move them.
+ *
+ * @param cells The cells the collection is built from.
+ * @param res The resolution they were asked for.
+ */
+function patchBuckets(cells: BigUint64Array, res: number): PatchBuckets {
+  const patches = timed('cellToParent', () => {
+    const ancestors = new BigUint64Array(cells.length)
+    // a resolution under the patch depth has no ancestor to climb to, so the patch is the cell
+    const patchRes = Math.max(0, res - PATCH_DEPTH)
+    for (let cell = 0; cell < cells.length; cell++) {
+      ancestors[cell] = cellToParent(cells[cell], patchRes)
+    }
+    return ancestors
+  })
+
+  const index = new Map<bigint, number>()
+  for (let cell = 0; cell < cells.length; cell++) index.set(cells[cell], cell)
+  const buckets = new Uint8Array(cells.length)
+  const rings = timed('gridDiskDistances', () => {
+    const seen = new Set<bigint>()
+    for (const ancestor of patches.value) {
+      if (seen.has(ancestor)) continue
+      seen.add(ancestor)
+      const patch = gridDiskDistances(cellToCenterChild(ancestor, res), PATCH_RINGS)
+      for (let ring = 0; ring < patch.length; ring++) {
+        const bucket = bucketForDistance(ring, PATCH_BUCKETS)
+        for (const member of patch[ring]) {
+          const found = index.get(member)
+          if (found !== undefined) buckets[found] = bucket
+        }
+      }
+    }
+  })
+
+  return { buckets, patchMs: patches.ms, ringsMs: rings.ms }
+}
+
+/** Answers the ring count whose disk reaches every corner of the viewport, under the cap. */
+function coverage(view: ViewState, res: number): number {
+  const [west, south, east, north] = view.bounds
+  const [lng, lat] = view.center
+  // a viewport across the antimeridian answers an east that has wrapped
+  const rightEdge = east < west ? east + 360 : east
+  const centreLng = lng < west ? lng + 360 : lng
+  const halfLat = Math.max(north - lat, lat - south)
+  const halfLng = Math.max(rightEdge - centreLng, centreLng - west)
+  const reach =
+    EARTH_RADIUS_M * DEG_TO_RAD * Math.hypot(halfLat, halfLng * Math.cos(lat * DEG_TO_RAD))
+  const spacing = CELL_SPACING * getHexagonEdgeLengthAvgM(res)
+  return Math.max(1, Math.min(MAX_K, Math.ceil(reach / (spacing * DISK_APOTHEM)) + 1))
+}
+
+/**
+ * Draws the same cells as the Skia acts on a MapLibre basemap, the way a map stack takes them.
+ *
+ * Every rebuild waits for the map to settle, walks the grid around the view centre, turns the
+ * boundaries into one GeoJSON string and hands that to a `GeoJSONSource`. The HUD keeps the H3
+ * calls and the two costs the classic path adds apart, because the second pair is what this act
+ * exists to show. Nothing here animates on its own.
+ */
+export function Atlas({ active, onCellPress }: AtlasProps) {
+  const map = useRef<MapRef>(null)
+  const scene = useRef<Scene | null>(null)
+  const mapWait = useRef<Wait>({ from: 0, last: 0, timer: null })
+  const pickWait = useRef<Wait>({ from: 0, last: 0, timer: null })
+  const pickedId = useRef('')
+
+  const [opening, setOpening] = useState<InitialViewState | null>(null)
+  const [basemap, setBasemap] = useState<Basemap | null>(null)
+  const [built, setBuilt] = useState<Scene | null>(null)
+  const [appliedMs, setAppliedMs] = useState<number | null>(null)
+  const [highlightMs, setHighlightMs] = useState<number | null>(null)
+  const [picked, setPicked] = useState<Picked | null>(null)
+  const [collapsed, setCollapsed] = useState(false)
+
+  // an empty identity matches no feature, so the highlight is off until the first tap
+  const highlight = useMemo(() => pickFilter(picked?.id ?? ''), [picked])
+
+  // the act reaches for the map only once it has been opened, and keeps it afterwards
+  useEffect(() => {
+    if (!active || opening !== null) return
+    setOpening(openingView())
+    loadBasemap()
+      .then(setBasemap)
+      .catch(() => {
+        // a style that will not load leaves the map on the plain URL and the known licence line
+        setBasemap({ style: STYLE_URL, attribution: DEFAULT_ATTRIBUTION })
+      })
+  }, [active, opening])
+
+  const rebuild = useCallback((view: ViewState): void => {
+    const [lng, lat] = view.center
+    // the store keeps the app's own zoom, so a later act reads it the way the projection does
+    rememberPlanetPosition({ centre: { lat, lng }, zoom: view.zoom + ZOOM_OFFSET })
+    const res = resolutionForZoom(view.zoom + ZOOM_OFFSET, lat, getHexagonEdgeLengthAvgM)
+    const disk = diskAround(latLngToCell(lat, lng, res), coverage(view, res))
+    const cells = disk.value
+    if (cells.length > ATLAS_CELL_CAP) return
+
+    const patched = patchBuckets(cells, res)
+    const boundaries = boundariesOf(cells)
+    const json = timed('geojson', () =>
+      cellsToFeatureCollection(boundaries.value, patched.buckets, cells),
+    )
+
+    const next: Scene = {
+      data: json.value,
+      cells: cells.length,
+      res,
+      diskMs: disk.ms,
+      patchMs: patched.patchMs,
+      ringsMs: patched.ringsMs,
+      boundariesMs: boundaries.ms,
+      jsonMs: json.ms,
+      bytes: json.value.length,
+    }
+    // a settle that lands on the same cells hands the map nothing, so it opens no wait
+    const changed = scene.current === null || scene.current.data !== json.value
+    scene.current = next
+    if (changed) openWait(mapWait.current, performance.now())
+    setBuilt(next)
+  }, [])
+
+  const settle = useCallback(
+    (event: NativeSyntheticEvent<ViewStateChangeEvent>): void => {
+      rebuild(event.nativeEvent)
+    },
+    [rebuild],
+  )
+
+  const loaded = useCallback((): void => {
+    if (scene.current !== null) return
+    map.current
+      ?.getViewState()
+      .then(rebuild)
+      .catch(() => {
+        // a view state the map will not answer leaves the first build to the next settle
+      })
+  }, [rebuild])
+
+  const applied = useCallback((): void => {
+    const now = performance.now()
+    noteFrame(mapWait.current, now, setAppliedMs)
+    noteFrame(pickWait.current, now, setHighlightMs)
+  }, [])
+
+  // an act that goes away leaves no timer behind
+  useEffect(() => {
+    const waits = [mapWait.current, pickWait.current]
+    return () => {
+      for (const wait of waits) if (wait.timer !== null) clearTimeout(wait.timer)
+    }
+  }, [])
+
+  const press = useCallback(
+    (event: NativeSyntheticEvent<PressEvent | PressEventWithFeatures>): void => {
+      const at = performance.now()
+      const current = scene.current
+      if (current === null) return
+      const [lng, lat] = event.nativeEvent.lngLat
+      const cell = latLngToCell(lat, lng, current.res)
+      onCellPress?.(cell)
+
+      // a second tap on the same cell moves the filter nowhere, so it opens no wait either
+      const id = featureIdOf(cell)
+      if (id === pickedId.current) return
+      pickedId.current = id
+      openWait(pickWait.current, at)
+      setPicked({ id, index: cellToString(cell) })
+    },
+    [onCellPress],
+  )
+
+  return (
+    <View style={styles.root}>
+      {opening === null || basemap === null ? null : (
+        <MapLibreMap
+          ref={map}
+          style={StyleSheet.absoluteFill}
+          mapStyle={basemap.style}
+          attribution={false}
+          logo={false}
+          compass={false}
+          touchRotate={false}
+          touchPitch={false}
+          onPress={press}
+          onRegionDidChange={settle}
+          onDidFinishLoadingMap={loaded}
+          onDidFinishRenderingFrameFully={applied}
+        >
+          <Camera initialViewState={opening} />
+          <GeoJSONSource id="atlas-cells" data={built?.data ?? EMPTY_COLLECTION}>
+            <Layer id="atlas-cells-fill" type="fill" paint={CELL_FILL} />
+            <Layer id="atlas-cells-line" type="line" paint={CELL_LINE} />
+            <Layer id="atlas-pick-line" type="line" paint={PICK_LINE} filter={highlight} />
+          </GeoJSONSource>
+        </MapLibreMap>
+      )}
+      {!active ? null : (
+        <>
+          {/* box-none leaves the map every touch the panel itself does not take */}
+          <View style={styles.panel} pointerEvents="box-none">
+            <Panel
+              collapsible
+              collapsed={collapsed}
+              onToggle={() => setCollapsed((folded) => !folded)}
+            >
+              <Metric value={formatCount(built?.cells ?? 0)} caption="cells on the map" />
+              <Row label="resolution" value={built === null ? '-' : `${built.res}`} />
+              <Row
+                label="disk"
+                value={built === null ? '-' : formatMs(built.diskMs)}
+                call="gridDisk"
+              />
+              <Row
+                label="patches"
+                value={built === null ? '-' : formatMs(built.patchMs)}
+                call="cellToParent"
+              />
+              <Row
+                label="rings"
+                value={built === null ? '-' : formatMs(built.ringsMs)}
+                call="gridDiskDistances"
+              />
+              <Row
+                label="boundaries"
+                value={built === null ? '-' : formatMs(built.boundariesMs)}
+                call="cellsToBoundaries"
+              />
+              <Row
+                label="geojson string, bytes"
+                value={
+                  built === null ? '-' : `${formatMs(built.jsonMs)} / ${formatCount(built.bytes)}`
+                }
+              />
+              <Row
+                label="map applied"
+                value={appliedMs === null ? '-' : formatMs(appliedMs)}
+                tone="muted"
+              />
+              {picked === null ? null : (
+                <>
+                  <Row
+                    label="highlight applied"
+                    value={highlightMs === null ? '-' : formatMs(highlightMs)}
+                    tone="muted"
+                  />
+                  <Row label="tapped cell" value={picked.index} tone="muted" />
+                </>
+              )}
+              <View style={styles.print}>
+                <FinePrint notes={NOTES} />
+              </View>
+            </Panel>
+          </View>
+          <BlockedReadout />
+          {basemap === null ? null : <Attribution text={basemap.attribution} />}
+        </>
+      )}
+    </View>
+  )
+}
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: colours.ground,
+  },
+  panel: {
+    position: 'absolute',
+    top: PANEL_TOP,
+    right: 16,
+  },
+  print: {
+    width: PRINT_WIDTH,
+    marginTop: 4,
+  },
+})
