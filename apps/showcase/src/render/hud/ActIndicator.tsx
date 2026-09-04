@@ -11,7 +11,7 @@ import {
 } from 'react-native'
 // the plain scroll view loses to the act's pan on Android
 import { ScrollView } from 'react-native-gesture-handler'
-import { colours, type } from '../../theme/tokens'
+import { colours, glass, type } from '../../theme/tokens'
 
 /** Configures {@linkcode ActIndicator}. */
 export interface ActIndicatorProps {
@@ -81,6 +81,12 @@ const styles = StyleSheet.create({
     top: TOP_INSET,
     left: 16,
     right: 16,
+    // the names sit straight on the scene, so they need the ground back over a bright city
+    backgroundColor: glass.scrim,
+    borderRadius: glass.radius,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    overflow: 'hidden',
   },
   row: {
     flexDirection: 'row',

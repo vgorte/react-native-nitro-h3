@@ -19,7 +19,9 @@ function refuseUtf16(): never {
  * reads no string through it, and the stand-in refuses to decode, so nothing can read one silently.
  */
 function loadH3(): typeof h3js {
-  const runtime = globalThis.TextDecoder
+  const runtime: typeof TextDecoder | undefined = globalThis.TextDecoder
+  // a runtime without `TextDecoder` builds no decoder at all, so it needs no stand-in
+  if (runtime === undefined) return require('h3-js')
   globalThis.TextDecoder = class extends runtime {
     constructor(label?: string, options?: TextDecoderOptions) {
       const utf16 = label?.toLowerCase() === 'utf-16le'

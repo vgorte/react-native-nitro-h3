@@ -42,16 +42,20 @@ const BARS_TOP = 3
 // the vignette reaches past the corners, as it does under every other act
 const VIGNETTE_REACH = 0.7
 
-const EMSCRIPTEN_NOTE =
-  'h3-js is Emscripten output shipped as plain JavaScript, so both sides block the JS thread'
+const NOTES = [
+  'h3-js is Emscripten output shipped as plain JavaScript, so both sides block the JS thread',
+  'h3-js loads under Hermes behind a TextDecoder stand-in, removed before timing',
+]
 
-/** Holds the two medians a row's bars are drawn from, live while the workload runs. */
+/** Holds what a row has measured, live while the workload runs. */
 interface Reading {
   own: number
   reference: number
+  /** The h3-js median the whole run is heading for, which is what the bars are scaled against. */
+  projected: number
 }
 
-const NOTHING: Reading = { own: 0, reference: 0 }
+const NOTHING: Reading = { own: 0, reference: 0, projected: 0 }
 
 function formatFactor(factor: number): string {
   return `${factor.toFixed(1)}×`
@@ -128,7 +132,12 @@ export function Engine({ active }: ActProps) {
           if (progress.side === 'package') {
             return { ...current, [workload.id]: { ...reading, own: progress.ms } }
           }
-          return { ...current, [workload.id]: { ...reading, reference: progress.ms } }
+          // the chunks done so far carry the pass, so the bar settles onto its share instead of
+          // shrinking towards it
+          const covered = progress.total > 0 ? progress.done / progress.total : 1
+          const projected = covered > 0 ? progress.ms / covered : 0
+          const measured = { reference: progress.ms, projected }
+          return { ...current, [workload.id]: { ...reading, ...measured } }
         })
       },
       signal.current,
@@ -136,7 +145,11 @@ export function Engine({ active }: ActProps) {
 
     setReadings((current) => ({
       ...current,
-      [workload.id]: { own: result.ownMs, reference: result.referenceMs },
+      [workload.id]: {
+        own: result.ownMs,
+        reference: result.referenceMs,
+        projected: result.referenceMs,
+      },
     }))
     setResults((current) => ({ ...current, [workload.id]: result }))
     setRunning(null)
@@ -177,7 +190,6 @@ export function Engine({ active }: ActProps) {
               top={CONTENT_TOP + blockTops[id] + y + BARS_TOP}
               track={track}
               reading={readings[id] ?? NOTHING}
-              documented={documentedOf(id)}
             />
           ),
         )}
@@ -235,7 +247,7 @@ export function Engine({ active }: ActProps) {
           />
         </View>
         <View style={styles.print}>
-          <FinePrint notes={[EMSCRIPTEN_NOTE]} />
+          <FinePrint notes={NOTES} />
         </View>
       </View>
       <BlockedReadout />
@@ -248,27 +260,21 @@ function finaleLabel(running: boolean, armed: boolean): string {
   return armed ? 'tap again to start' : 'run the finale'
 }
 
-function documentedOf(id: string): number | undefined {
-  return WORKLOADS.find((workload) => workload.id === id)?.documented
-}
-
 interface BarsProps {
   top: number
   track: number
   reading: Reading
-  documented: number | undefined
 }
 
 /**
  * Draws one row's pair of bars, the h3-js median as the whole track and the package's share of it.
  *
- * Until the h3-js side reports, the share is the one the documented factor implies, so the bar
- * starts where the report says it should and moves to what this device measured.
+ * A row that has no h3-js median yet holds its package bar at the minimum, because every width on
+ * screen has to come from something this device measured.
  */
-function Bars({ top, track, reading, documented }: BarsProps) {
+function Bars({ top, track, reading }: BarsProps) {
   const started = reading.own > 0 || reading.reference > 0
-  const implied = documented === undefined || documented <= 0 ? 1 : 1 / documented
-  const share = reading.reference > 0 ? barFraction(reading.own, reading.reference) : implied
+  const share = reading.projected > 0 ? barFraction(reading.own, reading.projected) : 0
   return (
     <>
       <Rect
@@ -455,7 +461,7 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
     alignItems: 'center',
   },
-  print: { marginTop: 14 },
+  print: { marginTop: 10 },
   armed: { borderColor: colours.contrast },
   controlLabel: { ...type.value, lineHeight: 16, color: colours.text },
   armedLabel: { ...type.value, lineHeight: 16, color: colours.contrast },

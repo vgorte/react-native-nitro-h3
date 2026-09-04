@@ -79,6 +79,8 @@ export function BlockedReadout() {
   return (
     <View style={styles.panel} pointerEvents="none">
       <BlurView intensity={BLUR_INTENSITY} tint="dark" style={StyleSheet.absoluteFill} />
+      {/* the blur alone leaves the readout washed out over a bright city */}
+      <View style={styles.scrim} />
       <View style={styles.tint} />
       <Canvas style={StyleSheet.absoluteFill}>
         <Text x={TEXT_INSET} y={24} text={label} font={labelFont} color={colours.muted} />
@@ -107,5 +109,6 @@ const styles = StyleSheet.create({
     borderRadius: glass.radius,
     overflow: 'hidden',
   },
+  scrim: { position: 'absolute', inset: 0, backgroundColor: glass.scrim },
   tint: { position: 'absolute', inset: 0, backgroundColor: glass.fill },
 })
