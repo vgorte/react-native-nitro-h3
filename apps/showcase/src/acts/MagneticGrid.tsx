@@ -50,7 +50,8 @@ const CONTROL_BOTTOM = 118
 // a scale this far from the one the act wrote can only have come from the visitor's own pinch
 const PINCH_TOLERANCE = 0.002
 
-const NO_RINGS: ReadonlySet<number> = new Set()
+// the rings still fading in, each held with the append that added it
+const NO_RINGS: ReadonlyMap<number, number> = new Map()
 
 // one line each, so the panel stops short of the disk the smallest k draws under it
 const NOTES = [
@@ -94,7 +95,7 @@ export function MagneticGrid({ active }: ActProps) {
   const [centre, setCentre] = useState<bigint | null>(null)
   const [k, setK] = useState(MIN_K)
   const [layers, setLayers] = useState<RingLayer[]>([])
-  const [fading, setFading] = useState<ReadonlySet<number>>(NO_RINGS)
+  const [fading, setFading] = useState<ReadonlyMap<number, number>>(NO_RINGS)
   const [append, setAppend] = useState<Append | null>(null)
   const [walk, setWalk] = useState<Walk | null>(null)
   const [grid, setGrid] = useState(false)
@@ -104,6 +105,7 @@ export function MagneticGrid({ active }: ActProps) {
   const built = useRef<RingLayer[]>([])
   const frame = useRef<CameraAnchor | null>(null)
   const fades = useRef<ReturnType<typeof setTimeout>[]>([])
+  const appends = useRef(0)
 
   // the rings stand in the anchor's own metre frame, so a settle has nothing to rebuild
   const settle = useCallback(() => {}, [])
@@ -112,8 +114,10 @@ export function MagneticGrid({ active }: ActProps) {
 
   // the scale the act itself last wrote, and zero until it has framed the disk for the first time
   const framed = useSharedValue(0)
-  // the moment the act's own re-fit lands, before which a moving scale is the act's and not a pinch
-  const refitUntil = useSharedValue(0)
+  // true while a re-fit of the act's own is animating, where a moving scale is not a pinch
+  const refitting = useSharedValue(false)
+  // counts the re-fits, so the callback of one that was interrupted knows it is no longer the last
+  const refits = useSharedValue(0)
   // set once the visitor has pinched, after which the camera is theirs until the act opens again
   const pinched = useSharedValue(false)
 
@@ -126,24 +130,34 @@ export function MagneticGrid({ active }: ActProps) {
 
   const frameAt = useCallback(
     (fit: number, animated: boolean) => {
-      framed.value = fit
       if (!animated) {
+        // the scale goes first, so no reaction over both of them ever runs against the old one
         scale.value = fit
+        framed.value = fit
         return
       }
-      refitUntil.value = Date.now() + REFIT_MS
-      scale.value = withTiming(fit, { duration: REFIT_MS })
+      // and here the flag goes first, so no frame of the animation below is read as a pinch
+      refitting.value = true
+      const generation = refits.value + 1
+      refits.value = generation
+      framed.value = fit
+      scale.value = withTiming(fit, { duration: REFIT_MS }, () => {
+        'worklet'
+        // a re-fit that was interrupted must not clear the flag the one that interrupted it set
+        if (refits.value === generation) refitting.value = false
+      })
     },
-    [framed, refitUntil, scale],
+    [framed, refitting, refits, scale],
   )
 
   // A scale the act did not write itself can only have come from a pinch, and the visitor who made
   // it owns the camera from then on. The reaction waits for the first frame the act writes, so the
-  // camera's own opening scale is never read as one.
+  // camera's own opening scale is never read as one, and it sits out the act's own animation, which
+  // says when it has landed rather than being predicted to.
   useAnimatedReaction(
     () => scale.value,
     (now) => {
-      if (framed.value === 0 || pinched.value || Date.now() < refitUntil.value) return
+      if (framed.value === 0 || pinched.value || refitting.value) return
       if (Math.abs(now - framed.value) > framed.value * PINCH_TOLERANCE) pinched.value = true
     },
   )
@@ -229,13 +243,21 @@ export function MagneticGrid({ active }: ActProps) {
     }
     setAppend({ ringMs, boundariesMs, buildMs: performance.now() - started })
 
-    // one timer an append rather than one a ring, so a step that adds many ends in one render
-    setFading((current) => new Set([...current, ...added]))
+    // One timer an append rather than one a ring, so a step that adds many ends in one render. The
+    // append a ring belongs to is held with it, because a ring dropped and re-added inside the fade
+    // window is a new fade, and the timer of the append that first added it must leave it alone.
+    appends.current += 1
+    const generation = appends.current
+    setFading((current) => {
+      const next = new Map(current)
+      for (const ring of added) next.set(ring, generation)
+      return next
+    })
     const timer = setTimeout(() => {
       fades.current = fades.current.filter((held) => held !== timer)
       setFading((current) => {
-        const left = new Set(current)
-        for (const ring of added) left.delete(ring)
+        const left = new Map(current)
+        for (const ring of added) if (left.get(ring) === generation) left.delete(ring)
         return left
       })
     }, RING_FADE_MS)
