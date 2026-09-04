@@ -47,6 +47,15 @@ export interface GlobeView {
   radius: number
 }
 
+/** Holds the city-mode camera: the anchor of the metre space, its pixel scale and its centre. */
+export interface CityCamera {
+  centre: LatLng
+  /** Pixels per Web Mercator metre. */
+  scale: number
+  cx: number
+  cy: number
+}
+
 /** Holds a projected point: the screen position and the depth toward the viewer. */
 export interface ProjectedPoint {
   x: number
@@ -66,6 +75,64 @@ export function mercatorX(lng: number): number {
 export function mercatorY(lat: number): number {
   'worklet'
   return EARTH_RADIUS_M * Math.log(Math.tan(Math.PI / 4 + (lat * DEG_TO_RAD) / 2))
+}
+
+/** Answers the coordinate at a Web Mercator position in metres. */
+export function mercatorToLatLng(x: number, y: number): LatLng {
+  'worklet'
+  return {
+    lat: (2 * Math.atan(Math.exp(y / EARTH_RADIUS_M)) - Math.PI / 2) * RAD_TO_DEG,
+    lng: (x / EARTH_RADIUS_M) * RAD_TO_DEG,
+  }
+}
+
+/** Answers the ground metres one pixel spans at a zoom, on a 256 px tile grid. */
+export function metresPerPixel(zoom: number, lat: number): number {
+  'worklet'
+  return (2 * Math.PI * EARTH_RADIUS_M * Math.cos(lat * DEG_TO_RAD)) / (256 * 2 ** zoom)
+}
+
+/** Answers the zoom at which one pixel spans `mpp` ground metres. */
+export function zoomForMetresPerPixel(mpp: number, lat: number): number {
+  'worklet'
+  return Math.log2((2 * Math.PI * EARTH_RADIUS_M * Math.cos(lat * DEG_TO_RAD)) / (256 * mpp))
+}
+
+// the target width of a cell on screen, the size at which a hexagon reads as a hexagon
+const TARGET_CELL_PX = 30
+
+/**
+ * Answers the resolution whose average cell comes closest to `targetPx` across at a zoom.
+ *
+ * The edge length is passed in rather than imported so the picker stays testable without the
+ * native module; the acts hand it `getHexagonEdgeLengthAvgM`.
+ */
+export function resolutionForZoom(
+  zoom: number,
+  lat: number,
+  edgeLengthM: (res: number) => number,
+  targetPx: number = TARGET_CELL_PX,
+): number {
+  const mpp = metresPerPixel(zoom, lat)
+  let best = 0
+  let bestError = Number.POSITIVE_INFINITY
+  for (let res = 0; res <= 15; res++) {
+    const error = Math.abs(Math.log((2 * edgeLengthM(res)) / mpp / targetPx))
+    if (error < bestError) {
+      bestError = error
+      best = res
+    }
+  }
+  return best
+}
+
+// Float32 holds 24 mantissa bits, so a metre offset of magnitude M carries about M * 6e-8 of
+// error; 800,000 pixels of offset keeps that under a twentieth of a pixel at any zoom.
+const REANCHOR_PIXELS = 800_000
+
+/** Answers how far the view centre may drift from the mesh anchor before a rebuild re-anchors. */
+export function reanchorLimitM(zoom: number, lat: number): number {
+  return REANCHOR_PIXELS * metresPerPixel(zoom, lat)
 }
 
 /**
@@ -172,4 +239,69 @@ export function unproject(x: number, y: number, view: GlobeView): LatLng | undef
   if (lng > 180) lng -= 360 * Math.ceil((lng - 180) / 360)
   if (lng <= -180) lng += 360 * Math.ceil((-180 - lng) / 360)
   return { lat, lng }
+}
+
+/** Projects a cell set onto the orthographic disk, in screen pixels, keeping the input layout. */
+export function projectCellsOrthographic(
+  boundaries: CellBoundaries,
+  view: GlobeView,
+): Float32Array {
+  const { stride, vertices, vertexCounts } = boundaries
+  const points = new Float32Array(vertices.length).fill(Number.NaN)
+  for (let cell = 0; cell < vertexCounts.length; cell++) {
+    const base = cell * stride
+    for (let vertex = 0; vertex < vertexCounts[cell]; vertex++) {
+      const slot = base + vertex * 2
+      const rotated = rotateToView(latLngToXyz(vertices[slot], vertices[slot + 1]), view)
+      points[slot] = view.cx + view.radius * rotated.x
+      points[slot + 1] = view.cy - view.radius * rotated.y
+    }
+  }
+  return points
+}
+
+/** Projects a cell set through Web Mercator, in screen pixels, keeping the input layout. */
+export function projectCellsCity(boundaries: CellBoundaries, camera: CityCamera): Float32Array {
+  const { stride, vertices, vertexCounts } = boundaries
+  const points = new Float32Array(vertices.length).fill(Number.NaN)
+  const originX = mercatorX(camera.centre.lng)
+  const originY = mercatorY(camera.centre.lat)
+  for (let cell = 0; cell < vertexCounts.length; cell++) {
+    const base = cell * stride
+    for (let vertex = 0; vertex < vertexCounts[cell]; vertex++) {
+      const slot = base + vertex * 2
+      points[slot] = camera.cx + (mercatorX(vertices[slot + 1]) - originX) * camera.scale
+      points[slot + 1] = camera.cy - (mercatorY(vertices[slot]) - originY) * camera.scale
+    }
+  }
+  return points
+}
+
+/** Answers the city camera that matches the globe's scale at the view centre. */
+export function handoffCamera(view: GlobeView, centre: LatLng): CityCamera {
+  return {
+    centre,
+    scale: (view.radius * Math.cos(centre.lat * DEG_TO_RAD)) / EARTH_RADIUS_M,
+    cx: view.cx,
+    cy: view.cy,
+  }
+}
+
+/** Eases the handoff so it starts and ends at rest. */
+export function handoffEase(t: number): number {
+  'worklet'
+  return t * t * (3 - 2 * t)
+}
+
+/** Writes the vertex-by-vertex blend of two projections of the same cell set. */
+export function lerpPositions(
+  from: Float32Array,
+  to: Float32Array,
+  t: number,
+  out: Float32Array,
+): void {
+  'worklet'
+  for (let slot = 0; slot < from.length; slot++) {
+    out[slot] = from[slot] + (to[slot] - from[slot]) * t
+  }
 }
