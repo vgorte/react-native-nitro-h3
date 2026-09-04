@@ -1,4 +1,5 @@
 import { median } from '../stats'
+import { yieldToLoop } from '../yield'
 import type { Workload } from './workloads'
 
 // both constants sit here, because `workloads.ts` needs the native module to load
@@ -28,8 +29,6 @@ export interface Result {
   documented: number | undefined
   aborted: boolean
 }
-
-const yieldToLoop = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0))
 
 const now = performance.now.bind(performance)
 

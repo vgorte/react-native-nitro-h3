@@ -1,22 +1,36 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
 import { withTiming } from 'react-native-reanimated'
+import type { Aggregate } from '../engine/aggregate'
 import { aggregateCells } from '../engine/aggregate'
 import { cellsFromPoints } from '../engine/cells'
 import {
   BERLIN,
   blocksOf,
   boxBounds,
-  bucketsOfCounts,
   centreOf,
   type PointCache,
   pointStream,
   servesRun,
 } from '../engine/points'
+import {
+  type Change,
+  isPushed,
+  nextSettings,
+  OPEN_SETTINGS,
+  POINT_CHOICES,
+  PUSH_CELLS,
+  PUSH_POINTS,
+  PUSH_RES,
+  RES_CHOICES,
+  type Settings,
+} from '../engine/settings'
 import { formatCount, formatMs } from '../engine/stats'
+import { yieldToLoop } from '../engine/yield'
 import { resetWorstGap } from '../render/BlockedReadout'
 import { CellPictures } from '../render/CellPictures'
 import { EngineCanvas } from '../render/EngineCanvas'
+import { bucketsOfCounts } from '../render/heatColours'
 import { buildHeatScene, type HeatScene } from '../render/heatScene'
 import { Choice, type ChoiceOption } from '../render/hud/Choice'
 import { FinePrint } from '../render/hud/FinePrint'
@@ -38,41 +52,25 @@ export {
   OUTLINE_MAX_CELLS,
 } from '../engine/points'
 
-/** The seed the act opens on, which the reseed control bumps. */
-const OPEN_SEED = 1
+const POINT_OPTIONS: readonly ChoiceOption<number>[] = POINT_CHOICES.map((value) => ({
+  value,
+  label: formatCount(value),
+}))
 
-/** Points and resolution the act opens on, one unchunked block of a city's worth of cells. */
-const OPEN_POINTS = 100_000
-const OPEN_RES = 9
-
-/**
- * Points and resolution of the push-it step, the largest set the act builds.
- *
- * Resolution 11 is where a million points of this mixture land in about 123,000 distinct cells,
- * which is the size spike 1 measured the inset variant at 60 fps for.
- */
-const PUSH_POINTS = 1_000_000
-const PUSH_RES = 11
-
-/** Cells the push-it step reaches, measured over the seed the act opens on. */
-const PUSH_CELLS = 123_000
-
-const POINT_OPTIONS: readonly ChoiceOption<number>[] = [
-  { value: 100_000, label: '100,000' },
-  { value: 1_000_000, label: '1,000,000' },
-]
-
-const RES_OPTIONS: readonly ChoiceOption<number>[] = [
-  { value: 7, label: '7' },
-  { value: 8, label: '8' },
-  { value: 9, label: '9' },
-]
+const RES_OPTIONS: readonly ChoiceOption<number>[] = RES_CHOICES.map((value) => ({
+  value,
+  label: `${value}`,
+}))
 
 // the push-it step stands where the three plain resolutions do, so its own step is lit like them
 const PUSH_OPTIONS: readonly ChoiceOption<number>[] = [
   ...RES_OPTIONS,
   { value: PUSH_RES, label: `${PUSH_RES}` },
 ]
+
+const PUSH_NOTE =
+  `push it runs ${formatCount(PUSH_POINTS)} points at resolution ${PUSH_RES}, ` +
+  `about ${formatCount(PUSH_CELLS)} cells`
 
 /** Milliseconds the camera takes to re-frame the box when a run starts. */
 const FIT_MS = 200
@@ -86,14 +84,12 @@ const PRINT_WIDTH = 268
 const CONTROL_BOTTOM = 118
 
 const NOTES = [
-  'the points are synthetic, drawn from twelve gaussian hotspots over the Berlin box',
-  'above 100,000 points the run generates and locates in blocks and yields between them',
-  'the sort and the count then run unchunked on purpose, so the readout shows what they cost',
-  'a run keeps its points, so a change of resolution locates the ones the last run drew',
-  'above 20,000 cells the grid comes off and every cell is drawn inset instead',
+  'the points are synthetic, twelve gaussian hotspots over the Berlin box',
+  'past 100,000 points the run works in blocks, and keeps them for the next resolution',
+  'the sort and the count then run unchunked on purpose, so the readout shows their cost',
+  'above 20,000 cells the grid comes off and every cell is drawn inset',
+  'on the test emulator the first pans over the push-it scene ran near 40 fps, later ones at 60',
 ]
-
-const yieldToLoop = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0))
 
 /** Holds what one run has measured, a field per stage, filled in as the stages finish. */
 interface Run {
@@ -144,8 +140,8 @@ function gridOf(scene: HeatScene | null): string {
  * Drops a million synthetic points on Berlin and colours the cells they land in.
  *
  * One tap on a control starts a run, and a run is the whole pipeline in stages the HUD names one by
- * one: the points are drawn, `latLngsToCells` locates them, one sort plus a run-length count answers
- * the distinct cells and how busy each is, the counts become colours on a logarithmic ramp, and
+ * one: the points are drawn, `latLngsToCells` locates them, one sort plus a run-length count
+ * answers the distinct cells and how busy each is, the counts become colours on a log ramp, and
  * `cellsToBoundaries` and the mesh turn them into what is drawn. Past {@linkcode BLOCK} points the
  * first two stages run block by block with a turn of the loop between them, so the act keeps
  * answering while a million points are placed; the sort that follows is one unchunked pass, and the
@@ -153,9 +149,7 @@ function gridOf(scene: HeatScene | null): string {
  */
 export function Heatmap({ active }: ActProps) {
   const { width, height } = useWindowDimensions()
-  const [seed, setSeed] = useState(OPEN_SEED)
-  const [points, setPoints] = useState(OPEN_POINTS)
-  const [res, setRes] = useState(OPEN_RES)
+  const [settings, setSettings] = useState<Settings>(OPEN_SETTINGS)
   const [run, setRun] = useState<Run | null>(null)
   const [scene, setScene] = useState<HeatScene | null>(null)
   const [collapsed, setCollapsed] = useState(false)
@@ -195,11 +189,7 @@ export function Heatmap({ active }: ActProps) {
 
   /** Runs one whole pipeline, reporting the stages as they finish and stopping where cancelled. */
   const execute = useCallback(
-    async (
-      wanted: { seed: number; points: number; res: number },
-      frame: CameraAnchor,
-      signal: Signal,
-    ): Promise<void> => {
+    async (wanted: Settings, frame: CameraAnchor, signal: Signal): Promise<void> => {
       // the gaps that follow belong to this run, and the sort is the one it is measured by
       resetWorstGap()
       setScene(null)
@@ -209,7 +199,7 @@ export function Heatmap({ active }: ActProps) {
       const held = servesRun(drawn.current, wanted.seed, wanted.points) ? drawn.current : null
       const draw = pointStream(wanted.seed, BERLIN)
       const blocks = blocksOf(wanted.points)
-      const cells = new BigUint64Array(wanted.points)
+      let cells: BigUint64Array | null = new BigUint64Array(wanted.points)
       const kept: Float64Array[] = []
       let generateMs = held === null ? 0 : held.ms
       let cellsMs = 0
@@ -241,14 +231,26 @@ export function Heatmap({ active }: ActProps) {
       }
 
       const sorted = performance.now()
-      const aggregate = aggregateCells(cells)
+      let aggregate: Aggregate | null = aggregateCells(cells)
       const aggregateMs = performance.now() - sorted
+      const distinct = aggregate.cells.length
+      const busiest = aggregate.max
+      // the sorted buffer is dead once the runs are counted, eight megabytes at a million points
+      cells = null
 
       const coloured = performance.now()
-      const buckets = bucketsOfCounts(aggregate.counts, aggregate.max, BUCKETS)
+      let buckets: Uint8Array | null = bucketsOfCounts(aggregate.counts, busiest, BUCKETS)
       const coloursMs = performance.now() - coloured
 
       const heat = buildHeatScene(aggregate.cells, buckets, frame)
+
+      // Everything the pipeline allocated is dead once the mesh is recorded: the distinct cells,
+      // their counts and their colours here, the boundaries and the projection inside the build.
+      // Only the drawn points are kept, for the next run at another resolution. Dropping the rest
+      // before the scene is handed to React leaves the collector its work between the run and the
+      // first frame, rather than in the middle of the first pan.
+      aggregate = null
+      buckets = null
 
       setScene(heat)
       setRun({
@@ -256,12 +258,12 @@ export function Heatmap({ active }: ActProps) {
         generateMs,
         cached: held !== null,
         cellsMs,
-        distinct: aggregate.cells.length,
+        distinct,
         aggregateMs,
         coloursMs,
         boundariesMs: heat.boundariesMs,
         meshMs: heat.meshMs,
-        busiest: aggregate.max,
+        busiest,
         done: true,
       })
       signal.finished = true
@@ -269,6 +271,7 @@ export function Heatmap({ active }: ActProps) {
     [],
   )
 
+  const { seed, points, res } = settings
   const key = `${seed}/${points}/${res}/${anchor.lat},${anchor.lng}`
 
   useEffect(() => {
@@ -284,11 +287,9 @@ export function Heatmap({ active }: ActProps) {
     }
   }, [active, key, seed, points, res, anchor, execute, frameBox])
 
-  const pushed = points === PUSH_POINTS && res === PUSH_RES
-  const pushIt = useCallback(() => {
-    setPoints(PUSH_POINTS)
-    setRes(PUSH_RES)
-  }, [])
+  // every control answers through the one rule, so no control can leave a state the row cannot show
+  const change = useCallback((made: Change) => setSettings((held) => nextSettings(held, made)), [])
+  const pushed = isPushed(settings)
 
   /** Reads a stage off the run, which only a finished run has measured. */
   const stage = (of: (run: Run) => string): string => (run?.done === true ? of(run) : '-')
@@ -337,28 +338,31 @@ export function Heatmap({ active }: ActProps) {
       </View>
       <View style={styles.control}>
         <Panel align="right">
-          <Choice label="points" options={POINT_OPTIONS} value={points} onChange={setPoints} />
+          <Choice
+            label="points"
+            options={POINT_OPTIONS}
+            value={points}
+            onChange={(value) => change({ control: 'points', value })}
+          />
           {/* the push-it resolution joins the row while its step stands, and leaves with it */}
           <Choice
             label="resolution"
             options={pushed ? PUSH_OPTIONS : RES_OPTIONS}
             value={res}
-            onChange={setRes}
+            onChange={(value) => change({ control: 'res', value })}
           />
-          <Text style={styles.hint}>
-            {`push it runs 1,000,000 points at resolution ${PUSH_RES}, about ${formatCount(PUSH_CELLS)} cells`}
-          </Text>
+          <Text style={styles.hint}>{PUSH_NOTE}</Text>
           <View style={styles.buttons}>
             <Pressable
               style={styles.button}
-              onPress={() => setSeed((current) => current + 1)}
+              onPress={() => change({ control: 'seed' })}
               accessibilityRole="button"
             >
               <Text style={styles.buttonLabel}>reseed</Text>
             </Pressable>
             <Pressable
               style={[styles.button, pushed ? styles.pushed : null]}
-              onPress={pushIt}
+              onPress={() => change({ control: 'push' })}
               accessibilityRole="button"
             >
               <Text style={pushed ? styles.pushedLabel : styles.buttonLabel}>push it</Text>

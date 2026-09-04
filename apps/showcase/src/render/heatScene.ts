@@ -1,7 +1,8 @@
-import { boundariesOf } from '../engine/cells'
+import type { CellBoundaries } from 'react-native-nitro-h3'
+import { boundariesOf, type Timed } from '../engine/cells'
 import { buildMesh, buildOutlinePath } from '../engine/mesh'
 import { OUTLINE_MAX_CELLS } from '../engine/points'
-import { projectCells } from '../engine/projection'
+import { type ProjectedCells, projectCells } from '../engine/projection'
 import { BUCKETS } from '../theme/tokens'
 import { type CellScene, recordCellScene } from './CellPictures'
 import type { CameraAnchor } from './useCamera'
@@ -39,9 +40,14 @@ export function buildHeatScene(
   buckets: Uint8Array,
   anchor: CameraAnchor,
 ): HeatScene {
-  const boundaries = boundariesOf(cells)
+  let boundaries: Timed<CellBoundaries> | null = boundariesOf(cells)
+  const boundariesMs = boundaries.ms
   const started = performance.now()
-  const projected = projectCells(boundaries.value, anchor)
+  let projected: ProjectedCells | null = projectCells(boundaries.value, anchor)
+  // the boundaries are dead the moment they are projected, and they are the heaviest buffer of the
+  // run: twenty megabytes of doubles at the push-it size, against ten for the projection
+  boundaries = null
+
   const outlined = cells.length <= OUTLINE_MAX_CELLS
   const mesh = buildMesh(projected, {
     chunkSize: CHUNK_SIZE,
@@ -49,10 +55,16 @@ export function buildHeatScene(
     inset: outlined ? 0 : INSET,
     bucketOf: buckets,
   })
-  const scene = recordCellScene(
-    mesh,
-    projected.bounds,
-    outlined ? buildOutlinePath(projected, OUTLINE_EDGES) : null,
-  )
-  return { scene, outlined, boundariesMs: boundaries.ms, meshMs: performance.now() - started }
+  const outline = outlined ? buildOutlinePath(projected, OUTLINE_EDGES) : null
+  const { bounds } = projected
+  // and the projection is dead once the mesh and the outline hold their own copies, which is
+  // before the recording allocates a point object per vertex
+  projected = null
+
+  return {
+    scene: recordCellScene(mesh, bounds, outline),
+    outlined,
+    boundariesMs,
+    meshMs: performance.now() - started,
+  }
 }

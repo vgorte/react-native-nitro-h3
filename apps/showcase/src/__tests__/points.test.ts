@@ -4,13 +4,13 @@ import {
   BLOCK,
   blocksOf,
   boxBounds,
-  bucketsOfCounts,
   centreOf,
   generatePoints,
   type PointCache,
   pointStream,
   servesRun,
 } from '../engine/points'
+import { bucketsOfCounts } from '../render/heatColours'
 
 const BUCKETS = 16
 

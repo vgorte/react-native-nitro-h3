@@ -1,4 +1,3 @@
-import { bucketOfCount } from '../theme/tokens'
 import { type Bounds, mercatorX, mercatorY } from './projection'
 
 /** Holds a rectangle of coordinates in degrees, the region one run draws its points in. */
@@ -115,8 +114,8 @@ export function blocksOf(count: number, size = BLOCK): Block[] {
 /**
  * Answers whether a cache of points can serve a run.
  *
- * The seed and the point count are what a run's points depend on; the resolution enters the pipeline
- * one stage later, so changing it reuses the points the last run drew.
+ * The seed and the point count are what a run's points depend on; the resolution enters one stage
+ * later, so changing it reuses the points the last run drew.
  *
  * @param cache The points the last run kept, absent before the first one.
  * @param seed The run's seed.
@@ -124,21 +123,6 @@ export function blocksOf(count: number, size = BLOCK): Block[] {
  */
 export function servesRun(cache: PointCache | null, seed: number, count: number): boolean {
   return cache !== null && cache.seed === seed && cache.count === count
-}
-
-/**
- * Answers the ramp bucket of every cell from the points that landed in it.
- *
- * @param counts The points per cell, as `aggregateCells` counted them.
- * @param max The busiest cell's count, which the ramp's brightest step stands for.
- * @param buckets Steps the ramp is cut into, which the caller takes from the theme.
- */
-export function bucketsOfCounts(counts: Uint32Array, max: number, buckets: number): Uint8Array {
-  const of = new Uint8Array(counts.length)
-  for (let cell = 0; cell < counts.length; cell++) {
-    of[cell] = bucketOfCount(counts[cell], max, buckets)
-  }
-  return of
 }
 
 /** Answers the coordinate at the middle of a box, which the act's metre frame is anchored to. */
