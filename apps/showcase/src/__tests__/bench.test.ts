@@ -38,6 +38,52 @@ describe('runWorkload', () => {
     expect(result.aborted).toBe(false)
   })
 
+  test('warms the reference side on its first chunk only', async () => {
+    const chunks: number[][] = []
+    const counted: Workload = { ...workload, reference: (from, to) => chunks.push([from, to]) }
+
+    await runWorkload(counted, () => {}, { aborted: false })
+
+    expect(chunks).toEqual([
+      [0, 2_000],
+      [0, 2_000],
+      [2_000, 4_000],
+    ])
+  })
+
+  test('never warms a reference side that is a single unchunked call', async () => {
+    let calls = 0
+    const single: Workload = {
+      ...workload,
+      runs: 1,
+      referenceRuns: 2,
+      calls: 1,
+      reference: () => {
+        calls += 1
+      },
+    }
+
+    await runWorkload(single, () => {}, { aborted: false })
+
+    expect(calls).toBe(2)
+  })
+
+  test('gives up once the run passes the ceiling', async () => {
+    let calls = 0
+    const slow: Workload = {
+      ...workload,
+      reference: () => {
+        calls += 1
+        spin(150_000)
+      },
+    }
+
+    const result = await runWorkload(slow, () => {}, { aborted: false }, 100)
+
+    expect(result.aborted).toBe(true)
+    expect(calls).toBe(1)
+  })
+
   test('stops when the signal aborts', async () => {
     const signal = { aborted: false }
     const promise = runWorkload(

@@ -6,10 +6,10 @@ import type { Workload } from './workloads'
 /** Sizes the chunks of the h3-js side, so its bar grows while it runs and the act stays usable. */
 export const REFERENCE_CHUNK = 2_000
 
-/** Caps one tap: nothing longer than this is started on either side. */
+/** Caps one run: `runWorkload` gives up once a workload has been going for longer. */
 export const RUN_CEILING_MS = 30_000
 
-/** Reports the pass that just finished, so a bar can grow while the workload runs. */
+/** Reports the package pass or h3-js chunk that just finished, so a bar can grow as it runs. */
 export interface Progress {
   workload: string
   side: 'package' | 'h3-js'
@@ -38,7 +38,11 @@ export async function runWorkload(
   workload: Workload,
   onProgress: (progress: Progress) => void,
   signal: { aborted: boolean },
+  ceilingMs = RUN_CEILING_MS,
 ): Promise<Result> {
+  const started = now()
+  const stopped = (): boolean => signal.aborted || now() - started > ceilingMs
+
   const aborted = (): Result => ({
     id: workload.id,
     ownMs: 0,
@@ -51,7 +55,7 @@ export async function runWorkload(
 
   workload.own()
   await yieldToLoop()
-  if (signal.aborted) return aborted()
+  if (stopped()) return aborted()
 
   const ownSamples: number[] = []
   for (let pass = 0; pass < workload.runs; pass++) {
@@ -66,12 +70,15 @@ export async function runWorkload(
       ms: median(ownSamples),
     })
     await yieldToLoop()
-    if (signal.aborted) return aborted()
+    if (stopped()) return aborted()
   }
 
-  workload.reference(0, Math.min(REFERENCE_CHUNK, workload.calls))
-  await yieldToLoop()
-  if (signal.aborted) return aborted()
+  // a single unchunked call cannot be bounded, so warming it would repeat the whole run
+  if (workload.calls > 1) {
+    workload.reference(0, Math.min(REFERENCE_CHUNK, workload.calls))
+    await yieldToLoop()
+    if (stopped()) return aborted()
+  }
 
   const referenceSamples: number[] = []
   let wall = 0
@@ -85,7 +92,7 @@ export async function runWorkload(
       sum += now() - start
       onProgress({ workload: workload.id, side: 'h3-js', done: to, total: workload.calls, ms: sum })
       await yieldToLoop()
-      if (signal.aborted) return aborted()
+      if (stopped()) return aborted()
     }
     referenceSamples.push(sum)
     wall += now() - wallStart
@@ -98,7 +105,7 @@ export async function runWorkload(
     ownMs,
     referenceMs,
     referenceWallMs: wall / workload.referenceRuns,
-    factor: referenceMs / ownMs,
+    factor: ownMs > 0 ? referenceMs / ownMs : 0,
     documented: workload.documented,
     aborted: false,
   }

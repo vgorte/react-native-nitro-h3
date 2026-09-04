@@ -15,7 +15,7 @@ const ORIGIN_RES = 9
 const CALLS = 100_000
 const CALLS_PER_RUN = 1_000
 const DISK_K = 20
-// the finale set: 3k(k+1)+1 cells at k = 182 is 99,919, the documented 100,000 scale
+// `3k(k+1)+1` cells at `k = 182` is 99,919, the documented 100,000 scale
 const FINALE_K = 182
 
 /** Describes one workload: its two timed sides, their pass counts and its documented factor. */
@@ -100,8 +100,21 @@ export const WORKLOADS: Workload[] = [
   },
 ]
 
-const finaleCells = gridDisk(origin, FINALE_K)
-const finaleStrings = toStrings(finaleCells)
+interface FinaleInputs {
+  cells: BigUint64Array
+  strings: string[]
+}
+
+let finale: FinaleInputs | undefined
+
+// built on first use, the runner's untimed warm-up, and never inside a timed window
+function finaleInputs(): FinaleInputs {
+  if (finale === undefined) {
+    const cells = gridDisk(origin, FINALE_K)
+    finale = { cells, strings: toStrings(cells) }
+  }
+  return finale
+}
 
 /** Holds the finale: one unchunked `compactCells` per side, at the scale that blocks h3-js. */
 export const FINALE: Workload = {
@@ -113,9 +126,9 @@ export const FINALE: Workload = {
   referenceRuns: 1,
   calls: 1,
   own: () => {
-    compactCells(finaleCells)
+    compactCells(finaleInputs().cells)
   },
   reference: () => {
-    h3.compactCells(finaleStrings)
+    h3.compactCells(finaleInputs().strings)
   },
 }
