@@ -9,7 +9,12 @@ import {
 } from '@shopify/react-native-skia'
 import { useEffect } from 'react'
 import { useWindowDimensions } from 'react-native'
-import { useDerivedValue, useFrameCallback, useSharedValue } from 'react-native-reanimated'
+import {
+  makeMutable,
+  useDerivedValue,
+  useFrameCallback,
+  useSharedValue,
+} from 'react-native-reanimated'
 import { fontAssets, fontFamily } from '../theme/fonts'
 import { colours, glass, type } from '../theme/tokens'
 
@@ -28,6 +33,14 @@ const SWEEP_WIDTH = 32
 const SWEEP_HEIGHT = 2
 const SWEEP_MS = 1600
 
+// the readout outlives every act, so the worst gap is held outside it
+const worst = makeMutable(0)
+
+/** Clears the worst gap, so the panel reports the run that follows and not the one before. */
+export function resetWorstGap(): void {
+  worst.value = 0
+}
+
 /**
  * Reports how far the JS thread is behind the wall clock, drawn entirely on the UI thread.
  *
@@ -41,7 +54,6 @@ export function BlockedReadout() {
 
   const beat = useSharedValue(Date.now())
   const gap = useSharedValue(0)
-  const worst = useSharedValue(0)
   const sweep = useSharedValue(0)
 
   useEffect(() => {
@@ -54,8 +66,7 @@ export function BlockedReadout() {
   useFrameCallback(() => {
     'worklet'
     const now = Date.now()
-    // a beat is one period old at rest, so only what the thread runs late counts as a gap
-    gap.value = Math.max(0, now - beat.value - BEAT_MS)
+    gap.value = now - beat.value
     if (gap.value > worst.value) worst.value = gap.value
     sweep.value = (now % SWEEP_MS) / SWEEP_MS
   })
@@ -68,14 +79,12 @@ export function BlockedReadout() {
   )
 
   const label = useDerivedValue(() =>
-    gap.value > BLOCKED_THRESHOLD_MS
+    // the beat is one period old at rest, so a beat of slack keeps jitter quiet
+    gap.value - BEAT_MS > BLOCKED_THRESHOLD_MS
       ? `JS thread blocked ${gap.value.toFixed(0)} ms`
       : 'JS thread free',
   )
   const peak = useDerivedValue(() => `worst ${worst.value.toFixed(0)} ms`)
-  const tone = useDerivedValue(() =>
-    gap.value > BLOCKED_THRESHOLD_MS ? colours.contrast : colours.muted,
-  )
   const sweepX = useDerivedValue(() => PANEL_MARGIN + sweep.value * (PANEL_WIDTH - SWEEP_WIDTH))
 
   return (
@@ -84,7 +93,13 @@ export function BlockedReadout() {
         <RoundedRect rect={panel} color={glass.fill} />
       </BackdropBlur>
       <RoundedRect rect={panel} color={glass.border} style="stroke" strokeWidth={1} />
-      <Text x={PANEL_MARGIN + TEXT_INSET} y={top + 24} text={label} font={labelFont} color={tone} />
+      <Text
+        x={PANEL_MARGIN + TEXT_INSET}
+        y={top + 24}
+        text={label}
+        font={labelFont}
+        color={colours.muted}
+      />
       <Text
         x={PANEL_MARGIN + TEXT_INSET}
         y={top + 42}

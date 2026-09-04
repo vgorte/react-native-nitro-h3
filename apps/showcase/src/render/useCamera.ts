@@ -67,6 +67,7 @@ export function useCamera({ anchor, onSettle }: CameraOptions): Camera {
   const scale = useSharedValue(1)
   const interacting = useSharedValue(false)
   const settleAt = useSharedValue(0)
+  const reanchoring = useSharedValue(false)
 
   const transform = useDerivedValue<Transforms3d>(() => [
     { translateX: translateX.value },
@@ -90,7 +91,7 @@ export function useCamera({ anchor, onSettle }: CameraOptions): Camera {
 
   const setAnchor = useCallback(
     (next: CameraAnchor) => {
-      // the scene moves with its origin, so the translate absorbs the shift and the view holds
+      // the translate absorbs the origin shift, so the view holds
       translateX.value -= (mercatorX(currentAnchor.lng) - mercatorX(next.lng)) * scale.value
       translateY.value -= (mercatorY(next.lat) - mercatorY(currentAnchor.lat)) * scale.value
       setCurrentAnchor(next)
@@ -119,12 +120,15 @@ export function useCamera({ anchor, onSettle }: CameraOptions): Camera {
       mercatorX(centre.lng) - mercatorX(currentAnchor.lng),
       mercatorY(centre.lat) - mercatorY(currentAnchor.lat),
     )
-    // `Float32` scene positions lose their sub-pixel precision once the view has drifted far enough
-    if (drift > reanchorLimitM(zoomAt(centre.lat), centre.lat)) setAnchor(centre)
+    // `Float32` scene positions lose precision once the view drifts far
+    if (drift > reanchorLimitM(zoomAt(centre.lat), centre.lat)) {
+      reanchoring.value = true
+      setAnchor(centre)
+    }
     settleRef.current()
-  }, [centreOf, setAnchor, zoomAt, currentAnchor, width, height])
+  }, [centreOf, setAnchor, zoomAt, reanchoring, currentAnchor, width, height])
 
-  // the settle fires once, `SETTLE_MS` after the last change of any camera value
+  // the settle fires `SETTLE_MS` after the last camera change
   useAnimatedReaction(
     () => [translateX.value, translateY.value, scale.value, interacting.value] as const,
     () => {
@@ -136,8 +140,13 @@ export function useCamera({ anchor, onSettle }: CameraOptions): Camera {
       'worklet'
       if (settleAt.value === 0 || interacting.value || Date.now() < settleAt.value) return
       settleAt.value = 0
+      // a re-anchor writes the camera itself, and that echo is not a settle
+      if (reanchoring.value) {
+        reanchoring.value = false
+        return
+      }
       runOnJS(settle)()
-    }, [settleAt, interacting, settle]),
+    }, [settleAt, interacting, reanchoring, settle]),
   )
 
   const gesture = useMemo(() => {

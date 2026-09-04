@@ -1,12 +1,13 @@
 import { type SkPoint, Vertices } from '@shopify/react-native-skia'
 import { useFonts } from 'expo-font'
 import { StatusBar } from 'expo-status-bar'
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { StyleSheet, useWindowDimensions, View } from 'react-native'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { cellsToBoundaries, gridDisk, latLngToCell } from 'react-native-nitro-h3'
 import { buildMesh } from './engine/mesh'
 import { type Bounds, projectCells } from './engine/projection'
+import { resetWorstGap } from './render/BlockedReadout'
 import { EngineCanvas } from './render/EngineCanvas'
 import { type CameraAnchor, useCamera } from './render/useCamera'
 import { fontAssets } from './theme/fonts'
@@ -56,14 +57,21 @@ function buildScene(anchor: CameraAnchor): Scene {
 export default function App() {
   const [fontsLoaded] = useFonts(fontAssets)
   const { width, height } = useWindowDimensions()
-  // the disk is fixed, so a settle has nothing to rebuild until the acts arrive
-  const onSettle = useCallback(() => undefined, [])
+  // the disk is fixed, so a settle only starts the gap count over
+  const onSettle = useCallback(() => resetWorstGap(), [])
   const camera = useCamera({ anchor: BERLIN, onSettle })
   const scene = useMemo(() => buildScene(camera.anchor), [camera.anchor])
+  const fitted = useRef(false)
 
   useEffect(() => {
-    camera.fit(scene.bounds, width, height)
-  }, [camera.fit, scene.bounds, width, height])
+    // the fit follows the data, never a re-anchor's reprojection
+    if (!fitted.current) {
+      fitted.current = true
+      camera.fit(scene.bounds, width, height)
+    }
+    // the build blocks the thread before the first frame, and is no run
+    resetWorstGap()
+  }, [camera.fit, scene, width, height])
 
   // the ground colour already fills the window, so an unstyled first frame is worse than none
   if (!fontsLoaded) return <View style={styles.root} />

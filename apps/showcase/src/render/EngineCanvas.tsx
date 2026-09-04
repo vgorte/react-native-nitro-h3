@@ -16,7 +16,7 @@ export interface EngineCanvasProps {
   vignette?: boolean
 }
 
-// the vignette reaches past the corners, so its falloff stays off screen
+// the vignette reaches past the corners, hiding its falloff
 const VIGNETTE_REACH = 0.7
 
 /**
@@ -33,7 +33,7 @@ export function EngineCanvas({ camera, children, onTap, vignette = true }: Engin
       }),
     [onTap],
   )
-  // a pinch reaches the tap as well when the two are simultaneous, so the camera wins first
+  // a simultaneous tap also fires on pinch end
   const gesture = useMemo(() => Gesture.Exclusive(camera.gesture, tap), [camera.gesture, tap])
   const radius = Math.max(width, height) * VIGNETTE_REACH
 
