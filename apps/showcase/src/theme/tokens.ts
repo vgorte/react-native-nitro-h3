@@ -20,6 +20,8 @@ export const glass = {
   blur: 18,
   border: 'rgba(255,255,255,0.08)',
   radius: 14,
+  // the ground at 55 percent, so muted labels survive a panel over the brightest cells
+  scrim: 'rgba(6,9,17,0.55)',
 } as const
 
 // a `readonly` tuple is not assignable to the `fontVariant` of a `TextStyle`

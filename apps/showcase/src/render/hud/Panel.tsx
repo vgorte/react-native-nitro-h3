@@ -19,6 +19,8 @@ export function Panel({ children, align = 'left' }: PanelProps) {
     <View style={[styles.panel, align === 'right' ? styles.right : styles.left]}>
       {/* Android has no backdrop to sample without a blur target, and falls back to a dark scrim */}
       <BlurView intensity={BLUR_INTENSITY} tint="dark" style={StyleSheet.absoluteFill} />
+      {/* the blur alone leaves the labels washed out over a bright city, so the ground comes back */}
+      <View style={styles.scrim} pointerEvents="none" />
       <View style={styles.tint} pointerEvents="none" />
       {children}
     </View>
@@ -35,6 +37,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     gap: 8,
   },
+  scrim: { position: 'absolute', inset: 0, backgroundColor: glass.scrim },
   tint: { position: 'absolute', inset: 0, backgroundColor: glass.fill },
   left: { alignItems: 'flex-start' },
   right: { alignItems: 'flex-end' },
