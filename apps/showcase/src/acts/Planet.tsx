@@ -44,6 +44,7 @@ import {
   projectCellsCity,
   projectCellsOrthographic,
   RAD_TO_DEG,
+  radiusForResolution,
   resolutionForZoom,
   zoomForMetresPerPixel,
 } from '../engine/projection'
@@ -90,7 +91,8 @@ const START_ANCHOR: CameraAnchor = { lat: 20, lng: 10 }
 // the globe leaves a twelfth of the space it is given free
 const GLOBE_MARGIN = 0.88
 const GLOBE_MIN_SCALE = 0.4
-const GLOBE_MAX_SCALE = 8
+// the globe must be able to grow past the handoff on any screen, with a little room to spare
+const GLOBE_MAX_MARGIN = 1.25
 // a global view reads at a smaller cell than a city view, and keeps the earth on screen
 const GLOBE_TARGET_PX = 18
 const PANEL_TOP = 104
@@ -409,6 +411,16 @@ export function Planet({ active }: ActProps) {
   const cx = width / 2
   const cy = (globeTop + globeBottom) / 2
   const baseRadius = Math.min(width / 2, (globeBottom - globeTop) / 2) * GLOBE_MARGIN
+  // a fixed multiple leaves city mode unreachable on a short screen, so the ceiling follows the ladder
+  const maxScale = useMemo(
+    () =>
+      Math.max(
+        1,
+        (radiusForResolution(CITY_MIN_RESOLUTION, getHexagonEdgeLengthAvgM) * GLOBE_MAX_MARGIN) /
+          baseRadius,
+      ),
+    [baseRadius],
+  )
 
   const [mode, setMode] = useState<Mode>('globe')
   const [globeRes, setGlobeRes] = useState(() => globeResolution(baseRadius, START_ANCHOR.lat))
@@ -567,7 +579,12 @@ export function Planet({ active }: ActProps) {
       bounds: { minX: 0, minY: 0, maxX: width, maxY: height },
     }
     // the grouping and the fans do not move, so a step rewrites the vertices and records again
-    const options: MeshOptions = { chunkSize: CHUNK_SIZE, buckets: BUCKETS, inset: 0 }
+    const options: MeshOptions = {
+      chunkSize: CHUNK_SIZE,
+      buckets: BUCKETS,
+      inset: 0,
+      bucketOf: disk.buckets,
+    }
     const mesh = buildMesh(blending, options)
     const started = performance.now()
 
@@ -594,7 +611,7 @@ export function Planet({ active }: ActProps) {
 
   function returnToGlobe(centre: LatLng): void {
     const radius = (camera.scale.value * EARTH_RADIUS_M) / Math.cos(centre.lat * DEG_TO_RAD)
-    globeScale.value = Math.min(GLOBE_MAX_SCALE, Math.max(GLOBE_MIN_SCALE, radius / baseRadius))
+    globeScale.value = Math.min(maxScale, Math.max(GLOBE_MIN_SCALE, radius / baseRadius))
     lambda0.value = centre.lng * DEG_TO_RAD
     phi0.value = centre.lat * DEG_TO_RAD
     setGlobeRes(globeResolution(radius, centre.lat))
@@ -669,14 +686,14 @@ export function Planet({ active }: ActProps) {
       .onChange((event) => {
         'worklet'
         const next = globeScale.value * event.scaleChange
-        globeScale.value = Math.max(GLOBE_MIN_SCALE, Math.min(GLOBE_MAX_SCALE, next))
+        globeScale.value = Math.max(GLOBE_MIN_SCALE, Math.min(maxScale, next))
       })
       .onFinalize(() => {
         'worklet'
         turning.value = false
       })
     return Gesture.Simultaneous(pan, pinch)
-  }, [baseRadius, globeScale, lambda0, phi0, turning])
+  }, [baseRadius, maxScale, globeScale, lambda0, phi0, turning])
 
   const cityLayers = useMemo(
     () =>
@@ -696,7 +713,11 @@ export function Planet({ active }: ActProps) {
         {mode === 'city' ? null : (
           <>
             <Circle cx={cx} cy={cy} r={radius} color={colours.vignette} />
-            {mode === 'globe' ? <Picture picture={picture} /> : <CellPictures scene={handoff} />}
+            {mode === 'globe' ? (
+              <Picture picture={picture} />
+            ) : (
+              <CellPictures scene={handoff} opacity={CITY_OPACITY} />
+            )}
             <Circle
               cx={cx}
               cy={cy}

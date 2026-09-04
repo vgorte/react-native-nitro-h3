@@ -126,6 +126,33 @@ export function resolutionForZoom(
   return best
 }
 
+/**
+ * Answers the globe radius in pixels at which {@linkcode resolutionForZoom} first asks for `res`.
+ *
+ * A globe's zoom does not depend on the latitude, because the cosine cancels between the radius and
+ * the metres a pixel spans, so one radius answers for every view and an act can size its zoom range
+ * from the resolution it hands over at.
+ *
+ * @param res The resolution the answer is the threshold of.
+ * @param edgeLengthM The average edge length of a resolution, as `getHexagonEdgeLengthAvgM` gives it.
+ * @param targetPx The cell width the ladder aims for, as {@linkcode resolutionForZoom} takes it.
+ */
+export function radiusForResolution(
+  res: number,
+  edgeLengthM: (res: number) => number,
+  targetPx?: number,
+): number {
+  let below = 1
+  let above = EARTH_RADIUS_M
+  for (let step = 0; step < 60; step++) {
+    const middle = (below + above) / 2
+    const zoom = zoomForMetresPerPixel(EARTH_RADIUS_M / middle, 0)
+    if (resolutionForZoom(zoom, 0, edgeLengthM, targetPx) >= res) above = middle
+    else below = middle
+  }
+  return above
+}
+
 // keeps `Float32` rounding of the offset under a twentieth of a pixel
 const REANCHOR_PIXELS = 800_000
 

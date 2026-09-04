@@ -16,9 +16,11 @@ import {
   projectCells,
   projectCellsCity,
   projectCellsOrthographic,
+  radiusForResolution,
   resolutionForZoom,
   rotateToView,
   unproject,
+  zoomForMetresPerPixel,
 } from '../engine/projection'
 
 const STRIDE = 20
@@ -354,5 +356,25 @@ describe('cullCells', () => {
 
     expect(culled.cellCount).toBe(0)
     expect(culled.bounds).toEqual({ minX: 0, minY: 0, maxX: 0, maxY: 0 })
+  })
+})
+
+describe('radiusForResolution', () => {
+  test('answers the radius the ladder first asks for a resolution at', () => {
+    const radius = radiusForResolution(3, edgeLengthM)
+
+    expect(resolutionForZoom(zoomForMetresPerPixel(6378137 / radius, 0), 0, edgeLengthM)).toBe(3)
+    expect(
+      resolutionForZoom(zoomForMetresPerPixel(6378137 / (radius * 0.99), 0), 0, edgeLengthM),
+    ).toBe(2)
+  })
+
+  test('grows with the resolution it is asked for', () => {
+    let previous = 0
+    for (let res = 1; res <= 9; res++) {
+      const radius = radiusForResolution(res, edgeLengthM)
+      expect(radius).toBeGreaterThan(previous)
+      previous = radius
+    }
   })
 })
