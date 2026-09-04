@@ -1,4 +1,3 @@
-# Test runner
-# the theme reaches the bundled fonts through `require`, which `bun test` would parse as JavaScript
+# `bun test` would parse the font `require` as JavaScript
 [loader]
 ".ttf" = "file"

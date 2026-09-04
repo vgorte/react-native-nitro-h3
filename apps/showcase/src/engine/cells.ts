@@ -13,6 +13,9 @@ import {
   uncompactCells,
 } from 'react-native-nitro-h3'
 
+/** Caps what any control in the app can allocate; passed to `configure` before the first call. */
+export const MAX_CELL_COUNT = 1_500_000
+
 /** Holds a call's result together with the milliseconds it took and the name it is shown under. */
 export interface Timed<T> {
   label: string

@@ -1,131 +1,73 @@
 import { useFonts } from 'expo-font'
 import { StatusBar } from 'expo-status-bar'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { StyleSheet, useWindowDimensions, View } from 'react-native'
+import { useCallback, useRef, useState } from 'react'
+import { StyleSheet, View } from 'react-native'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
-import { cellsToBoundaries, gridDisk, latLngToCell } from 'react-native-nitro-h3'
-import { buildMesh, buildOutlinePath } from './engine/mesh'
-import { projectCells } from './engine/projection'
-import {
-  classesForZoom,
-  createTileSource,
-  type StyleClass,
-  TILE_MIN_ZOOM,
-  type TileId,
-  visibleTiles,
-} from './engine/tiles'
+import PagerView from 'react-native-pager-view'
+import { Engine } from './acts/Engine'
+import { FractalCity } from './acts/FractalCity'
+import { Heatmap } from './acts/Heatmap'
+import { MagneticGrid } from './acts/MagneticGrid'
+import { Planet } from './acts/Planet'
+import { Trail } from './acts/Trail'
+import type { ActProps } from './acts/types'
 import { resetWorstGap } from './render/BlockedReadout'
-import { CellPictures, type CellScene, recordCellScene } from './render/CellPictures'
-import { EngineCanvas } from './render/EngineCanvas'
-import { type GlowImage, GlowLayer, renderGlow } from './render/GlowLayer'
-import { TileLayer } from './render/TileLayer'
-import { type Camera, type CameraAnchor, sceneViewport, useCamera } from './render/useCamera'
+import { ActIndicator } from './render/hud/ActIndicator'
 import { fontAssets } from './theme/fonts'
-import { BUCKETS, colours } from './theme/tokens'
+import { colours } from './theme/tokens'
 
-const BERLIN: CameraAnchor = { lat: 52.52, lng: 13.405 }
-const RESOLUTION = 9
-const DISK_K = 81
-const CHUNK_SIZE = 10_000
-const INSET = 0.08
-const OUTLINE_EDGES = 3
-const OUTLINE_LIMIT = 20_000
+/** Names the acts in the order they are paged through. */
+export const ACTS = [
+  'Planet',
+  'Engine',
+  'Fractal city',
+  'Magnetic grid',
+  'Heatmap',
+  'Trail',
+] as const
 
-function buildScene(anchor: CameraAnchor): CellScene {
-  const cells = gridDisk(latLngToCell(anchor.lat, anchor.lng, RESOLUTION), DISK_K)
-  const projected = projectCells(cellsToBoundaries(cells), anchor)
-  // the inset stands in for the outline above the ceiling
-  const outlined = projected.cellCount <= OUTLINE_LIMIT
-  const mesh = buildMesh(projected, {
-    chunkSize: CHUNK_SIZE,
-    buckets: BUCKETS,
-    inset: outlined ? 0 : INSET,
-  })
-  const outline = outlined ? buildOutlinePath(projected, OUTLINE_EDGES) : null
-  return recordCellScene(mesh, projected.bounds, outline)
-}
+const PAGES: ((props: ActProps) => React.JSX.Element)[] = [
+  Planet,
+  Engine,
+  FractalCity,
+  MagneticGrid,
+  Heatmap,
+  Trail,
+]
 
 export default function App() {
   const [fontsLoaded] = useFonts(fontAssets)
-  const { width, height } = useWindowDimensions()
-  const [glow, setGlow] = useState<GlowImage | null>(null)
-  const [tiles, setTiles] = useState<TileId[]>([])
-  const [classes, setClasses] = useState<StyleClass[]>([])
-  const cameraRef = useRef<Camera | null>(null)
-  const sceneRef = useRef<CellScene | null>(null)
-  // a fresh array draws the tiles that arrived since the last render
-  const source = useMemo(() => createTileSource(() => setTiles((current) => [...current])), [])
+  const pager = useRef<PagerView>(null)
+  const [current, setCurrent] = useState(0)
 
-  const refreshTiles = useCallback(() => {
-    const camera = cameraRef.current
-    if (camera === null) return
-    const centre = camera.centreOf(width, height)
-    const zoom = camera.zoomAt(centre.lat)
-    if (zoom < TILE_MIN_ZOOM) {
-      setTiles([])
-      return
-    }
-    const visible = visibleTiles(centre, zoom, width, height)
-    setTiles(visible)
-    setClasses(classesForZoom(zoom))
-    for (const tile of visible) source.request(tile)
-  }, [width, height, source])
-
-  const paintGlow = useCallback(
-    (scene: CellScene) => {
-      const camera = cameraRef.current
-      if (camera === null) return
-      const values = {
-        translateX: camera.translateX.value,
-        translateY: camera.translateY.value,
-        scale: camera.scale.value,
-      }
-      setGlow(renderGlow(scene, sceneViewport(width, height, values), values.scale))
-    },
-    [width, height],
-  )
-
-  const onSettle = useCallback(() => {
-    const scene = sceneRef.current
-    if (scene !== null) paintGlow(scene)
-    refreshTiles()
-    // resetting last keeps the glow out of the run
+  const select = useCallback((index: number) => {
+    pager.current?.setPage(index)
+    // the incoming act draws while the pager slides it in
+    setCurrent(index)
+    // the worst gap belongs to the act that caused it
     resetWorstGap()
-  }, [paintGlow, refreshTiles])
+  }, [])
 
-  const camera = useCamera({ anchor: BERLIN, onSettle })
-  const scene = useMemo(() => buildScene(camera.anchor), [camera.anchor])
-  const fitted = useRef(false)
-
-  useEffect(() => {
-    cameraRef.current = camera
-    sceneRef.current = scene
-  })
-
-  useEffect(() => {
-    // the fit follows the data, never a re-anchor's reprojection
-    if (!fitted.current) {
-      fitted.current = true
-      // the camera reads back late, so the fit's settle picks the tiles
-      camera.fit(scene.bounds, width, height)
-    } else {
-      refreshTiles()
-    }
-    // the mount cost lands before the first frame, and is no run
-    paintGlow(scene)
-    resetWorstGap()
-  }, [camera.fit, scene, width, height, paintGlow, refreshTiles])
-
-  // the ground colour already fills the window, so an unstyled first frame is worse than none
+  // an unstyled first frame is worse than the bare ground
   if (!fontsLoaded) return <View style={styles.root} />
 
   return (
     <GestureHandlerRootView style={styles.root}>
-      <EngineCanvas camera={camera}>
-        <TileLayer source={source} tiles={tiles} classes={classes} anchor={camera.anchor} />
-        <GlowLayer glow={glow} />
-        <CellPictures scene={scene} />
-      </EngineCanvas>
+      {/* every act owns a full-screen pan, so the pager never scrolls */}
+      <PagerView
+        ref={pager}
+        style={StyleSheet.absoluteFill}
+        initialPage={0}
+        scrollEnabled={false}
+        onPageSelected={(event) => setCurrent(event.nativeEvent.position)}
+      >
+        {PAGES.map((Act, index) => (
+          <View key={ACTS[index]} style={styles.page} collapsable={false}>
+            <Act active={current === index} />
+          </View>
+        ))}
+      </PagerView>
+      <ActIndicator acts={ACTS} current={current} onSelect={select} />
       <StatusBar style="light" />
     </GestureHandlerRootView>
   )
@@ -135,5 +77,8 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: colours.ground,
+  },
+  page: {
+    flex: 1,
   },
 })
