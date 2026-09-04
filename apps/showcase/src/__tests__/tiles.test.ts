@@ -189,6 +189,12 @@ describe('tile selection', () => {
     expect(tiles.every((tile) => tile.z === 14)).toBe(true)
   })
 
+  test('asks for no tile below the zoom the basemap starts at', () => {
+    expect(visibleTiles({ lat: 52.52, lng: 13.405 }, 8.9, 400, 800)).toEqual([])
+    expect(visibleTiles({ lat: 52.52, lng: 13.405 }, 2, 400, 800)).toEqual([])
+    expect(visibleTiles({ lat: 52.52, lng: 13.405 }, 9, 400, 800).length).toBeGreaterThan(0)
+  })
+
   test('starts at the centre tile and wraps the columns at the date line', () => {
     const tiles = visibleTiles({ lat: 0, lng: 179.99 }, 9, 400, 400)
 
@@ -262,11 +268,19 @@ function fakeFetch(onTile: () => Promise<ArrayBuffer>): void {
   }) as unknown as typeof fetch
 }
 
+/** Drains the microtask queue without letting a timer run, so a decode cannot start. */
+async function ticks(count: number): Promise<void> {
+  for (let tick = 0; tick < count; tick++) await Promise.resolve()
+}
+
 async function until(ready: () => boolean, turns = 2000): Promise<void> {
   for (let turn = 0; turn < turns && !ready(); turn++) {
     await new Promise((resolve) => setTimeout(resolve, 1))
   }
 }
+
+/** Stands in for the captive-portal page a proxy answers with a 200. */
+const ERROR_PAGE = new TextEncoder().encode('<html><body>not a tile</body></html>').buffer
 
 const WATER_PATH = 'M0 0L10 0L10 10L0 10L0 0Z'
 const BERLIN_TILE: TileId = { z: 14, x: 8801, y: 5373 }
@@ -334,12 +348,99 @@ describe('createTileSource', () => {
     for (let index = 0; index < LRU_TILES; index++) source.request(tiles[index])
     await until(() => source.paths(tiles[LRU_TILES - 1], ['water']) !== undefined)
 
-    // the read moves the first tile to the young end, so the second one is the oldest
+    // reading tile 0 makes it young, so tile 1 is the oldest
     expect(source.paths(tiles[0], ['water'])).toBeDefined()
     source.request(tiles[LRU_TILES])
     await until(() => source.paths(tiles[LRU_TILES], ['water']) !== undefined)
 
     expect(source.paths(tiles[0], ['water'])).toBeDefined()
     expect(source.paths(tiles[1], ['water'])).toBeUndefined()
+  })
+
+  test('keeps draining when a body is not a tile', async () => {
+    const bytes = waterTileBuffer()
+    const second: TileId = { z: 14, x: 8802, y: 5373 }
+    let tiles = 0
+    globalThis.fetch = (async (input: string) => {
+      if (String(input) === TILEJSON_URL) {
+        return { ok: true, json: async () => ({ tiles: [TEMPLATE], attribution: ATTRIBUTION }) }
+      }
+      tiles += 1
+      // the body is picked per response, because both fetches resolve first
+      const body = tiles === 1 ? ERROR_PAGE : bytes
+      return { ok: true, arrayBuffer: async () => body }
+    }) as unknown as typeof fetch
+
+    const source = createTileSource()
+    source.request(BERLIN_TILE)
+    source.request(second)
+    await until(() => source.paths(second, ['water']) !== undefined)
+
+    expect(source.paths(BERLIN_TILE, ['water'])).toBeUndefined()
+    expect(source.paths(second, ['water'])?.paths.water).toBe(WATER_PATH)
+  })
+
+  test('does not fetch a tile again while it waits for its decode', async () => {
+    const bytes = waterTileBuffer()
+    let fetches = 0
+    globalThis.fetch = (async (input: string) => {
+      if (String(input) === TILEJSON_URL) {
+        return { ok: true, json: async () => ({ tiles: [TEMPLATE] }) }
+      }
+      fetches += 1
+      return { ok: true, arrayBuffer: async () => bytes }
+    }) as unknown as typeof fetch
+
+    const source = createTileSource()
+    source.request(BERLIN_TILE)
+    await ticks(60)
+    source.request(BERLIN_TILE)
+    await until(() => source.paths(BERLIN_TILE, ['water']) !== undefined)
+
+    expect(fetches).toBe(1)
+  })
+
+  test('decodes only the tiles still visible after a prune', async () => {
+    const bytes = waterTileBuffer()
+    fakeFetch(async () => bytes)
+    const source = createTileSource()
+    const kept: TileId = { z: 14, x: 8801, y: 5373 }
+    const gone: TileId[] = [
+      { z: 14, x: 8802, y: 5373 },
+      { z: 14, x: 8803, y: 5373 },
+    ]
+
+    source.request(kept)
+    for (const tile of gone) source.request(tile)
+    await ticks(60)
+    source.prune([kept])
+    await until(() => source.paths(kept, ['water']) !== undefined)
+    await until(() => false, 30)
+
+    expect(source.paths(gone[0], ['water'])).toBeUndefined()
+    expect(source.paths(gone[1], ['water'])).toBeUndefined()
+  })
+
+  test('reads the TileJSON again when it carries no template', async () => {
+    const bytes = waterTileBuffer()
+    let template: string | undefined
+    globalThis.fetch = (async (input: string) => {
+      if (String(input) === TILEJSON_URL) {
+        return { ok: true, json: async () => ({ tiles: template === undefined ? [] : [template] }) }
+      }
+      return { ok: true, arrayBuffer: async () => bytes }
+    }) as unknown as typeof fetch
+
+    const source = createTileSource()
+    source.request(BERLIN_TILE)
+    await until(() => false, 20)
+
+    expect(source.paths(BERLIN_TILE, ['water'])).toBeUndefined()
+
+    template = TEMPLATE
+    source.request(BERLIN_TILE)
+    await until(() => source.paths(BERLIN_TILE, ['water']) !== undefined)
+
+    expect(source.paths(BERLIN_TILE, ['water'])?.paths.water).toBe(WATER_PATH)
   })
 })

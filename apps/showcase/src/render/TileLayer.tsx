@@ -1,4 +1,5 @@
 import { Group, Path, Skia, type SkPath } from '@shopify/react-native-skia'
+import { useEffect } from 'react'
 import { mercatorX, mercatorY } from '../engine/projection'
 import {
   type StyleClass,
@@ -61,6 +62,11 @@ function classPath(entry: TilePaths, style: StyleClass): SkPath | null {
 export function TileLayer({ source, tiles, classes, anchor }: TileLayerProps) {
   const anchorX = mercatorX(anchor.lng)
   const anchorY = mercatorY(anchor.lat)
+
+  // a pan's leftover tiles are dropped before they cost a decode
+  useEffect(() => {
+    source.prune(tiles)
+  }, [source, tiles])
 
   return (
     <>

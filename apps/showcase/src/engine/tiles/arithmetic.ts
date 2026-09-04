@@ -68,13 +68,14 @@ export function classesForZoom(zoom: number): StyleClass[] {
   return BASE_CLASSES
 }
 
-/** Answers every tile the viewport touches, the centre tile first. */
+/** Answers every tile the viewport touches, the centre tile first, or none below the minimum. */
 export function visibleTiles(
   centre: LatLng,
   zoom: number,
   width: number,
   height: number,
 ): TileId[] {
+  if (zoom < TILE_MIN_ZOOM) return []
   const z = tileZoomFor(zoom)
   const tilePx = 256 * 2 ** (zoom - z)
   const columns = Math.ceil(width / tilePx / 2) + 1
@@ -89,7 +90,7 @@ export function visibleTiles(
       tiles.push({ z, x: (((origin.x + column) % span) + span) % span, y })
     }
   }
-  // the centre tile is decoded first, so the middle of the screen fills in first
+  // the centre tile decodes first, so the middle fills in first
   tiles.sort(
     (left, right) =>
       Math.hypot(left.x - origin.x, left.y - origin.y) -

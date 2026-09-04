@@ -7,6 +7,8 @@ export interface TileSource {
   paths(tile: TileId, classes: StyleClass[]): TilePaths | undefined
   /** Queues a tile for fetching and decoding; a tile already held or queued is ignored. */
   request(tile: TileId): void
+  /** Drops every queued tile outside `visible`, so a pan does not decode what it left behind. */
+  prune(visible: TileId[]): void
   /** The line the map's licence requires on screen. */
   attribution: string
 }
@@ -17,6 +19,9 @@ export const LRU_TILES = 64
 const TILEJSON_URL = 'https://tiles.openfreemap.org/planet'
 const MAX_IN_FLIGHT = 4
 const DEFAULT_ATTRIBUTION = 'OpenFreeMap © OpenMapTiles, data from OpenStreetMap'
+
+// a burst of tiles redraws a few times, not once per tile
+const NOTIFY_MS = 250
 
 /** Reduces the TileJSON's HTML attribution to the plain line the HUD draws. */
 function plainAttribution(html: string): string {
@@ -32,10 +37,10 @@ function plainAttribution(html: string): string {
  * Creates the tile source: one TileJSON read, at most four fetches in flight, one decode per turn.
  *
  * Decoding a dense tile costs tens of milliseconds, so a tile is decoded on its own `setTimeout`
- * turn and a gesture keeps the thread between two of them. Every failure is silent, and the
- * geometry above the basemap draws without it.
+ * turn and a gesture keeps the thread between two of them. Every failure is silent, a bad body
+ * included, and the geometry above the basemap draws without the tile.
  *
- * @param onDecoded Called after a tile enters the cache, so the layer can draw it.
+ * @param onDecoded Called after tiles enter the cache, coalesced so a burst is a few calls.
  */
 export function createTileSource(onDecoded?: () => void): TileSource {
   const cache = new Map<string, TilePaths>()
@@ -47,8 +52,18 @@ export function createTileSource(onDecoded?: () => void): TileSource {
   let metadata: Promise<void> | undefined
   let inFlight = 0
   let draining = false
+  let landed = false
+  let notifiedAt = 0
 
   const key = (tile: TileId): string => `${tile.z}/${tile.x}/${tile.y}`
+
+  const notify = (): void => {
+    const now = Date.now()
+    if (!landed || (queue.length > 0 && now - notifiedAt < NOTIFY_MS)) return
+    landed = false
+    notifiedAt = now
+    onDecoded?.()
+  }
 
   const drain = (): void => {
     if (draining || queue.length === 0) return
@@ -57,12 +72,19 @@ export function createTileSource(onDecoded?: () => void): TileSource {
       const next = queue.shift()
       draining = false
       if (next !== undefined) {
-        const decoded = decodeTile(next.bytes)
-        const paths = buildTilePaths(decoded.tile, { buildings: true })
-        if (cache.size >= LRU_TILES) cache.delete(cache.keys().next().value as string)
-        cache.set(key(next.tile), paths)
-        onDecoded?.()
+        try {
+          const decoded = decodeTile(next.bytes)
+          const paths = buildTilePaths(decoded.tile, { buildings: true })
+          if (cache.size >= LRU_TILES) cache.delete(cache.keys().next().value as string)
+          cache.set(key(next.tile), paths)
+          landed = true
+        } catch {
+          // a non-tile body is as silent as a failed fetch
+        }
+        // releasing the key here keeps a settle from fetching it twice
+        pending.delete(key(next.tile))
       }
+      notify()
       drain()
     }, 0)
   }
@@ -70,19 +92,22 @@ export function createTileSource(onDecoded?: () => void): TileSource {
   const readMetadata = async (): Promise<void> => {
     const response = await fetch(TILEJSON_URL)
     const json = (await response.json()) as { tiles?: string[]; attribution?: string }
-    if (typeof json.tiles?.[0] === 'string') template = json.tiles[0]
     if (typeof json.attribution === 'string') attribution = plainAttribution(json.attribution)
+    // a TileJSON without a template must fail, or the source wedges
+    if (typeof json.tiles?.[0] !== 'string') throw new Error('tilejson carries no tile template')
+    template = json.tiles[0]
   }
 
-  const load = async (tile: TileId): Promise<void> => {
+  const load = async (tile: TileId): Promise<boolean> => {
     // the dated path segment lives in the TileJSON, never in code
     metadata ??= readMetadata()
     await metadata
-    if (template === undefined) return
+    if (template === undefined) return false
     const response = await fetch(tileUrl(template, tile))
-    if (!response.ok) return
+    if (!response.ok) return false
     queue.push({ tile, bytes: new Uint8Array(await response.arrayBuffer()) })
     drain()
+    return true
   }
 
   const pump = (): void => {
@@ -94,10 +119,11 @@ export function createTileSource(onDecoded?: () => void): TileSource {
         .catch(() => {
           // a failed TileJSON read must not stick, or nothing loads later
           if (template === undefined) metadata = undefined
+          return false
         })
-        .then(() => {
+        .then((queued) => {
           inFlight -= 1
-          pending.delete(key(tile))
+          if (!queued) pending.delete(key(tile))
           pump()
         })
     }
@@ -119,6 +145,21 @@ export function createTileSource(onDecoded?: () => void): TileSource {
       pending.add(id)
       wanted.push(tile)
       pump()
+    },
+    prune(visible: TileId[]): void {
+      const keep = new Set(visible.map(key))
+      const dropped = (tile: TileId): boolean => {
+        const id = key(tile)
+        if (keep.has(id)) return false
+        pending.delete(id)
+        return true
+      }
+      for (let index = wanted.length - 1; index >= 0; index--) {
+        if (dropped(wanted[index])) wanted.splice(index, 1)
+      }
+      for (let index = queue.length - 1; index >= 0; index--) {
+        if (dropped(queue[index].tile)) queue.splice(index, 1)
+      }
     },
     get attribution(): string {
       return attribution
