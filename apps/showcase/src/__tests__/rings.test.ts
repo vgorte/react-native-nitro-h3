@@ -3,7 +3,6 @@ import {
   bucketOfRing,
   cellSpacingM,
   cellsInRings,
-  GRID_RES,
   gridReads,
   MAX_K,
   MIN_K,
@@ -21,10 +20,9 @@ const LAT = 52.52
 const WIDTH = 402
 const HEIGHT = 874
 
-// a ground metre at `LAT` spans one over the cosine of the scene's own Web Mercator metres
-const SCENE_M = 1 / Math.cos((LAT * Math.PI) / 180)
-// the scene metres a disk spans: a ring of cells either side of the centre, plus a margin ring
-const spanOf = (rings: number) => 2 * (rings + 1) * Math.sqrt(3) * EDGE_M(GRID_RES) * SCENE_M
+// the scene metres a disk spans, counted in the spacing the act itself answers: a ring of cells
+// either side of the centre, plus the margin ring the fit leaves free
+const spanOf = (rings: number, lat = LAT) => 2 * (rings + 1) * cellSpacingM(lat, EDGE_M)
 
 describe('ringsToKeep', () => {
   test('appends only the rings a larger k adds', () => {
@@ -71,8 +69,11 @@ describe('cellsInRings', () => {
 })
 
 describe('scaleForDisk', () => {
-  test('opens with a cell about 24 points across', () => {
-    const across = 2 * EDGE_M(GRID_RES) * SCENE_M * scaleForDisk(WIDTH, HEIGHT, LAT, EDGE_M, OPEN_K)
+  test('opens with a cell about 24 points across, corner to corner', () => {
+    // a hexagon is two edges across its corners and the square root of three between its centres
+    const across =
+      ((2 / Math.sqrt(3)) * spanOf(OPEN_K) * scaleForDisk(WIDTH, HEIGHT, LAT, EDGE_M, OPEN_K)) /
+      (2 * (OPEN_K + 1))
 
     expect(across).toBeGreaterThan(20)
     expect(across).toBeLessThan(28)
@@ -87,11 +88,20 @@ describe('scaleForDisk', () => {
     }
   })
 
-  test('zooms out as the disk grows, so a raised k never frames tighter', () => {
+  test('zooms out in step with the disk, so twice the rings is half the scale', () => {
     const opening = scaleForDisk(WIDTH, HEIGHT, LAT, EDGE_M, OPEN_K)
+    const doubled = scaleForDisk(WIDTH, HEIGHT, LAT, EDGE_M, 2 * OPEN_K + 1)
 
     expect(scaleForDisk(WIDTH, HEIGHT, LAT, EDGE_M, OPEN_K + 1)).toBeLessThan(opening)
-    expect(scaleForDisk(WIDTH, HEIGHT, LAT, EDGE_M, MAX_K)).toBeLessThan(opening)
+    expect(doubled).toBeCloseTo(opening / 2, 10)
+  })
+
+  test('draws the same disk at any latitude, because the scale carries the projection', () => {
+    for (const lat of [0, 30, LAT, 70]) {
+      const span = spanOf(OPEN_K, lat) * scaleForDisk(WIDTH, HEIGHT, lat, EDGE_M, OPEN_K)
+
+      expect(span).toBeCloseTo(WIDTH * 0.9, 9)
+    }
   })
 
   test('fits the narrow side, so a viewport turned on its side still holds the disk', () => {
@@ -110,5 +120,13 @@ describe('gridReads', () => {
 
   test('drops the grid once the disk has grown past what a line every cell can carry', () => {
     expect(gridReads(spacing, scaleForDisk(WIDTH, HEIGHT, LAT, EDGE_M, MAX_K))).toBe(false)
+  })
+
+  test('crosses at about fifteen rings on the viewport the act is framed for', () => {
+    const reads = (rings: number) =>
+      gridReads(spacing, scaleForDisk(WIDTH, HEIGHT, LAT, EDGE_M, rings))
+
+    expect(reads(14)).toBe(true)
+    expect(reads(15)).toBe(false)
   })
 })

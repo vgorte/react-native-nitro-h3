@@ -106,6 +106,7 @@ export function MagneticGrid({ active }: ActProps) {
   const frame = useRef<CameraAnchor | null>(null)
   const fades = useRef<ReturnType<typeof setTimeout>[]>([])
   const appends = useRef(0)
+  const fits = useRef(0)
 
   // the rings stand in the anchor's own metre frame, so a settle has nothing to rebuild
   const settle = useCallback(() => {}, [])
@@ -138,7 +139,9 @@ export function MagneticGrid({ active }: ActProps) {
       }
       // and here the flag goes first, so no frame of the animation below is read as a pinch
       refitting.value = true
-      const generation = refits.value + 1
+      // the count is kept on the JS thread, where a write to a shared value is not read back
+      fits.current += 1
+      const generation = fits.current
       refits.value = generation
       framed.value = fit
       scale.value = withTiming(fit, { duration: REFIT_MS }, () => {
@@ -361,12 +364,14 @@ const Ring = memo(function Ring({ layer, width, grid, fading }: RingProps) {
     alpha.value = withTiming(1, { duration: RING_FADE_MS })
   }, [alpha])
 
+  // asking for the outline is what builds it, so a ring never drawn with a grid never pays for one
+  const outline = grid ? layer.outlineOf() : null
   const drawn = (
     <>
       <CellPictures scene={layer.scene} />
-      {grid && layer.outline !== null ? (
-        <Path path={layer.outline} color={colours.hairline} style="stroke" strokeWidth={width} />
-      ) : null}
+      {outline === null ? null : (
+        <Path path={outline} color={colours.hairline} style="stroke" strokeWidth={width} />
+      )}
     </>
   )
 

@@ -109,8 +109,8 @@ export function cellSpacingM(lat: number, edgeLengthM: EdgeLengthM): number {
 /**
  * Answers whether the grid lines read at a pixel scale, which is what decides they are drawn.
  *
- * The opening frame is well over this, and a disk of a few dozen rings takes a cell under it, where
- * a line every cell would cover the colour it is meant to sit over rather than show a tiling. The
+ * The opening frame is well over this, and a fitted disk crosses it at about fifteen rings, where a
+ * line every cell would cover the colour it is meant to sit over rather than show a tiling. The
  * spacing is passed in because this runs on the UI thread, where no H3 call can be made.
  *
  * @param spacing Scene metres between two cell centres, from {@linkcode cellSpacingM}.

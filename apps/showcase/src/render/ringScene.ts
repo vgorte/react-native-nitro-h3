@@ -17,8 +17,13 @@ export interface RingLayer {
   ring: number
   cells: number
   scene: CellScene
-  /** The grid over the ring, drawn by the act so it can carry the camera's own line width. */
-  outline: SkPath | null
+  /**
+   * Answers the grid over the ring, drawn by the act so it can carry the camera's own line width.
+   *
+   * The path is built on the first frame that asks for it and kept afterwards, because most rings
+   * are drawn at a scale where a line every cell would cover the colour it sits over.
+   */
+  outlineOf(): SkPath | null
   /** What `gridRing` took. */
   ringMs: number
   /** What `cellsToBoundaries` took. */
@@ -49,11 +54,17 @@ export function buildRing(centre: bigint, ring: number, anchor: CameraAnchor): R
     inset: 0,
     bucketOf: buckets,
   })
+  let outline: SkPath | null | undefined
   return {
     ring,
     cells: cells.value.length,
     scene: recordCellScene(mesh, projected.bounds, null),
-    outline: Skia.Path.MakeFromSVGString(buildOutlinePath(projected, OUTLINE_EDGES)),
+    outlineOf() {
+      if (outline === undefined) {
+        outline = Skia.Path.MakeFromSVGString(buildOutlinePath(projected, OUTLINE_EDGES))
+      }
+      return outline
+    },
     ringMs: cells.ms,
     boundariesMs: boundaries.ms,
     buildMs: performance.now() - started,
