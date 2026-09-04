@@ -6,10 +6,19 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { cellsToBoundaries, gridDisk, latLngToCell } from 'react-native-nitro-h3'
 import { buildMesh, buildOutlinePath } from './engine/mesh'
 import { projectCells } from './engine/projection'
+import {
+  classesForZoom,
+  createTileSource,
+  type StyleClass,
+  TILE_MIN_ZOOM,
+  type TileId,
+  visibleTiles,
+} from './engine/tiles'
 import { resetWorstGap } from './render/BlockedReadout'
 import { CellPictures, type CellScene, recordCellScene } from './render/CellPictures'
 import { EngineCanvas } from './render/EngineCanvas'
 import { type GlowImage, GlowLayer, renderGlow } from './render/GlowLayer'
+import { TileLayer } from './render/TileLayer'
 import { type Camera, type CameraAnchor, sceneViewport, useCamera } from './render/useCamera'
 import { fontAssets } from './theme/fonts'
 import { BUCKETS, colours } from './theme/tokens'
@@ -40,8 +49,27 @@ export default function App() {
   const [fontsLoaded] = useFonts(fontAssets)
   const { width, height } = useWindowDimensions()
   const [glow, setGlow] = useState<GlowImage | null>(null)
+  const [tiles, setTiles] = useState<TileId[]>([])
+  const [classes, setClasses] = useState<StyleClass[]>([])
   const cameraRef = useRef<Camera | null>(null)
   const sceneRef = useRef<CellScene | null>(null)
+  // a fresh array draws the tiles that arrived since the last render
+  const source = useMemo(() => createTileSource(() => setTiles((current) => [...current])), [])
+
+  const refreshTiles = useCallback(() => {
+    const camera = cameraRef.current
+    if (camera === null) return
+    const centre = camera.centreOf(width, height)
+    const zoom = camera.zoomAt(centre.lat)
+    if (zoom < TILE_MIN_ZOOM) {
+      setTiles([])
+      return
+    }
+    const visible = visibleTiles(centre, zoom, width, height)
+    setTiles(visible)
+    setClasses(classesForZoom(zoom))
+    for (const tile of visible) source.request(tile)
+  }, [width, height, source])
 
   const paintGlow = useCallback(
     (scene: CellScene) => {
@@ -60,9 +88,10 @@ export default function App() {
   const onSettle = useCallback(() => {
     const scene = sceneRef.current
     if (scene !== null) paintGlow(scene)
+    refreshTiles()
     // resetting last keeps the glow out of the run
     resetWorstGap()
-  }, [paintGlow])
+  }, [paintGlow, refreshTiles])
 
   const camera = useCamera({ anchor: BERLIN, onSettle })
   const scene = useMemo(() => buildScene(camera.anchor), [camera.anchor])
@@ -77,12 +106,15 @@ export default function App() {
     // the fit follows the data, never a re-anchor's reprojection
     if (!fitted.current) {
       fitted.current = true
+      // the camera reads back late, so the fit's settle picks the tiles
       camera.fit(scene.bounds, width, height)
+    } else {
+      refreshTiles()
     }
     // the mount cost lands before the first frame, and is no run
     paintGlow(scene)
     resetWorstGap()
-  }, [camera.fit, scene, width, height, paintGlow])
+  }, [camera.fit, scene, width, height, paintGlow, refreshTiles])
 
   // the ground colour already fills the window, so an unstyled first frame is worse than none
   if (!fontsLoaded) return <View style={styles.root} />
@@ -90,6 +122,7 @@ export default function App() {
   return (
     <GestureHandlerRootView style={styles.root}>
       <EngineCanvas camera={camera}>
+        <TileLayer source={source} tiles={tiles} classes={classes} anchor={camera.anchor} />
         <GlowLayer glow={glow} />
         <CellPictures scene={scene} />
       </EngineCanvas>

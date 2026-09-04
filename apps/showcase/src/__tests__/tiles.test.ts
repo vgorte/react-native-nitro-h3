@@ -1,13 +1,22 @@
-import { describe, expect, test } from 'bun:test'
+import { afterEach, describe, expect, test } from 'bun:test'
+import { PbfWriter } from 'pbf'
+import { EARTH_RADIUS_M, mercatorX, mercatorY } from '../engine/projection'
 import {
   buildTilePaths,
+  classesForZoom,
+  createTileSource,
   type DecodedTile,
+  LRU_TILES,
   lngLatToTile,
   type TileFeature,
+  type TileId,
   type TileLayer,
   type TilePoint,
   tileGrid,
+  tileOriginMetres,
   tileUrl,
+  tileZoomFor,
+  visibleTiles,
 } from '../engine/tiles'
 
 /** Lays out a hand-built feature with the part of the vector-tile interface the builder reads. */
@@ -154,5 +163,183 @@ describe('buildTilePaths', () => {
 
   test('falls back to the default extent for a tile without a drawn layer', () => {
     expect(buildTilePaths(tile({}), BUILD).extent).toBe(4096)
+  })
+})
+
+describe('tile selection', () => {
+  test('clamps the tile zoom to the source maximum', () => {
+    expect(tileZoomFor(11.4)).toBe(11)
+    expect(tileZoomFor(16.9)).toBe(14)
+  })
+
+  test('adds the road classes the spec lists per zoom band', () => {
+    expect(classesForZoom(10)).toEqual(['water', 'motorway', 'trunk', 'primary'])
+    expect(classesForZoom(12)).toContain('secondary')
+    expect(classesForZoom(12)).not.toContain('minor')
+    expect(classesForZoom(14)).toContain('building')
+  })
+
+  test('covers the viewport with the tiles around the centre', () => {
+    const centre = { lat: 52.52, lng: 13.405 }
+    const tiles = visibleTiles(centre, 14, 400, 800)
+    const origin = lngLatToTile(centre.lng, centre.lat, 14)
+
+    expect(tiles).toContainEqual(origin)
+    expect(tiles.length).toBeGreaterThanOrEqual(6)
+    expect(tiles.every((tile) => tile.z === 14)).toBe(true)
+  })
+
+  test('starts at the centre tile and wraps the columns at the date line', () => {
+    const tiles = visibleTiles({ lat: 0, lng: 179.99 }, 9, 400, 400)
+
+    expect(tiles[0]).toEqual(lngLatToTile(179.99, 0, 9))
+    expect(tiles.map((tile) => tile.x)).toContain(0)
+    expect(tiles.every((tile) => tile.x >= 0 && tile.x < 512)).toBe(true)
+    expect(tiles.every((tile) => tile.y >= 0 && tile.y < 512)).toBe(true)
+  })
+})
+
+describe('tileOriginMetres', () => {
+  test('spans the whole world at zoom 0', () => {
+    const world = 2 * Math.PI * EARTH_RADIUS_M
+
+    expect(tileOriginMetres({ z: 0, x: 0, y: 0 })).toEqual({
+      x: -world / 2,
+      y: world / 2,
+      span: world,
+    })
+  })
+
+  test('places a tile at the mercator position of its north-west corner', () => {
+    const tile = lngLatToTile(13.405, 52.52, 9)
+    const origin = tileOriginMetres(tile)
+    const lng = (tile.x / 2 ** tile.z) * 360 - 180
+    const lat = (Math.atan(Math.sinh(Math.PI * (1 - (2 * tile.y) / 2 ** tile.z))) * 180) / Math.PI
+
+    expect(origin.x).toBeCloseTo(mercatorX(lng), 3)
+    expect(origin.y).toBeCloseTo(mercatorY(lat), 3)
+  })
+})
+
+const TILEJSON_URL = 'https://tiles.openfreemap.org/planet'
+const TEMPLATE = 'https://tiles.openfreemap.org/planet/20260830_080001_pt/{z}/{x}/{y}.pbf'
+const ATTRIBUTION = '<a href="https://openfreemap.org">OpenFreeMap</a> &copy; OpenMapTiles'
+
+/** Encodes a tile of one closed water ring, the smallest input the decoder accepts. */
+function waterTileBuffer(): ArrayBuffer {
+  const writer = new PbfWriter()
+  writer.writeMessage(
+    3,
+    (geometry: number[], layer) => {
+      layer.writeVarintField(15, 2)
+      layer.writeStringField(1, 'water')
+      layer.writeMessage(
+        2,
+        (rings: number[], feature) => {
+          feature.writeVarintField(3, 3)
+          feature.writePackedVarint(4, rings)
+        },
+        geometry,
+      )
+      layer.writeVarintField(5, 4096)
+    },
+    [9, 0, 0, 26, 20, 0, 0, 20, 19, 0, 15],
+  )
+  const bytes = writer.finish()
+  const buffer = new ArrayBuffer(bytes.byteLength)
+  new Uint8Array(buffer).set(bytes)
+  return buffer
+}
+
+const originalFetch = globalThis.fetch
+
+function fakeFetch(onTile: () => Promise<ArrayBuffer>): void {
+  globalThis.fetch = (async (input: string) => {
+    if (String(input) === TILEJSON_URL) {
+      return { ok: true, json: async () => ({ tiles: [TEMPLATE], attribution: ATTRIBUTION }) }
+    }
+    return { ok: true, arrayBuffer: onTile }
+  }) as unknown as typeof fetch
+}
+
+async function until(ready: () => boolean, turns = 2000): Promise<void> {
+  for (let turn = 0; turn < turns && !ready(); turn++) {
+    await new Promise((resolve) => setTimeout(resolve, 1))
+  }
+}
+
+const WATER_PATH = 'M0 0L10 0L10 10L0 10L0 0Z'
+const BERLIN_TILE: TileId = { z: 14, x: 8801, y: 5373 }
+
+afterEach(() => {
+  globalThis.fetch = originalFetch
+})
+
+describe('createTileSource', () => {
+  test('answers a decoded tile after reading the template from the TileJSON', async () => {
+    const bytes = waterTileBuffer()
+    const asked: string[] = []
+    globalThis.fetch = (async (input: string) => {
+      asked.push(String(input))
+      if (String(input) === TILEJSON_URL) {
+        return { ok: true, json: async () => ({ tiles: [TEMPLATE], attribution: ATTRIBUTION }) }
+      }
+      return { ok: true, arrayBuffer: async () => bytes }
+    }) as unknown as typeof fetch
+
+    const source = createTileSource()
+    source.request(BERLIN_TILE)
+
+    expect(source.paths(BERLIN_TILE, ['water'])).toBeUndefined()
+    await until(() => source.paths(BERLIN_TILE, ['water']) !== undefined)
+
+    expect(source.paths(BERLIN_TILE, ['water'])?.paths.water).toBe(WATER_PATH)
+    expect(source.paths(BERLIN_TILE, ['water'])?.extent).toBe(4096)
+    expect(asked).toEqual([
+      TILEJSON_URL,
+      'https://tiles.openfreemap.org/planet/20260830_080001_pt/14/8801/5373.pbf',
+    ])
+    expect(source.attribution).toBe('OpenFreeMap © OpenMapTiles')
+  })
+
+  test('answers undefined for a tile with nothing in the asked classes', async () => {
+    const bytes = waterTileBuffer()
+    fakeFetch(async () => bytes)
+    const source = createTileSource()
+    source.request(BERLIN_TILE)
+    await until(() => source.paths(BERLIN_TILE, ['water']) !== undefined)
+
+    expect(source.paths(BERLIN_TILE, ['motorway', 'building'])).toBeUndefined()
+  })
+
+  test('keeps the geometry drawn when a fetch fails', async () => {
+    globalThis.fetch = (async () => {
+      throw new Error('offline')
+    }) as unknown as typeof fetch
+    const source = createTileSource()
+    source.request(BERLIN_TILE)
+    await until(() => false, 20)
+
+    expect(source.paths(BERLIN_TILE, ['water'])).toBeUndefined()
+    expect(source.attribution).toContain('OpenFreeMap')
+  })
+
+  test('evicts the least recently drawn tile past the cache limit', async () => {
+    const bytes = waterTileBuffer()
+    fakeFetch(async () => bytes)
+    const source = createTileSource()
+    const tiles: TileId[] = []
+    for (let x = 0; x <= LRU_TILES; x++) tiles.push({ z: 14, x, y: 5373 })
+
+    for (let index = 0; index < LRU_TILES; index++) source.request(tiles[index])
+    await until(() => source.paths(tiles[LRU_TILES - 1], ['water']) !== undefined)
+
+    // the read moves the first tile to the young end, so the second one is the oldest
+    expect(source.paths(tiles[0], ['water'])).toBeDefined()
+    source.request(tiles[LRU_TILES])
+    await until(() => source.paths(tiles[LRU_TILES], ['water']) !== undefined)
+
+    expect(source.paths(tiles[0], ['water'])).toBeDefined()
+    expect(source.paths(tiles[1], ['water'])).toBeUndefined()
   })
 })
