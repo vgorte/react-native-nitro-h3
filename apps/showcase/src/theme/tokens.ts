@@ -38,6 +38,9 @@ export const type = {
 /** Counts the colour buckets a mesh is drawn in; a bucket is one draw call per chunk. */
 export const BUCKETS = 16
 
+/** Alpha of a cell fill drawn over a basemap, where the hairline outline carries the grid. */
+export const CELL_FILL_OPACITY = 0.12
+
 /**
  * Answers the ramp bucket of a count on a logarithmic scale.
  *

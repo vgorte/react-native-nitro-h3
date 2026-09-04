@@ -16,13 +16,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { StyleSheet, useWindowDimensions, View } from 'react-native'
 import { Gesture } from 'react-native-gesture-handler'
 import {
+  cellToCenterChild,
+  cellToParent,
   getBaseCellNumber,
   getHexagonEdgeLengthAvgM,
+  gridDiskDistances,
   type LatLng,
   latLngToCell,
 } from 'react-native-nitro-h3'
 import { runOnJS, useDerivedValue, useFrameCallback, useSharedValue } from 'react-native-reanimated'
-import { boundariesOf, centresOf, diskDistancesAround, earthAt, timed } from '../engine/cells'
+import { boundariesOf, centresOf, diskAround, earthAt, timed } from '../engine/cells'
 import {
   buildGlobeFrame,
   createGlobeFrame,
@@ -37,7 +40,7 @@ import {
   loadLand,
   projectLand,
 } from '../engine/land'
-import { buildMesh, buildOutlinePath } from '../engine/mesh'
+import { bucketForDistance, buildMesh, buildOutlinePath, PATCH_RINGS } from '../engine/mesh'
 import {
   type Bounds,
   cullCells,
@@ -73,7 +76,7 @@ import { Panel } from '../render/hud/Panel'
 import { Row } from '../render/hud/Row'
 import { TileLayer } from '../render/TileLayer'
 import { type CameraAnchor, SETTLE_MS, useCamera } from '../render/useCamera'
-import { BUCKETS, colours, rampColours } from '../theme/tokens'
+import { BUCKETS, CELL_FILL_OPACITY, colours, rampColours } from '../theme/tokens'
 import { rememberPlanetPosition } from './planetPosition'
 import type { ActProps } from './types'
 
@@ -121,8 +124,8 @@ const CULL_MARGIN = 1.5
 const REBUILD_DRIFT = 0.25
 // a quarter of a resolution step of zoom before the projection is worth redoing
 const REBUILD_ZOOM = 0.24
-// the basemap has to read through the cells, which carry the ring index and nothing else
-const BASEMAP_OPACITY = 0.35
+// resolutions up to the ancestor whose centre child every patch of colour is measured from
+const PATCH_DEPTH = 3
 const FRAME_SAMPLES = 120
 const FRAME_REPORT_MS = 250
 // the tilt stops at the Web Mercator limit, so a coordinate the act hands on stays usable
@@ -137,6 +140,8 @@ const CORNERS = [
   { x: 0, y: 1 },
   { x: 1, y: 1 },
 ]
+// the limb itself cannot be unprojected, so a point that reaches it stops just inside
+const LIMB_MARGIN = 0.999
 const MAX_K = Math.floor((Math.sqrt((4 * PLANET_CELL_CAP - 1) / 3) - 1) / 2)
 
 type Mode = 'globe' | 'surface'
@@ -200,7 +205,9 @@ interface SurfaceScene {
   cells: CellScene
   coast: SkPath
   cellCount: number
-  rings: string
+  disk: string
+  diskMs: number
+  patchMs: number
   ringsMs: number
   boundariesMs: number
   projectMs: number
@@ -249,33 +256,6 @@ function buildGlobe(res: number): GlobeData {
   }
 }
 
-/**
- * Flattens the rings of a disk into one cell list and the colour bucket of each cell.
- *
- * The ramp runs from the brightest stop at the view centre outward, so the colour carries the ring
- * distance and nothing else.
- */
-function ringBuckets(rings: BigUint64Array[]): { cells: BigUint64Array; buckets: Uint8Array } {
-  let total = 0
-  for (const ring of rings) total += ring.length
-  const cells = new BigUint64Array(total)
-  const buckets = new Uint8Array(total)
-  const last = Math.max(1, rings.length - 1)
-  let cursor = 0
-
-  for (let ring = 0; ring < rings.length; ring++) {
-    cells.set(rings[ring], cursor)
-    buckets.fill(
-      BUCKETS - 1 - Math.round((ring / last) * (BUCKETS - 1)),
-      cursor,
-      cursor + rings[ring].length,
-    )
-    cursor += rings[ring].length
-  }
-
-  return { cells, buckets }
-}
-
 /** Builds the coastline of one settle as a path, dropping the segments the rectangle misses. */
 function coastPath(runs: LandRuns, rect: Bounds): SkPath {
   const builder = Skia.PathBuilder.Make()
@@ -317,19 +297,42 @@ function buildSurface(
 ): SurfaceScene {
   const started = performance.now()
   const at = localView(view)
-  const rings = diskDistancesAround(
-    latLngToCell(view.middle.lat, view.middle.lng, view.res),
-    view.k,
-  )
-  const disk = ringBuckets(rings.value)
-  const boundaries = boundariesOf(disk.cells)
+  const disk = diskAround(latLngToCell(view.middle.lat, view.middle.lng, view.res), view.k)
+  const boundaries = boundariesOf(disk.value)
   const projected = timed('projection', () =>
     projectCellsGlobeLocal(boundaries.value, at, view.centre),
   )
   const sources = new Uint32Array(projected.value.cellCount)
   const culled = cullCells(projected.value, rect, sources)
-  const bucketOf = new Uint8Array(culled.cellCount)
-  for (let cell = 0; cell < culled.cellCount; cell++) bucketOf[cell] = disk.buckets[sources[cell]]
+
+  const cells = new BigUint64Array(culled.cellCount)
+  for (let cell = 0; cell < culled.cellCount; cell++) cells[cell] = disk.value[sources[cell]]
+  const patches = timed('cellToParent', () => {
+    const ancestors = new BigUint64Array(cells.length)
+    for (let cell = 0; cell < cells.length; cell++) {
+      ancestors[cell] = cellToParent(cells[cell], view.res - PATCH_DEPTH)
+    }
+    return ancestors
+  })
+
+  const index = new Map<bigint, number>()
+  for (let cell = 0; cell < cells.length; cell++) index.set(cells[cell], cell)
+  const bucketOf = new Uint8Array(cells.length).fill(bucketForDistance(PATCH_RINGS, BUCKETS))
+  const rings = timed('gridDiskDistances', () => {
+    const seen = new Set<bigint>()
+    for (const ancestor of patches.value) {
+      if (seen.has(ancestor)) continue
+      seen.add(ancestor)
+      const patch = gridDiskDistances(cellToCenterChild(ancestor, view.res), PATCH_RINGS)
+      for (let ring = 0; ring < patch.length; ring++) {
+        const bucket = bucketForDistance(ring, BUCKETS)
+        for (const member of patch[ring]) {
+          const found = index.get(member)
+          if (found !== undefined) bucketOf[found] = bucket
+        }
+      }
+    }
+  })
 
   // the inset stands in for the outline above the ceiling
   const outlined = culled.cellCount <= OUTLINE_LIMIT
@@ -343,15 +346,21 @@ function buildSurface(
   )
   projectLand(land, at, runs)
 
+  // the cells are a tint once there is a basemap under them, and the outline carries the grid
+  const solid = globeZoom(view.radius, view.middle.lat) < TILE_MIN_ZOOM
+
   return {
     cells: recordCellScene(
       mesh.value,
       culled.bounds,
       outlined ? buildOutlinePath(culled, OUTLINE_EDGES) : null,
+      solid ? 1 : CELL_FILL_OPACITY,
     ),
     coast: coastPath(runs, rect),
     cellCount: culled.cellCount,
-    rings: rings.label,
+    disk: disk.label,
+    diskMs: disk.ms,
+    patchMs: patches.ms,
     ringsMs: rings.ms,
     boundariesMs: boundaries.ms,
     projectMs: projected.ms,
@@ -456,7 +465,8 @@ export function Planet({ active }: ActProps) {
   const cx = width / 2
   const cy = (globeTop + globeBottom) / 2
   const baseRadius = Math.min(width / 2, (globeBottom - globeTop) / 2) * GLOBE_MARGIN
-  // a fixed multiple leaves the surface unreachable on a short screen, so the range follows the ladder
+  // a fixed multiple leaves the surface out of reach on a short screen, so the range follows
+  // the ladder itself
   const range = useMemo(
     () => ({
       scale: Math.max(
@@ -475,14 +485,19 @@ export function Planet({ active }: ActProps) {
   const [tiles, setTiles] = useState<TileId[]>([])
   const [classes, setClasses] = useState<StyleClass[]>([])
   const [reading, setReading] = useState({ median: 0, p95: 0, visible: 0 })
+  const [basemapMs, setBasemapMs] = useState(0)
   const [settle, setSettle] = useState(0)
 
   const land = useMemo(() => loadLand(), [])
-  const runs = useMemo(() => createLandRuns(land), [land])
+  const globeRuns = useMemo(() => createLandRuns(land), [land])
+  // its own buffers, so a settle rebuild never writes what the globe worklet is reading
+  const surfaceRuns = useMemo(() => createLandRuns(land), [land])
   const globe = useMemo(() => buildGlobe(globeRes), [globeRes])
   const samples = useMemo(() => new Float64Array(FRAME_SAMPLES), [])
-  // a fresh array draws the tiles that arrived since the last render
-  const source = useMemo(() => createTileSource(() => setTiles((current) => [...current])), [])
+  // the epoch has to outlive a round trip through the globe, or a cached path lands in a new view
+  const epoch = useRef(0)
+  const decoded = useRef<() => void>(() => {})
+  const source = useMemo(() => createTileSource(() => decoded.current()), [])
 
   const picture = useSharedValue<SkPicture>(EMPTY_PICTURE)
   const lambda0 = useSharedValue(START_ANCHOR.lng * DEG_TO_RAD)
@@ -501,6 +516,8 @@ export function Planet({ active }: ActProps) {
   const reportedAt = useSharedValue(0)
 
   const bumpSettle = useCallback(() => setSettle((count) => count + 1), [])
+  // the camera keeps its Mercator anchor, which its own re-anchor would rewrite; the reset to
+  // identity on every rebuild keeps the drift it measures far under the limit that fires it
   const camera = useCamera({ anchor: START_ANCHOR, onSettle: bumpSettle })
   const { translateX, translateY, scale } = camera
 
@@ -517,8 +534,8 @@ export function Planet({ active }: ActProps) {
   }, [width, height, cx, cy])
 
   const scene = useMemo(
-    () => (surface === null ? null : buildSurface(surface, land, runs, cull)),
-    [surface, land, runs, cull],
+    () => (surface === null ? null : buildSurface(surface, land, surfaceRuns, cull)),
+    [surface, land, surfaceRuns, cull],
   )
 
   // one tuple is reused per call, which `buildTilePaths` reads before it asks for the next vertex
@@ -536,26 +553,43 @@ export function Planet({ active }: ActProps) {
     }
   }, [surface])
 
-  // warming the epoch's paths here times the build, and leaves the layer a cache read
-  const basemapMs = useMemo(() => {
-    if (surface === null || tiles.length === 0) return 0
-    const started = performance.now()
-    for (const tile of tiles) source.paths(tile, classes, projectVertex, surface.epoch)
-    return performance.now() - started
-  }, [surface, tiles, classes, projectVertex, source])
+  // building the paths before the layer draws them times the build and leaves the layer a read
+  const warmTiles = useCallback(
+    (visible: TileId[], styles: StyleClass[], project: VertexProjector, at: number) => {
+      if (visible.length === 0) return
+      const started = performance.now()
+      for (const tile of visible) source.paths(tile, styles, project, at)
+      setBasemapMs(performance.now() - started)
+    },
+    [source],
+  )
 
-  const refreshTiles = useCallback(() => {
-    if (!active || surface === null) return
-    const zoom = globeZoom(surface.radius, surface.middle.lat)
-    if (zoom < TILE_MIN_ZOOM) {
-      setTiles([])
-      return
+  /** Picks the tiles a settled view covers, from the centre and radius that settle answered. */
+  const refreshTiles = useCallback(
+    (middle: LatLng, radius: number, at: number) => {
+      if (!active) return
+      const zoom = globeZoom(radius, middle.lat)
+      if (zoom < TILE_MIN_ZOOM) {
+        setTiles([])
+        return
+      }
+      const visible = visibleTiles(middle, zoom, width, height)
+      const styles = classesForZoom(zoom)
+      setTiles(visible)
+      setClasses(styles)
+      for (const tile of visible) source.request(tile)
+      warmTiles(visible, styles, projectVertex, at)
+    },
+    [active, width, height, source, warmTiles, projectVertex],
+  )
+
+  // a tile that lands after the settle is projected here, so the redraw that follows is a read
+  useEffect(() => {
+    decoded.current = () => {
+      warmTiles(tiles, classes, projectVertex, surface?.epoch ?? 0)
+      setTiles((current) => [...current])
     }
-    const visible = visibleTiles(surface.middle, zoom, width, height)
-    setTiles(visible)
-    setClasses(classesForZoom(zoom))
-    for (const tile of visible) source.request(tile)
-  }, [active, surface, width, height, source])
+  })
 
   const report = useCallback((values: number[], visible: number) => {
     setReading({ median: median(values), p95: percentile(values, 0.95), visible })
@@ -580,8 +614,8 @@ export function Planet({ active }: ActProps) {
       const view = { lambda0: lambda0.value, phi0: phi0.value, cx, cy, radius }
       const started = performance.now()
       facing.value = buildGlobeFrame(cells, buffers, view)
-      projectLand(land, view, runs)
-      picture.value = recordGlobe(buffers, runs, view)
+      projectLand(land, view, globeRuns)
+      picture.value = recordGlobe(buffers, globeRuns, view)
       samples[sampleCursor.value] = performance.now() - started
       sampleCursor.value = (sampleCursor.value + 1) % FRAME_SAMPLES
       if (sampleCount.value < FRAME_SAMPLES) sampleCount.value += 1
@@ -602,7 +636,7 @@ export function Planet({ active }: ActProps) {
     cells,
     buffers,
     land,
-    runs,
+    globeRuns,
     samples,
     cx,
     cy,
@@ -648,23 +682,28 @@ export function Planet({ active }: ActProps) {
 
   useEffect(() => {
     if (!active || surface === null) return
-    refreshTiles()
+    refreshTiles(surface.middle, surface.radius, surface.epoch)
     // the build cost lands before the first frame, and is no run
     resetWorstGap()
   }, [active, surface, refreshTiles])
 
   /** Answers the view a settle asks for, with a disk that reaches the viewport corners. */
-  function viewFor(centre: LatLng, radius: number, epoch: number): SurfaceView {
+  function viewFor(centre: LatLng, radius: number, stamp: number): SurfaceView {
     const at = { lambda0: centre.lng * DEG_TO_RAD, phi0: centre.lat * DEG_TO_RAD, cx, cy, radius }
-    const middle = unproject(width / 2, height / 2, at) ?? centre
+    // a corner past the limb is pulled onto it, so no disk has to span a hemisphere
+    const onDisk = (x: number, y: number): LatLng => {
+      const reachX = x - cx
+      const reachY = y - cy
+      const far = Math.hypot(reachX, reachY)
+      const held = far <= LIMB_MARGIN * radius ? 1 : (LIMB_MARGIN * radius) / far
+      return unproject(cx + reachX * held, cy + reachY * held, at) ?? centre
+    }
+
+    const middle = onDisk(width / 2, height / 2)
     const from = latLngToXyz(middle.lat, middle.lng)
     let reach = 0
     for (const corner of CORNERS) {
-      const point = unproject(corner.x * width, corner.y * height, at)
-      if (point === undefined) {
-        reach = Math.PI / 2
-        break
-      }
+      const point = onDisk(corner.x * width, corner.y * height)
       const to = latLngToXyz(point.lat, point.lng)
       reach = Math.max(reach, Math.acos(Math.min(1, from.x * to.x + from.y * to.y + from.z * to.z)))
     }
@@ -679,7 +718,7 @@ export function Planet({ active }: ActProps) {
         1,
         Math.min(MAX_K, Math.ceil((EARTH_RADIUS_M * reach) / (spacing * DISK_APOTHEM)) + 1),
       ),
-      epoch,
+      epoch: stamp,
     }
   }
 
@@ -710,7 +749,8 @@ export function Planet({ active }: ActProps) {
       setGlobeRes(globeResolution(radius, centre.lat))
       return
     }
-    setSurface(viewFor(centre, radius, 1))
+    epoch.current += 1
+    setSurface(viewFor(centre, radius, epoch.current))
     setMode('surface')
   }
 
@@ -723,17 +763,19 @@ export function Planet({ active }: ActProps) {
     const centre = unproject(pointX, pointY, at) ?? surface.centre
     const radius = Math.min(range.radius, surface.radius * scale.value)
     const zoom = globeZoom(radius, centre.lat)
-    const next = viewFor(centre, radius, surface.epoch + 1)
+    const next = viewFor(centre, radius, epoch.current + 1)
     rememberPlanetPosition({ centre: next.middle, zoom })
     if (!pastTheGlobe(zoom, centre.lat)) {
       returnToGlobe(centre, radius)
       return
     }
     if (needsRebuild(surface, next)) {
+      epoch.current = next.epoch
       setSurface(next)
       return
     }
-    refreshTiles()
+    // the scene stands, so the tiles follow the settle's own centre in the scene's own projection
+    refreshTiles(next.middle, radius, surface.epoch)
     resetWorstGap()
   }
 
@@ -798,7 +840,7 @@ export function Planet({ active }: ActProps) {
             epoch={surface.epoch}
           />
           {/* no glow here: it would sit over the basemap the translucent cells uncover */}
-          <CellPictures scene={scene.cells} opacity={tiles.length === 0 ? 1 : BASEMAP_OPACITY} />
+          <CellPictures scene={scene.cells} />
           <Path
             path={scene.coast}
             color={colours.hairline}
@@ -850,7 +892,9 @@ export function Planet({ active }: ActProps) {
             <>
               <Metric value={formatCount(scene.cellCount)} caption="cells drawn" />
               <Row label="resolution" value={`${surface.res}`} />
-              <Row label="rings" value={formatMs(scene.ringsMs)} call={scene.rings} />
+              <Row label="disk" value={formatMs(scene.diskMs)} call={scene.disk} />
+              <Row label="patches" value={formatMs(scene.patchMs)} call="cellToParent" />
+              <Row label="rings" value={formatMs(scene.ringsMs)} call="gridDiskDistances" />
               <Row
                 label="boundaries"
                 value={formatMs(scene.boundariesMs)}

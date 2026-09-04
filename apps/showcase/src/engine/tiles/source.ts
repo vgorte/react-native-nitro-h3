@@ -41,7 +41,7 @@ const DEFAULT_ATTRIBUTION = 'OpenFreeMap © OpenMapTiles, data from OpenStreetMa
 const NOTIFY_MS = 250
 
 /** Reduces the TileJSON's HTML attribution to the plain line the HUD draws. */
-function plainAttribution(html: string): string {
+export function plainAttribution(html: string): string {
   return html
     .replace(/<[^>]*>/g, '')
     .replace(/&copy;/g, '©')

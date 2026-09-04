@@ -1,6 +1,5 @@
 import {
   BlendMode,
-  Group,
   Path,
   Picture,
   Skia,
@@ -26,8 +25,6 @@ export interface CellScene {
 /** Configures {@linkcode CellPictures}. */
 export interface CellPicturesProps {
   scene: CellScene | null
-  /** Opacity of the filled cells; the outline always draws at full strength. */
-  opacity?: number
 }
 
 const paints = rampColours(BUCKETS).map((colour) => {
@@ -41,12 +38,16 @@ const paints = rampColours(BUCKETS).map((colour) => {
  * Records one picture per colour bucket plus the outline, in scene coordinates.
  *
  * A recolour re-buckets the mesh and calls this again; the vertex positions never move, so the
- * cost is the recording alone.
+ * cost is the recording alone. `opacity` is folded into the recorded paint, because a Skia group
+ * opacity is a paint property and `drawPicture` ignores the paint it is drawn under.
+ *
+ * @param opacity Alpha of the filled cells, `1` for solid; the outline always draws solid.
  */
 export function recordCellScene(
   mesh: MeshBuild,
   bounds: Bounds,
   outlinePath: string | null,
+  opacity = 1,
 ): CellScene {
   const rect = Skia.XYWHRect(
     bounds.minX,
@@ -54,6 +55,14 @@ export function recordCellScene(
     bounds.maxX - bounds.minX,
     bounds.maxY - bounds.minY,
   )
+  const fills =
+    opacity === 1
+      ? paints
+      : paints.map((paint) => {
+          const faded = paint.copy()
+          faded.setAlphaf(opacity)
+          return faded
+        })
   const pictures: SkPicture[] = []
   for (let bucket = 0; bucket < BUCKETS; bucket++) {
     const batches = bucketBatches(mesh, bucket)
@@ -73,7 +82,7 @@ export function recordCellScene(
         Array.from(batch.indices),
         false,
       )
-      canvas.drawVertices(vertices, BlendMode.SrcOver, paints[bucket])
+      canvas.drawVertices(vertices, BlendMode.SrcOver, fills[bucket])
     }
     pictures.push(recorder.finishRecordingAsPicture())
     recorder.dispose()
@@ -83,16 +92,14 @@ export function recordCellScene(
 }
 
 /** Draws a recorded scene; it carries no camera, because it renders inside the camera group. */
-export function CellPictures({ scene, opacity = 1 }: CellPicturesProps) {
+export function CellPictures({ scene }: CellPicturesProps) {
   if (scene === null) return null
   return (
     <>
-      <Group opacity={opacity}>
-        {scene.pictures.map((picture, index) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: the pictures are a fixed positional list.
-          <Picture key={index} picture={picture} />
-        ))}
-      </Group>
+      {scene.pictures.map((picture, index) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: the pictures are a fixed positional list.
+        <Picture key={index} picture={picture} />
+      ))}
       {scene.outline === null ? null : (
         <Path path={scene.outline} color={colours.hairline} style="stroke" strokeWidth={0} />
       )}

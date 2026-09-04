@@ -183,7 +183,6 @@ describe('buildTilePaths with a projection', () => {
     )
 
     expect(built.paths.water).toBe('M0.0 0.0L-180.0 0.0L0.0 85.1L0.0 0.0Z')
-    expect(built.projected).toBe(true)
   })
 
   test('breaks a polyline where the projection answers nothing', () => {

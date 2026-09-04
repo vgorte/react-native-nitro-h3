@@ -34,6 +34,23 @@ export interface MeshOptions {
   bucketOf?: Uint8Array
 }
 
+/** Rings of a patch that carry their own colour step; a cell past them takes the darkest one. */
+export const PATCH_RINGS = 10
+
+/**
+ * Answers the colour bucket of a cell `distance` rings from the centre of its patch.
+ *
+ * The centre takes the brightest step and {@linkcode PATCH_RINGS} the darkest, so a patch reads as
+ * a bullseye; a cell whose distance is unknown or outside the patch takes the darkest step too.
+ *
+ * @param distance Grid distance to the patch centre, negative where H3 could not answer one.
+ * @param buckets Steps the ramp is cut into, which the caller takes from the theme.
+ */
+export function bucketForDistance(distance: number, buckets: number): number {
+  if (distance < 0 || distance > PATCH_RINGS) return 0
+  return Math.round(((PATCH_RINGS - distance) / PATCH_RINGS) * (buckets - 1))
+}
+
 /**
  * Writes the triangle fan of one cell from its first vertex, `count - 2` triangles.
  *

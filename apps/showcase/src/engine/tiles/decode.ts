@@ -75,8 +75,6 @@ export interface TilePaths {
   paths: Record<StyleClass, string>
   extent: number
   features: number
-  /** Whether the numbers are screen pixels rather than tile coordinates. */
-  projected: boolean
 }
 
 /** Holds a decoded tile with the evidence that its property strings survived the decoder. */
@@ -225,5 +223,5 @@ export function buildTilePaths(tile: DecodedTile, options: TilePathOptions): Til
   const paths = {} as Record<StyleClass, string>
   for (const style of STYLE_CLASSES) paths[style] = parts[style].join('')
 
-  return { paths, extent, features, projected: at !== undefined }
+  return { paths, extent, features }
 }

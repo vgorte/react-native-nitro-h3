@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import type { CellBoundaries } from 'react-native-nitro-h3'
-import { buildMesh, buildOutlinePath } from '../engine/mesh'
+import { bucketForDistance, buildMesh, buildOutlinePath, PATCH_RINGS } from '../engine/mesh'
 import { projectCells } from '../engine/projection'
 
 const STRIDE = 20
@@ -115,5 +115,25 @@ describe('buildOutlinePath', () => {
     const cells = projectCells(boundaries([[0, 0, 1, 0, 1, 1]]), CENTRE)
 
     expect(buildOutlinePath(cells, 3).match(/L/g)).toHaveLength(2)
+  })
+})
+
+describe('bucketForDistance', () => {
+  test('puts the patch centre at the brightest step and the last ring at the darkest', () => {
+    expect(bucketForDistance(0, 16)).toBe(15)
+    expect(bucketForDistance(PATCH_RINGS, 16)).toBe(0)
+  })
+
+  test('gives every ring of the patch its own step', () => {
+    const steps = []
+    for (let ring = 0; ring <= PATCH_RINGS; ring++) steps.push(bucketForDistance(ring, 16))
+
+    expect(steps).toEqual([15, 14, 12, 11, 9, 8, 6, 5, 3, 2, 0])
+    expect(new Set(steps).size).toBe(PATCH_RINGS + 1)
+  })
+
+  test('answers the darkest step outside the patch and for an unknown distance', () => {
+    expect(bucketForDistance(PATCH_RINGS + 1, 16)).toBe(0)
+    expect(bucketForDistance(-1, 16)).toBe(0)
   })
 })
