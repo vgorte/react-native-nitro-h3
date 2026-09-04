@@ -51,21 +51,38 @@ describe('runWorkload', () => {
     ])
   })
 
-  test('never warms a reference side that is a single unchunked call', async () => {
+  test('never warms one unchunked call that is measured once', async () => {
     let calls = 0
-    const single: Workload = {
+    const finale: Workload = {
       ...workload,
       runs: 1,
-      referenceRuns: 2,
+      referenceRuns: 1,
       calls: 1,
       reference: () => {
         calls += 1
       },
     }
 
-    await runWorkload(single, () => {}, { aborted: false })
+    await runWorkload(finale, () => {}, { aborted: false })
 
-    expect(calls).toBe(2)
+    expect(calls).toBe(1)
+  })
+
+  test('warms one unchunked call that is measured repeatedly', async () => {
+    let calls = 0
+    const repeated: Workload = {
+      ...workload,
+      runs: 1,
+      referenceRuns: 3,
+      calls: 1,
+      reference: () => {
+        calls += 1
+      },
+    }
+
+    await runWorkload(repeated, () => {}, { aborted: false })
+
+    expect(calls).toBe(4)
   })
 
   test('gives up once the run passes the ceiling', async () => {

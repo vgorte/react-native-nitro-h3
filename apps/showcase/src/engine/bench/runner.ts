@@ -73,8 +73,8 @@ export async function runWorkload(
     if (stopped()) return aborted()
   }
 
-  // a single unchunked call cannot be bounded, so warming it would repeat the whole run
-  if (workload.calls > 1) {
+  // one unchunked call measured once cannot be bounded, so warming it would repeat the whole run
+  if (workload.calls > 1 || workload.referenceRuns > 1) {
     workload.reference(0, Math.min(REFERENCE_CHUNK, workload.calls))
     await yieldToLoop()
     if (stopped()) return aborted()
