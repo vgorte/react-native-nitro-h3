@@ -67,13 +67,17 @@ const PANEL_TOP = 104
 const PRINT_WIDTH = 268
 // clears the blocked readout, which stands on the same line at the other edge
 const CONTROL_BOTTOM = 118
-// the head stands in the band the expanded panel and the controls leave open between them
-const HEAD_Y = 0.72
+// The head stands where the three glass surfaces leave the scene open on both test targets: under
+// the expanded panel, left of the controls and above the blocked readout.
+const HEAD_X = 0.32
+const HEAD_Y = 0.76
 
 const NOTES = [
   'a fix that is not a neighbour of the head is joined with gridPathCells',
+  'a fix a second at resolution 11 lands in the same cell or a neighbour, so the grid path only ' +
+    'answers a gap in the feed',
   'those filled cells draw on the lower half of the ramp, the measured ones on the whole of it',
-  `the trail keeps its last ${formatCount(AGE_SPAN)} cells and fades them from the head to the tail`,
+  `the trail keeps its last ${formatCount(AGE_SPAN)} cells, and fades over what it holds`,
   'with the location refused, a recorded route plays at the pace it was walked',
 ]
 
@@ -132,10 +136,10 @@ function walkRoute(fixes: readonly TrailFix[], res: number): Walk {
 /**
  * Draws the route the visitor walks as the cells it passes through, gap by gap.
  *
- * Every fix becomes one cell through `latLngToCell`. Two fixes rarely land in neighbouring cells, so
- * the cells between them come from `gridPathCells` and draw on the lower half of the ramp, which is
- * the act's whole point: what was measured and what was inferred are told apart on screen. The trail
- * keeps its last {@linkcode AGE_SPAN} cells and fades them from the head to the tail, and the camera
+ * Every fix becomes one cell through `latLngToCell`. A fix that is not a neighbour of the head is
+ * joined to it with `gridPathCells`, and those cells draw on the lower half of the ramp, which is
+ * the act's whole point: what was measured and what was inferred are told apart on screen. The
+ * trail keeps its last {@linkcode AGE_SPAN} cells and fades over whatever it holds, and the camera
  * follows the head until the visitor takes it over, after which the recentre control gives it back.
  * Refusing the location plays {@linkcode REPLAY_ROUTE} instead, at the pace it was recorded.
  */
@@ -173,14 +177,14 @@ export function Trail({ active }: ActProps) {
     anchored.current = anchor
   }, [anchor])
 
-  /** Puts a cell in the middle of what the act indicator leaves, which is where the head belongs. */
+  /** Puts a cell in the band the two panels leave open, which is where the head belongs. */
   const centreOn = useCallback(
     (cell: bigint, animated: boolean) => {
       const centre = cellToLatLng(cell)
       const frame = anchored.current
       const x = mercatorX(centre.lng) - mercatorX(frame.lng)
       const y = mercatorY(frame.lat) - mercatorY(centre.lat)
-      const toX = width / 2 - x * scale.value
+      const toX = width * HEAD_X - x * scale.value
       const toY = height * HEAD_Y - y * scale.value
       if (!animated) {
         translateX.value = toX

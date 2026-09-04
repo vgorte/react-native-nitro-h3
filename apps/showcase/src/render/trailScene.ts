@@ -24,8 +24,8 @@ export interface TrailScene {
  * Records the trail, every cell in the colour its age and its origin stand for.
  *
  * The cells are drawn inset rather than under an outline strip: a trail is a chain of cells and not
- * a tiling, so three edges a cell would leave a ragged grid, while the inset gives every cell of the
- * chain its own edge of ground.
+ * a tiling, so three edges a cell would leave a ragged grid, while the inset gives every cell of
+ * the chain its own edge of ground.
  *
  * @param trail The cells walked so far, oldest first.
  * @param anchor The coordinate the scene's metre space is measured from.

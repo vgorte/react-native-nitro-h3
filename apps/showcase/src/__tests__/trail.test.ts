@@ -111,19 +111,21 @@ describe('capTrail', () => {
 })
 
 describe('bucketOfAge', () => {
-  test('gives the head the brightest step of the ramp', () => {
-    expect(bucketOfAge(0, false, BUCKETS)).toBe(BUCKETS - 1)
+  test('gives the head the brightest step of the ramp, whatever the trail spans', () => {
+    expect(bucketOfAge(0, false, BUCKETS, 0)).toBe(BUCKETS - 1)
+    expect(bucketOfAge(0, false, BUCKETS, 7)).toBe(BUCKETS - 1)
+    expect(bucketOfAge(0, false, BUCKETS, AGE_SPAN - 1)).toBe(BUCKETS - 1)
   })
 
-  test('gives a cell a whole span old the darkest step', () => {
-    expect(bucketOfAge(AGE_SPAN, false, BUCKETS)).toBe(0)
-    expect(bucketOfAge(AGE_SPAN * 2, false, BUCKETS)).toBe(0)
+  test('gives the oldest cell standing the darkest step, whatever the trail spans', () => {
+    expect(bucketOfAge(7, false, BUCKETS, 7)).toBe(0)
+    expect(bucketOfAge(AGE_SPAN - 1, false, BUCKETS, AGE_SPAN - 1)).toBe(0)
   })
 
   test('never brightens as a cell ages', () => {
     let last = BUCKETS
     for (let age = 0; age <= AGE_SPAN; age += 7) {
-      const bucket = bucketOfAge(age, false, BUCKETS)
+      const bucket = bucketOfAge(age, false, BUCKETS, AGE_SPAN)
       expect(bucket).toBeLessThanOrEqual(last)
       last = bucket
     }
@@ -131,8 +133,8 @@ describe('bucketOfAge', () => {
 
   test('holds a filled cell under a measured cell of the same age', () => {
     for (let age = 0; age < AGE_SPAN; age += 25) {
-      const measuredBucket = bucketOfAge(age, false, BUCKETS)
-      const filledBucket = bucketOfAge(age, true, BUCKETS)
+      const measuredBucket = bucketOfAge(age, false, BUCKETS, AGE_SPAN)
+      const filledBucket = bucketOfAge(age, true, BUCKETS, AGE_SPAN)
       expect(filledBucket).toBeLessThanOrEqual(measuredBucket)
       // the two bands only meet where the ramp itself has run out of steps to tell them apart
       if (measuredBucket > 1) expect(filledBucket).toBeLessThan(measuredBucket)
@@ -140,28 +142,56 @@ describe('bucketOfAge', () => {
   })
 
   test('keeps a filled cell inside the lower half of the ramp', () => {
-    expect(bucketOfAge(0, true, BUCKETS)).toBeLessThanOrEqual((BUCKETS - 1) / 2)
+    expect(bucketOfAge(0, true, BUCKETS, AGE_SPAN)).toBeLessThanOrEqual((BUCKETS - 1) / 2)
   })
 })
 
 describe('bucketsOfTrail', () => {
-  test('answers one bucket a step, brightest at the head', () => {
-    const buckets = bucketsOfTrail(measured(5), BUCKETS)
+  test('gives a trail of one cell the brightest step', () => {
+    expect(Array.from(bucketsOfTrail(measured(1), BUCKETS))).toEqual([BUCKETS - 1])
+  })
 
-    expect(buckets).toHaveLength(5)
-    expect(buckets[4]).toBe(BUCKETS - 1)
-    expect(buckets[0]).toBe(bucketOfAge(4, false, BUCKETS))
+  test('spreads a trail of two cells over both ends of the ramp', () => {
+    expect(Array.from(bucketsOfTrail(measured(2), BUCKETS))).toEqual([0, BUCKETS - 1])
+  })
+
+  test('runs a short trail over the whole ramp, head to tail', () => {
+    const buckets = bucketsOfTrail(measured(8), BUCKETS)
+
+    expect(buckets).toHaveLength(8)
+    expect(buckets[7]).toBe(BUCKETS - 1)
+    expect(buckets[0]).toBe(0)
+    // every step down the trail is a step down the ramp, and none of them repeats
+    expect(new Set(buckets).size).toBe(8)
+  })
+
+  test('runs a full trail over the whole ramp as well', () => {
+    const buckets = bucketsOfTrail(measured(AGE_SPAN), BUCKETS)
+
+    expect(buckets[AGE_SPAN - 1]).toBe(BUCKETS - 1)
+    expect(buckets[0]).toBe(0)
+    expect(new Set(buckets).size).toBe(BUCKETS)
+  })
+
+  test('spreads over the cells a capped trail kept, not over the ones it dropped', () => {
+    const buckets = bucketsOfTrail(capTrail(measured(1_000), AGE_SPAN), BUCKETS)
+
+    expect(buckets).toHaveLength(AGE_SPAN)
+    expect(buckets[AGE_SPAN - 1]).toBe(BUCKETS - 1)
+    expect(buckets[0]).toBe(0)
   })
 
   test('reads a filled step on the lower band', () => {
     const trail: TrailStep[] = [
-      { cell: 1n, filled: true },
-      { cell: 2n, filled: false },
+      { cell: 1n, filled: false },
+      { cell: 2n, filled: true },
+      { cell: 3n, filled: false },
     ]
     const buckets = bucketsOfTrail(trail, BUCKETS)
 
-    expect(buckets[0]).toBe(bucketOfAge(1, true, BUCKETS))
-    expect(buckets[1]).toBe(BUCKETS - 1)
+    expect(buckets[1]).toBe(bucketOfAge(1, true, BUCKETS, 2))
+    expect(buckets[1]).toBeLessThan(bucketOfAge(1, false, BUCKETS, 2))
+    expect(buckets[2]).toBe(BUCKETS - 1)
   })
 })
 

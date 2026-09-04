@@ -7,7 +7,7 @@ export const MIN_TRAIL_RES = 10
 /** The finest resolution the control offers. */
 export const MAX_TRAIL_RES = 12
 
-/** Cells the trail keeps, and the age a cell fades over from the brightest step to the darkest. */
+/** Cells the trail keeps; the fade spreads over however many of them are standing. */
 export const AGE_SPAN = 600
 
 /** Cells the opening frame fits across the narrow side of the viewport. */
@@ -88,35 +88,31 @@ export function capTrail(trail: TrailStep[], span: number): TrailStep[] {
 /**
  * Answers the ramp bucket of a trail cell from its age, filled cells on their own lower band.
  *
- * The head takes the brightest step and a cell a whole `span` old the darkest, so the trail reads
- * as a comet. A cell the grid path filled in was never measured, and stays under the measured cell
- * of the same age by taking {@linkcode FILLED_BAND} of the ramp instead of all of it.
+ * The fade is normalised to the trail that is standing: the head takes the brightest step and the
+ * oldest cell the darkest, whether the trail holds eight cells or the whole {@linkcode AGE_SPAN},
+ * so the ramp reads on the first minute of a walk as well as on an hour of one. A cell the grid
+ * path filled in was never measured, and stays under the measured cell of the same age by taking
+ * {@linkcode FILLED_BAND} of the ramp instead of all of it.
  *
  * @param age Cells between this one and the head, `0` for the head itself.
  * @param filled Whether the grid path filled the cell in.
  * @param buckets Steps the ramp is cut into, which the caller takes from the theme.
- * @param span Cells the fade runs over, {@linkcode AGE_SPAN} for the drawn trail.
+ * @param span The age of the oldest cell standing, which is what the fade is spread over.
  */
-export function bucketOfAge(
-  age: number,
-  filled: boolean,
-  buckets: number,
-  span = AGE_SPAN,
-): number {
-  if (age >= span) return 0
+export function bucketOfAge(age: number, filled: boolean, buckets: number, span: number): number {
   const top = filled ? Math.floor((buckets - 1) * FILLED_BAND) : buckets - 1
+  // a trail of one cell is all head, and has no age to spread a ramp over
+  if (span <= 0 || age <= 0) return top
+  if (age >= span) return 0
   return Math.round(((span - age) / span) * top)
 }
 
 /** Answers the ramp bucket of every step of a trail, in the order the cells are drawn in. */
-export function bucketsOfTrail(
-  trail: readonly TrailStep[],
-  buckets: number,
-  span = AGE_SPAN,
-): Uint8Array {
+export function bucketsOfTrail(trail: readonly TrailStep[], buckets: number): Uint8Array {
   const of = new Uint8Array(trail.length)
+  const span = trail.length - 1
   for (let index = 0; index < trail.length; index++) {
-    of[index] = bucketOfAge(trail.length - 1 - index, trail[index].filled, buckets, span)
+    of[index] = bucketOfAge(span - index, trail[index].filled, buckets, span)
   }
   return of
 }
