@@ -98,7 +98,7 @@ export function zoomForMetresPerPixel(mpp: number, lat: number): number {
   return Math.log2((2 * Math.PI * EARTH_RADIUS_M * Math.cos(lat * DEG_TO_RAD)) / (256 * mpp))
 }
 
-// the target width of a cell on screen, the size at which a hexagon reads as a hexagon
+// the width at which a hexagon still reads as a hexagon
 const TARGET_CELL_PX = 30
 
 /**
@@ -126,8 +126,7 @@ export function resolutionForZoom(
   return best
 }
 
-// Float32 holds 24 mantissa bits, so a metre offset of magnitude M carries about M * 6e-8 of
-// error; 800,000 pixels of offset keeps that under a twentieth of a pixel at any zoom.
+// keeps `Float32` rounding of the offset under a twentieth of a pixel
 const REANCHOR_PIXELS = 800_000
 
 /** Answers how far the view centre may drift from the mesh anchor before a rebuild re-anchors. */

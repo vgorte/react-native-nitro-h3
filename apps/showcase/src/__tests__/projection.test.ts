@@ -246,23 +246,23 @@ describe('handoff', () => {
 
   test('keeps the two projections within 8 px of each other 100 px from the centre', () => {
     const centre = { lat: 60, lng: 10 }
-    const view = {
+    const globeView = {
       lambda0: centre.lng * DEG_TO_RAD,
       phi0: centre.lat * DEG_TO_RAD,
       cx: 200,
       cy: 400,
       radius: 1595,
     }
-    const camera = handoffCamera(view, centre)
+    const camera = handoffCamera(globeView, centre)
     const cells = hexagonsNorthOf(centre.lat, centre.lng, 6)
 
-    const globe = projectCellsOrthographic(cells, view)
+    const globe = projectCellsOrthographic(cells, globeView)
     const city = projectCellsCity(cells, camera)
 
     let worst = 0
     for (let slot = 0; slot < globe.length; slot += 2) {
       if (Number.isNaN(globe[slot])) continue
-      const radius = Math.hypot(globe[slot] - view.cx, globe[slot + 1] - view.cy)
+      const radius = Math.hypot(globe[slot] - globeView.cx, globe[slot + 1] - globeView.cy)
       if (radius > 100) continue
       worst = Math.max(
         worst,
