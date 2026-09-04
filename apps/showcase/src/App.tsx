@@ -40,8 +40,6 @@ const styles = StyleSheet.create({
   label: {
     color: '#4d6f9a',
     fontSize: 13,
-    letterSpacing: 2,
-    textTransform: 'uppercase',
   },
   cell: {
     color: '#9fc4ea',

@@ -12,7 +12,7 @@ config.resolver.nodeModulesPaths = [
   path.resolve(workspaceRoot, 'node_modules'),
 ]
 
-// `apps/example` pins `react-native` 0.87.0, so every importer here resolves this app's own copy.
+// the symlinked workspace package would otherwise resolve `react-native` 0.87.0 from its own copy
 const pinnedPackages = ['react', 'react-native']
 const pinnedOrigin = path.join(projectRoot, 'index.ts')
 
