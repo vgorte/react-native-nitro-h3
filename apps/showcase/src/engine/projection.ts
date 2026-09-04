@@ -174,6 +174,72 @@ export function projectCells(boundaries: CellBoundaries, centre: LatLng): Projec
   return { stride, points, vertexCounts, cellCount, bounds: { minX, minY, maxX, maxY } }
 }
 
+/**
+ * Drops the cells whose extent misses a rectangle and packs the rest, keeping the input layout.
+ *
+ * @param projected The cells to cull, as {@linkcode projectCells} answers them.
+ * @param rect The rectangle to keep, in the metre space of `projected`.
+ */
+export function cullCells(projected: ProjectedCells, rect: Bounds): ProjectedCells {
+  const { stride, points, vertexCounts, cellCount } = projected
+  const kept = new Uint8Array(cellCount)
+  let keptCount = 0
+
+  for (let cell = 0; cell < cellCount; cell++) {
+    const count = vertexCounts[cell]
+    if (count === 0) continue
+    const base = cell * stride
+    let minX = Number.POSITIVE_INFINITY
+    let minY = Number.POSITIVE_INFINITY
+    let maxX = Number.NEGATIVE_INFINITY
+    let maxY = Number.NEGATIVE_INFINITY
+    for (let vertex = 0; vertex < count; vertex++) {
+      const x = points[base + vertex * 2]
+      const y = points[base + vertex * 2 + 1]
+      if (x < minX) minX = x
+      if (x > maxX) maxX = x
+      if (y < minY) minY = y
+      if (y > maxY) maxY = y
+    }
+    if (maxX < rect.minX || minX > rect.maxX || maxY < rect.minY || minY > rect.maxY) continue
+    kept[cell] = 1
+    keptCount += 1
+  }
+
+  if (keptCount === cellCount) return projected
+
+  const culled = new Float32Array(keptCount * stride)
+  const counts = new Uint8Array(keptCount)
+  let minX = Number.POSITIVE_INFINITY
+  let minY = Number.POSITIVE_INFINITY
+  let maxX = Number.NEGATIVE_INFINITY
+  let maxY = Number.NEGATIVE_INFINITY
+  let target = 0
+
+  for (let cell = 0; cell < cellCount; cell++) {
+    if (kept[cell] === 0) continue
+    const count = vertexCounts[cell]
+    counts[target] = count
+    const from = cell * stride
+    const to = target * stride
+    for (let vertex = 0; vertex < count; vertex++) {
+      const x = points[from + vertex * 2]
+      const y = points[from + vertex * 2 + 1]
+      culled[to + vertex * 2] = x
+      culled[to + vertex * 2 + 1] = y
+      if (x < minX) minX = x
+      if (x > maxX) maxX = x
+      if (y < minY) minY = y
+      if (y > maxY) maxY = y
+    }
+    target += 1
+  }
+
+  const bounds =
+    keptCount === 0 ? { minX: 0, minY: 0, maxX: 0, maxY: 0 } : { minX, minY, maxX, maxY }
+  return { stride, points: culled, vertexCounts: counts, cellCount: keptCount, bounds }
+}
+
 /** Converts a coordinate in degrees to a point on the unit sphere. */
 export function latLngToXyz(lat: number, lng: number): Xyz {
   'worklet'

@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import type { CellBoundaries } from 'react-native-nitro-h3'
 import {
+  cullCells,
   DEG_TO_RAD,
   type GlobeView,
   handoffCamera,
@@ -10,6 +11,7 @@ import {
   mercatorX,
   mercatorY,
   metresPerPixel,
+  type ProjectedCells,
   project,
   projectCells,
   projectCellsCity,
@@ -282,5 +284,59 @@ describe('handoff', () => {
     lerpPositions(from, to, 0.25, out)
 
     expect(Array.from(out)).toEqual([25, 0, 10, 25])
+  })
+})
+
+describe('cullCells', () => {
+  const rect = { minX: -0.5, minY: -0.5, maxX: 0.5, maxY: 0.5 }
+
+  /** Lays out square cells of side `1` centred on each pair, in the padded layout. */
+  function squares(centres: number[][]): ProjectedCells {
+    const points = new Float32Array(centres.length * STRIDE)
+    const vertexCounts = new Uint8Array(centres.length)
+    centres.forEach(([x, y], cell) => {
+      vertexCounts[cell] = 4
+      points.set(
+        [x - 0.5, y - 0.5, x + 0.5, y - 0.5, x + 0.5, y + 0.5, x - 0.5, y + 0.5],
+        cell * STRIDE,
+      )
+    })
+    return {
+      stride: STRIDE,
+      points,
+      vertexCounts,
+      cellCount: centres.length,
+      bounds: { minX: 0, minY: 0, maxX: 0, maxY: 0 },
+    }
+  }
+
+  test('answers the input when every cell touches the rectangle', () => {
+    const projected = squares([[0, 0]])
+
+    expect(cullCells(projected, rect)).toBe(projected)
+  })
+
+  test('drops the cells outside and packs the rest', () => {
+    const culled = cullCells(
+      squares([
+        [0, 0],
+        [8, 0],
+        [1, 1],
+      ]),
+      rect,
+    )
+
+    expect(culled.cellCount).toBe(2)
+    expect(Array.from(culled.vertexCounts)).toEqual([4, 4])
+    expect(culled.points[0]).toBeCloseTo(-0.5, 5)
+    expect(culled.points[STRIDE]).toBeCloseTo(0.5, 5)
+    expect(culled.bounds).toEqual({ minX: -0.5, minY: -0.5, maxX: 1.5, maxY: 1.5 })
+  })
+
+  test('answers an empty set when nothing touches the rectangle', () => {
+    const culled = cullCells(squares([[8, 8]]), rect)
+
+    expect(culled.cellCount).toBe(0)
+    expect(culled.bounds).toEqual({ minX: 0, minY: 0, maxX: 0, maxY: 0 })
   })
 })

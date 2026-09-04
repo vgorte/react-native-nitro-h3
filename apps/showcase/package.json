@@ -8,6 +8,7 @@
     "ios": "expo run:ios",
     "android": "expo run:android",
     "prebuild": "expo prebuild",
+    "land": "bun run scripts/build-land.ts",
     "typecheck": "tsc --noEmit",
     "test": "bun test ./src/__tests__"
   },
