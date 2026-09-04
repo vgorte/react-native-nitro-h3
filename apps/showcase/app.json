@@ -20,6 +20,15 @@
       },
       "predictiveBackGestureEnabled": false
     },
-    "plugins": ["expo-dev-client", "@maplibre/maplibre-react-native"]
+    "plugins": [
+      "expo-dev-client",
+      "@maplibre/maplibre-react-native",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "The Trail act draws the route you walk as H3 cells while it is on screen."
+        }
+      ]
+    ]
   }
 }
