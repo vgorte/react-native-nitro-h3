@@ -42,7 +42,7 @@ export function renderGlow(scene: CellScene, viewport: SkRect, scale: number): G
   const canvas = surface.getCanvas()
   const paint = Skia.Paint()
   paint.setImageFilter(Skia.ImageFilter.MakeBlur(GLOW_SIGMA, GLOW_SIGMA, TileMode.Decal, null))
-  // the matrix scales the sigma, so the layer goes on before the camera
+  // the matrix scales the sigma, so the layer precedes it
   canvas.saveLayer(paint)
   canvas.scale(scale * GLOW_SCALE, scale * GLOW_SCALE)
   canvas.translate(-viewport.x, -viewport.y)
@@ -53,7 +53,8 @@ export function renderGlow(scene: CellScene, viewport: SkRect, scale: number): G
   const snapshot = surface.makeImageSnapshot()
   // the display canvas cannot draw a texture from the offscreen context
   const image = snapshot.makeNonTextureImage()
-  snapshot.dispose()
+  // a raster surface answers the snapshot itself, and that one is the image
+  if (image !== snapshot) snapshot.dispose()
   surface.dispose()
   return image === null ? null : { image, rect: viewport }
 }

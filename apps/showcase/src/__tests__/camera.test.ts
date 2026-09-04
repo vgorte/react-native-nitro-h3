@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { DEG_TO_RAD, EARTH_RADIUS_M, mercatorY, metresPerPixel } from '../engine/projection'
-import { fitTo, sceneToLatLng, screenToScene, zoomForScale } from '../render/camera'
+import { fitTo, sceneToLatLng, sceneViewport, screenToScene, zoomForScale } from '../render/camera'
 
 describe('screenToScene', () => {
   test('inverts the camera transform', () => {
@@ -10,6 +10,20 @@ describe('screenToScene', () => {
 
     expect(scene.x).toBeCloseTo(40, 9)
     expect(scene.y).toBeCloseTo(40, 9)
+  })
+})
+
+describe('sceneViewport', () => {
+  test('spans the screen corners in scene units', () => {
+    const camera = { translateX: 40, translateY: -20, scale: 2.5 }
+
+    const rect = sceneViewport(400, 800, camera)
+    const corner = screenToScene(400, 800, camera)
+
+    expect(rect.x).toBeCloseTo(-16, 9)
+    expect(rect.y).toBeCloseTo(8, 9)
+    expect(rect.x + rect.width).toBeCloseTo(corner.x, 9)
+    expect(rect.y + rect.height).toBeCloseTo(corner.y, 9)
   })
 })
 

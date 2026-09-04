@@ -1,4 +1,3 @@
-import { Skia } from '@shopify/react-native-skia'
 import { useFonts } from 'expo-font'
 import { StatusBar } from 'expo-status-bar'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -11,7 +10,7 @@ import { resetWorstGap } from './render/BlockedReadout'
 import { CellPictures, type CellScene, recordCellScene } from './render/CellPictures'
 import { EngineCanvas } from './render/EngineCanvas'
 import { type GlowImage, GlowLayer, renderGlow } from './render/GlowLayer'
-import { type Camera, type CameraAnchor, screenToScene, useCamera } from './render/useCamera'
+import { type Camera, type CameraAnchor, sceneViewport, useCamera } from './render/useCamera'
 import { fontAssets } from './theme/fonts'
 import { BUCKETS, colours } from './theme/tokens'
 
@@ -37,17 +36,6 @@ function buildScene(anchor: CameraAnchor): CellScene {
   return recordCellScene(mesh, projected.bounds, outline)
 }
 
-/** Answers the scene rectangle the viewport covers at the camera's current values. */
-function sceneViewport(camera: Camera, width: number, height: number) {
-  const scale = camera.scale.value
-  const origin = screenToScene(0, 0, {
-    translateX: camera.translateX.value,
-    translateY: camera.translateY.value,
-    scale,
-  })
-  return Skia.XYWHRect(origin.x, origin.y, width / scale, height / scale)
-}
-
 export default function App() {
   const [fontsLoaded] = useFonts(fontAssets)
   const { width, height } = useWindowDimensions()
@@ -59,15 +47,21 @@ export default function App() {
     (scene: CellScene) => {
       const camera = cameraRef.current
       if (camera === null) return
-      setGlow(renderGlow(scene, sceneViewport(camera, width, height), camera.scale.value))
+      const values = {
+        translateX: camera.translateX.value,
+        translateY: camera.translateY.value,
+        scale: camera.scale.value,
+      }
+      setGlow(renderGlow(scene, sceneViewport(width, height, values), values.scale))
     },
     [width, height],
   )
 
   const onSettle = useCallback(() => {
-    resetWorstGap()
     const scene = sceneRef.current
     if (scene !== null) paintGlow(scene)
+    // resetting last keeps the glow out of the run
+    resetWorstGap()
   }, [paintGlow])
 
   const camera = useCamera({ anchor: BERLIN, onSettle })
@@ -85,9 +79,9 @@ export default function App() {
       fitted.current = true
       camera.fit(scene.bounds, width, height)
     }
-    // the build blocks the thread before the first frame, and is no run
-    resetWorstGap()
+    // the mount cost lands before the first frame, and is no run
     paintGlow(scene)
+    resetWorstGap()
   }, [camera.fit, scene, width, height, paintGlow])
 
   // the ground colour already fills the window, so an unstyled first frame is worse than none

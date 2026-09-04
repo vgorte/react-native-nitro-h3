@@ -1,3 +1,4 @@
+import type { SkRect } from '@shopify/react-native-skia'
 import type { LatLng } from 'react-native-nitro-h3'
 import {
   type Bounds,
@@ -28,6 +29,17 @@ export function screenToScene(
 ): { x: number; y: number } {
   'worklet'
   return { x: (x - camera.translateX) / camera.scale, y: (y - camera.translateY) / camera.scale }
+}
+
+/** Answers the scene rectangle a viewport of `width` by `height` pixels covers. */
+export function sceneViewport(
+  width: number,
+  height: number,
+  camera: { translateX: number; translateY: number; scale: number },
+): SkRect {
+  'worklet'
+  const origin = screenToScene(0, 0, camera)
+  return { x: origin.x, y: origin.y, width: width / camera.scale, height: height / camera.scale }
 }
 
 /** Answers the coordinate at a scene position, measured from `anchor`. */

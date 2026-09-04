@@ -67,6 +67,20 @@ describe('buildMesh', () => {
     expect(mesh.groups.map((group) => group.bucket)).toEqual([0, 1, 0, 1, 0, 1])
   })
 
+  test('keeps every batch addressable by a 16-bit index', () => {
+    const cells = boundaries(Array.from({ length: 20_000 }, () => polygon(6, 0, 0)))
+    const mesh = buildMesh(projectCells(cells, CENTRE), FULL)
+
+    expect(mesh.groups).toHaveLength(32)
+    for (const group of mesh.groups) {
+      const points = group.positions.length / 2
+      let highest = 0
+      for (const index of group.indices) highest = Math.max(highest, index)
+      expect(points).toBeLessThanOrEqual(65_535)
+      expect(highest).toBeLessThan(points)
+    }
+  })
+
   test('shrinks every vertex toward the centre of its cell', () => {
     const cells = projectCells(boundaries([polygon(6, 0, 0)]), CENTRE)
     const full = buildMesh(cells, FULL).groups[0].positions

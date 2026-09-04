@@ -27,6 +27,7 @@ export {
   fitTo,
   SETTLE_MS,
   sceneToLatLng,
+  sceneViewport,
   screenToScene,
   zoomForScale,
 } from './camera'
