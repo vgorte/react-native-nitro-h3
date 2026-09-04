@@ -3,10 +3,12 @@ import {
   AGE_SPAN,
   bucketOfAge,
   bucketsOfTrail,
+  cameraTaken,
   capTrail,
   cellsOfTrail,
   extendTrail,
   filledCells,
+  headHeight,
   MAX_TRAIL_RES,
   MIN_TRAIL_RES,
   pathOrJump,
@@ -62,31 +64,84 @@ describe('extendTrail', () => {
   })
 })
 
+/** Stands in for the library refusing a path it cannot express. */
+class Refusal extends Error {}
+
+const refuse = (): BigUint64Array => {
+  throw new Refusal('H3 could not walk this path')
+}
+const refuses = (error: unknown): boolean => error instanceof Refusal
+
 describe('pathOrJump', () => {
   test('answers the path H3 walked', () => {
-    expect(Array.from(pathOrJump(5n, 8n, path))).toEqual([5n, 6n, 7n, 8n])
+    expect(Array.from(pathOrJump(5n, 8n, path, refuses))).toEqual([5n, 6n, 7n, 8n])
   })
 
   test('answers the two ends where the path is refused', () => {
-    const refuse = (): BigUint64Array => {
-      throw new Error('H3 could not walk this path')
-    }
-
-    expect(Array.from(pathOrJump(5n, 900n, refuse))).toEqual([5n, 900n])
+    expect(Array.from(pathOrJump(5n, 900n, refuse, refuses))).toEqual([5n, 900n])
   })
 
   test('leaves a refused jump without filled cells', () => {
-    const refuse = (): BigUint64Array => {
-      throw new Error('H3 could not walk this path')
-    }
     const trail = extendTrail([{ cell: 5n, filled: false }], 900n, neighbours, (from, to) =>
-      pathOrJump(from, to, refuse),
+      pathOrJump(from, to, refuse, refuses),
     )
 
     expect(trail).toEqual([
       { cell: 5n, filled: false },
       { cell: 900n, filled: false },
     ])
+  })
+
+  test('hands back an error that is not the library refusing', () => {
+    const broken = (): BigUint64Array => {
+      throw new TypeError('a defect of the caller, not a jump')
+    }
+
+    expect(() => pathOrJump(5n, 900n, broken, refuses)).toThrow(TypeError)
+  })
+})
+
+describe('headHeight', () => {
+  test('stands midway between the panel and the readout', () => {
+    // a panel ending at 600 of an 874 point viewport leaves a band from 600 to 768
+    expect(headHeight(874, 600, 106)).toBe(684)
+  })
+
+  test('follows a panel that grows', () => {
+    expect(headHeight(874, 700, 106)).toBeGreaterThan(headHeight(874, 600, 106))
+  })
+
+  test('follows the viewport at the same panel height', () => {
+    expect(headHeight(1000, 600, 106)).toBeGreaterThan(headHeight(874, 600, 106))
+  })
+
+  test('stands on the readout where the panel reaches it', () => {
+    expect(headHeight(874, 800, 106)).toBe(768)
+  })
+})
+
+describe('cameraTaken', () => {
+  const placed = { x: 100, y: 200, scale: 0.5 }
+
+  test('leaves the camera where a tap moved nothing', () => {
+    expect(cameraTaken({ ...placed }, placed)).toBe(false)
+  })
+
+  test('leaves the camera inside the slop of a finger that barely moved', () => {
+    expect(cameraTaken({ x: 104, y: 203, scale: 0.5 }, placed)).toBe(false)
+  })
+
+  test('takes the camera on a pan past the slop', () => {
+    expect(cameraTaken({ x: 130, y: 200, scale: 0.5 }, placed)).toBe(true)
+    expect(cameraTaken({ x: 100, y: 160, scale: 0.5 }, placed)).toBe(true)
+  })
+
+  test('takes the camera on a pinch past the tolerance', () => {
+    expect(cameraTaken({ x: 100, y: 200, scale: 0.55 }, placed)).toBe(true)
+  })
+
+  test('leaves the camera alone before the act has framed anything', () => {
+    expect(cameraTaken({ x: 900, y: 900, scale: 3 }, { x: 0, y: 0, scale: 0 })).toBe(false)
   })
 })
 

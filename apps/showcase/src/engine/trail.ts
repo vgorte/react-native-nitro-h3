@@ -60,16 +60,24 @@ export function extendTrail(
  *
  * `gridPathCells` refuses a path it cannot express, and a location feed that was away for a while
  * comes back with exactly that: a fix on the other side of the country. The trail then holds the
- * jump as a jump rather than losing the fix to a call that threw.
+ * jump as a jump rather than losing the fix to a call that threw. Only H3's own refusal is a jump;
+ * `refuses` says which error that is, and anything else is a defect and goes back to the caller.
+ *
+ * @param from The head of the trail.
+ * @param to The cell the fix landed in.
+ * @param path Walks the grid path, which the act hands the timed `gridPathCells`.
+ * @param refuses Answers whether an error is H3 refusing the path; the act tests it as `H3Error`.
  */
 export function pathOrJump(
   from: bigint,
   to: bigint,
   path: (a: bigint, b: bigint) => BigUint64Array,
+  refuses: (error: unknown) => boolean,
 ): BigUint64Array {
   try {
     return path(from, to)
-  } catch {
+  } catch (error) {
+    if (!refuses(error)) throw error
     return BigUint64Array.from([from, to])
   }
 }
@@ -141,6 +149,53 @@ export function scaleForTrail(
 ): number {
   const spacing = (CELL_SPACING * edgeLengthM(res)) / Math.cos(lat * DEG_TO_RAD)
   return (Math.min(width, height) * FIT_MARGIN) / (cells * spacing)
+}
+
+/**
+ * Answers the height the camera holds the head at, midway between the panel and the readout.
+ *
+ * The expanded panel's height is set by what it says rather than by the viewport, so the point is
+ * measured rather than taken as a fraction of the screen: the same panel leaves more room under it
+ * on a tall phone than on a short one, and a folded panel leaves more again.
+ *
+ * @param height The viewport height in points.
+ * @param panelBottom The lower edge of the HUD panel, in points from the top.
+ * @param readoutBand Points the blocked readout takes along the bottom edge.
+ */
+export function headHeight(height: number, panelBottom: number, readoutBand: number): number {
+  const readoutTop = height - readoutBand
+  // a panel that reaches the readout leaves no band, and the head stands on the readout's edge
+  if (panelBottom >= readoutTop) return readoutTop
+  return (panelBottom + readoutTop) / 2
+}
+
+/** Holds where the camera stands: its offset in points and its pixel scale. */
+export interface CameraPlacement {
+  x: number
+  y: number
+  scale: number
+}
+
+/** Points a finger may travel before it counts as a pan rather than a tap. */
+export const TAP_SLOP = 6
+
+/** The fraction of the scale a pinch has to change before it counts as one. */
+export const PINCH_TOLERANCE = 0.002
+
+/**
+ * Answers whether the camera under the finger has left where the act last placed it.
+ *
+ * A pan begins on touch down, so a plain tap on the scene reaches the act as a gesture that has
+ * moved nothing; only a camera that has actually travelled or zoomed takes the follow away.
+ *
+ * @param now Where the camera stands.
+ * @param placed Where the act last put it, `scale` of `0` before it has framed anything.
+ */
+export function cameraTaken(now: CameraPlacement, placed: CameraPlacement): boolean {
+  'worklet'
+  if (placed.scale <= 0) return false
+  if (Math.abs(now.x - placed.x) > TAP_SLOP || Math.abs(now.y - placed.y) > TAP_SLOP) return true
+  return Math.abs(now.scale - placed.scale) > placed.scale * PINCH_TOLERANCE
 }
 
 /** Answers the cells of a trail as the buffer the batch calls take. */

@@ -21,6 +21,9 @@ const PANEL_WIDTH = 208
 const PANEL_HEIGHT = 58
 const PANEL_MARGIN = 16
 const PANEL_BOTTOM = 48
+
+/** Points the readout takes along the bottom edge, which an act framing above it has to clear. */
+export const BLOCKED_READOUT_BAND = PANEL_BOTTOM + PANEL_HEIGHT
 const TEXT_INSET = 14
 const SWEEP_WIDTH = 32
 const SWEEP_HEIGHT = 2

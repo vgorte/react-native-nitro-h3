@@ -5,17 +5,21 @@ import {
   areNeighborCells,
   cellToLatLng,
   getHexagonEdgeLengthAvgM,
+  H3Error,
   latLngToCell,
 } from 'react-native-nitro-h3'
-import { runOnJS, useAnimatedReaction, withTiming } from 'react-native-reanimated'
+import { runOnJS, useAnimatedReaction, useSharedValue, withTiming } from 'react-native-reanimated'
 import { pathBetween, timed } from '../engine/cells'
 import { mercatorX, mercatorY } from '../engine/projection'
 import { formatCount, formatMs, formatUs } from '../engine/stats'
 import {
   AGE_SPAN,
+  type CameraPlacement,
+  cameraTaken,
   capTrail,
   extendTrail,
   filledCells,
+  headHeight,
   MAX_TRAIL_RES,
   MIN_TRAIL_RES,
   pathOrJump,
@@ -24,7 +28,7 @@ import {
   type TrailFix,
   type TrailStep,
 } from '../engine/trail'
-import { resetWorstGap } from '../render/BlockedReadout'
+import { BLOCKED_READOUT_BAND, resetWorstGap } from '../render/BlockedReadout'
 import { CellPictures } from '../render/CellPictures'
 import { EngineCanvas } from '../render/EngineCanvas'
 import { Choice, type ChoiceOption } from '../render/hud/Choice'
@@ -67,10 +71,8 @@ const PANEL_TOP = 104
 const PRINT_WIDTH = 268
 // clears the blocked readout, which stands on the same line at the other edge
 const CONTROL_BOTTOM = 118
-// The head stands where the three glass surfaces leave the scene open on both test targets: under
-// the expanded panel, left of the controls and above the blocked readout.
+// the head stands left of the controls, and its height comes from the panel the act measures
 const HEAD_X = 0.32
-const HEAD_Y = 0.76
 
 const NOTES = [
   'a fix that is not a neighbour of the head is joined with gridPathCells',
@@ -113,12 +115,17 @@ function walkFix(trail: TrailStep[], fix: TrailFix, res: number): Walk {
   const located = timed('latLngToCell', () => latLngToCell(fix.lat, fix.lng, res))
   const closed: { gap: Gap | null } = { gap: null }
   const walked = extendTrail(trail, located.value, areNeighborCells, (from, to) =>
-    pathOrJump(from, to, (a, b) => {
-      const between = pathBetween(a, b)
-      // the two ends of the path are the head and the fix, so the gap is what stands between them
-      closed.gap = { cells: between.value.length - 2, ms: between.ms }
-      return between.value
-    }),
+    pathOrJump(
+      from,
+      to,
+      (a, b) => {
+        const between = pathBetween(a, b)
+        // the two ends of the path are the head and the fix, so the gap is what stands between them
+        closed.gap = { cells: between.value.length - 2, ms: between.ms }
+        return between.value
+      },
+      (error) => error instanceof H3Error,
+    ),
   )
   return { trail: capTrail(walked, AGE_SPAN), locateMs: located.ms, gap: closed.gap }
 }
@@ -152,15 +159,20 @@ export function Trail({ active }: ActProps) {
   const [scene, setScene] = useState<TrailScene | null>(null)
   const [following, setFollowing] = useState(true)
   const [collapsed, setCollapsed] = useState(false)
+  // the panel's own height, measured, because what it says decides it and the viewport does not
+  const [panelHeight, setPanelHeight] = useState(0)
 
   // the fixes the act has taken, which a change of resolution walks again
   const fixes = useRef<TrailFix[]>([])
   // the standing trail, so a fix extends what is drawn without waiting for a render
   const held = useRef<TrailStep[]>([])
   const anchored = useRef<CameraAnchor>(BERLIN)
-  const framed = useRef(false)
+  // the resolution the act last framed for, and `null` until it has framed anything
+  const framed = useRef<number | null>(null)
   const started = useRef<number | null>(null)
   const played = useRef(0)
+  // when the next replay fix is due, so a return to the act waits out the rest of that interval
+  const due = useRef(0)
   // set when a fix arrived during a gesture, where the rebuild waits for the camera to settle
   const pending = useRef(false)
 
@@ -173,11 +185,14 @@ export function Trail({ active }: ActProps) {
   const camera = useCamera({ anchor: BERLIN, onSettle: rebuild })
   const { anchor, setAnchor, translateX, translateY, scale, interacting } = camera
 
+  // where the act itself last put the camera; a camera found anywhere else was moved by a gesture
+  const placed = useSharedValue<CameraPlacement>({ x: 0, y: 0, scale: 0 })
+
   useEffect(() => {
     anchored.current = anchor
   }, [anchor])
 
-  /** Puts a cell in the band the two panels leave open, which is where the head belongs. */
+  /** Puts a cell in the band the panel and the readout leave open, where the head belongs. */
   const centreOn = useCallback(
     (cell: bigint, animated: boolean) => {
       const centre = cellToLatLng(cell)
@@ -185,7 +200,9 @@ export function Trail({ active }: ActProps) {
       const x = mercatorX(centre.lng) - mercatorX(frame.lng)
       const y = mercatorY(frame.lat) - mercatorY(centre.lat)
       const toX = width * HEAD_X - x * scale.value
-      const toY = height * HEAD_Y - y * scale.value
+      const toY =
+        headHeight(height, PANEL_TOP + panelHeight, BLOCKED_READOUT_BAND) - y * scale.value
+      placed.value = { x: toX, y: toY, scale: scale.value }
       if (!animated) {
         translateX.value = toX
         translateY.value = toY
@@ -194,7 +211,7 @@ export function Trail({ active }: ActProps) {
       translateX.value = withTiming(toX, { duration: FOLLOW_MS })
       translateY.value = withTiming(toY, { duration: FOLLOW_MS })
     },
-    [width, height, translateX, translateY, scale],
+    [width, height, panelHeight, translateX, translateY, scale, placed],
   )
 
   const take = useCallback(
@@ -233,22 +250,27 @@ export function Trail({ active }: ActProps) {
     setReading((before) => ({ ...before, locateMs: walked.locateMs, gap: walked.gap }))
   }, [res])
 
-  // the act asks for the location once it is on screen, and a refusal is what starts the replay
+  // The act asks for the location once it is on screen, and anything but a granted permission
+  // starts the replay: a refusal, and a request that fails outright, leave the same act to draw.
   useEffect(() => {
     if (!active || source !== null) return
     let cancelled = false
-    void Location.requestForegroundPermissionsAsync().then(({ granted }) => {
+    const answer = (next: Source) => {
       if (cancelled) return
       // the system holds the app while its dialog stands, and that gap is not the act's to report
       resetWorstGap()
-      setSource(granted ? 'live' : 'replay')
-    })
+      setSource(next)
+    }
+    void Location.requestForegroundPermissionsAsync()
+      .then(({ granted }) => answer(granted ? 'live' : 'replay'))
+      .catch(() => answer('replay'))
     return () => {
       cancelled = true
     }
   }, [active, source])
 
-  // the watcher belongs to the act on screen, and is torn down on every other transition
+  // The watcher belongs to the act on screen, and is torn down on every other transition. It fails
+  // where the device has location switched off altogether, and the replay stands in for it.
   useEffect(() => {
     if (!active || source !== 'live') return
     let watcher: Location.LocationSubscription | null = null
@@ -256,6 +278,7 @@ export function Trail({ active }: ActProps) {
     void Location.watchPositionAsync(
       { accuracy: Location.Accuracy.BestForNavigation, distanceInterval: 0 },
       (position) => {
+        if (cancelled) return
         started.current ??= position.timestamp
         taking.current({
           lat: position.coords.latitude,
@@ -263,10 +286,14 @@ export function Trail({ active }: ActProps) {
           t: position.timestamp - started.current,
         })
       },
-    ).then((opened) => {
-      if (cancelled) opened.remove()
-      else watcher = opened
-    })
+    )
+      .then((opened) => {
+        if (cancelled) opened.remove()
+        else watcher = opened
+      })
+      .catch(() => {
+        if (!cancelled) setSource('replay')
+      })
     return () => {
       cancelled = true
       watcher?.remove()
@@ -277,6 +304,10 @@ export function Trail({ active }: ActProps) {
   useEffect(() => {
     if (!active || source !== 'replay') return
     let timer: ReturnType<typeof setTimeout> | null = null
+    const schedule = (delay: number) => {
+      due.current = Date.now() + delay
+      timer = setTimeout(play, delay)
+    }
     const play = () => {
       const index = played.current
       const fix = REPLAY_ROUTE[index]
@@ -284,9 +315,10 @@ export function Trail({ active }: ActProps) {
       played.current = index + 1
       taking.current(fix)
       const next = REPLAY_ROUTE[index + 1]
-      if (next !== undefined) timer = setTimeout(play, Math.max(0, next.t - fix.t))
+      if (next !== undefined) schedule(Math.max(0, next.t - fix.t))
     }
-    timer = setTimeout(play, 0)
+    // an act that comes back mid-interval waits out the rest of it rather than jumping a fix ahead
+    schedule(Math.max(0, due.current - Date.now()))
     return () => {
       if (timer !== null) clearTimeout(timer)
     }
@@ -298,20 +330,27 @@ export function Trail({ active }: ActProps) {
     resetWorstGap()
   }, [active])
 
-  // a camera the visitor has taken hold of is theirs until the recentre control hands it back
+  // A camera the visitor has moved is theirs until the recentre control hands it back. A pan begins
+  // on touch down, so it is the movement under the finger and not the touch that takes it away.
   useAnimatedReaction(
-    () => interacting.value,
-    (now) => {
-      if (now) runOnJS(setFollowing)(false)
+    () => ({
+      now: { x: translateX.value, y: translateY.value, scale: scale.value },
+      touching: interacting.value,
+    }),
+    (state) => {
+      if (state.touching && cameraTaken(state.now, placed.value)) runOnJS(setFollowing)(false)
     },
   )
 
-  // the first fix frames the trail; every one after it glides the head back into the middle
+  // The first fix frames the trail and every one after it glides the head back into the band. A
+  // change of resolution re-frames too, so a cell keeps reading at the size the act opened on,
+  // unless the visitor is holding the camera, in which case the frame stays theirs.
   useEffect(() => {
     const head = trail[trail.length - 1]
     if (head === undefined) return
-    if (!framed.current) {
-      framed.current = true
+    const opening = framed.current === null
+    if (opening || (following && framed.current !== res)) {
+      framed.current = res
       scale.value = scaleForTrail(
         width,
         height,
@@ -319,7 +358,7 @@ export function Trail({ active }: ActProps) {
         getHexagonEdgeLengthAvgM,
         res,
       )
-      centreOn(head.cell, false)
+      centreOn(head.cell, !opening)
       return
     }
     if (following) centreOn(head.cell, true)
@@ -351,7 +390,11 @@ export function Trail({ active }: ActProps) {
         <CellPictures scene={scene?.scene ?? null} />
       </EngineCanvas>
       {/* box-none leaves the scene every touch the panel head does not take */}
-      <View style={styles.panel} pointerEvents="box-none">
+      <View
+        style={styles.panel}
+        pointerEvents="box-none"
+        onLayout={(event) => setPanelHeight(event.nativeEvent.layout.height)}
+      >
         <Panel collapsible collapsed={collapsed} onToggle={() => setCollapsed((was) => !was)}>
           <Metric value={formatCount(trail.length)} caption="cells on the trail" />
           <Row label="fixes" value={formatCount(reading.fixes)} />
