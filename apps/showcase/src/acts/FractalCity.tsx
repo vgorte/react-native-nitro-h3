@@ -79,7 +79,7 @@ const PANEL_TOP = 104
 const PRINT_WIDTH = 268
 // clears the blocked readout, which stands on the same line at the other edge
 const CONTROL_BOTTOM = 118
-// the control is there but has nothing to open on, until the first cell is in focus
+// the control has nothing to open on until a cell is in focus
 const DISABLED_OPACITY = 0.4
 
 const NOTES = [

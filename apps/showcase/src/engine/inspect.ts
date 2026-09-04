@@ -44,9 +44,9 @@ export interface InspectCalls {
 
 /** Holds what one inspected cell stands between: its parent, its children and its ring. */
 export interface Neighbourhood {
-  /** The cell one resolution up, `null` at resolution 0. */
+  /** The cell one resolution up, `null` at resolution `0`. */
   parent: bigint | null
-  /** The cells one resolution down, empty at resolution 15. */
+  /** The cells one resolution down, empty at resolution `15`. */
   children: BigUint64Array
   /** The ring around the cell, the cell itself left out. */
   neighbours: BigUint64Array
@@ -72,8 +72,8 @@ function shapeOf(argument: string, result: BigUint64Array | Float64Array): strin
 /**
  * Answers every reading the sheet lists for one cell, each timed over {@linkcode REPEATS} runs.
  *
- * The two ends of the ladder drop the row that has nothing to answer: resolution 0 has no parent
- * above it and resolution 15 no level below it. The last row is not a reading but the shape of the
+ * The two ends of the ladder drop the row that has nothing to answer: resolution `0` has no parent
+ * above it and resolution `15` no level below it. The last row is not a reading but the shape of the
  * call above it, so the visitor sees what an array call hands back and how wide that is.
  *
  * @param cell The cell the sheet stands on.
@@ -90,7 +90,7 @@ export function inspectRows(cell: bigint, h3: InspectCalls): InspectorRow[] {
       value: h3.cellToString(cell),
       ms: repeatMedianMs(() => h3.cellToString(cell)),
     },
-    // the cell is a bigint on this side of the bridge, and the sheet says so rather than hiding it
+    // the cell is a `bigint` on this side of the bridge, and the sheet says so rather than hiding it
     { label: 'decimal', value: cell.toString() },
     {
       label: 'resolution',

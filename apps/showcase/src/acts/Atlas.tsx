@@ -212,7 +212,7 @@ interface Highlight {
   neighbours: string
 }
 
-/** Builds the one-feature collection of a cell set, which the highlight layers draw from. */
+/** Builds the collection of a cell set, which one layer of the highlight draws from. */
 function collectionOf(cells: BigUint64Array): string {
   return cellsToFeatureCollection(boundariesOf(cells).value, new Uint8Array(cells.length))
 }

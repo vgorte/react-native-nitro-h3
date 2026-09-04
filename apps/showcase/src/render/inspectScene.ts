@@ -19,9 +19,9 @@ const TOP_BUCKET = BUCKETS - 1
 
 /** Holds the highlight one inspected cell casts over the scene it stands in. */
 export interface Highlight {
-  /** The children, filled at {@linkcode CHILD_ALPHA}, `null` at resolution 15. */
+  /** The children, filled at {@linkcode CHILD_ALPHA}, `null` at resolution `15`. */
   children: CellScene | null
-  /** The ring of the parent, which is drawn as an outline, `null` at resolution 0. */
+  /** The ring of the parent, which is drawn as an outline, `null` at resolution `0`. */
   parent: SkPath | null
   /** The rings of the neighbours, which are drawn filled in the contrast colour. */
   neighbours: SkPath

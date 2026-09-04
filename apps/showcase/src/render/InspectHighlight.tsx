@@ -7,13 +7,14 @@ import { buildHighlight } from './inspectScene'
 import type { CameraAnchor } from './useCamera'
 
 /** Alpha the neighbours are filled at, low enough that the cells under them still read. */
-const NEIGHBOUR_ALPHA = 0.3
+const NEIGHBOUR_ALPHA = 0.22
 
 /** Alpha of the parent outline, which is a ghost over the cells it holds. */
 const PARENT_ALPHA = 0.8
 
-/** Points the parent outline is drawn at, whatever the camera has zoomed to. */
+/** Points the outlines are drawn at, whatever the camera has zoomed to. */
 const PARENT_WIDTH_PX = 1.5
+const NEIGHBOUR_WIDTH_PX = 1
 
 /** Configures {@linkcode InspectHighlight}. */
 export interface InspectHighlightProps {
@@ -36,7 +37,8 @@ export function InspectHighlight({ cell, anchor, scale }: InspectHighlightProps)
     () => (cell === null ? null : buildHighlight(cell, anchor)),
     [cell, anchor],
   )
-  const width = useDerivedValue(() => PARENT_WIDTH_PX / scale.value)
+  const parentWidth = useDerivedValue(() => PARENT_WIDTH_PX / scale.value)
+  const neighbourWidth = useDerivedValue(() => NEIGHBOUR_WIDTH_PX / scale.value)
 
   if (highlight === null) return null
 
@@ -48,13 +50,20 @@ export function InspectHighlight({ cell, anchor, scale }: InspectHighlightProps)
         style="fill"
         opacity={NEIGHBOUR_ALPHA}
       />
+      {/* the fills of six touching cells merge into one shape, so every ring keeps its own edge */}
+      <Path
+        path={highlight.neighbours}
+        color={colours.contrast}
+        style="stroke"
+        strokeWidth={neighbourWidth}
+      />
       <CellPictures scene={highlight.children} />
       {highlight.parent === null ? null : (
         <Path
           path={highlight.parent}
           color={colours.text}
           style="stroke"
-          strokeWidth={width}
+          strokeWidth={parentWidth}
           opacity={PARENT_ALPHA}
         />
       )}
