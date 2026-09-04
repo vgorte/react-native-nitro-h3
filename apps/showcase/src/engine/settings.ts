@@ -43,10 +43,11 @@ export function isPushed(settings: Settings): boolean {
 /**
  * Answers the settings one control leaves behind.
  *
- * The push-it step is a preset of two values, so leaving it by the point count takes its resolution
- * with it: the resolution row lights one of its own items again, and no run is ever asked for a
- * size the step alone describes. Leaving it by a resolution keeps the million points, which is a
- * state the row can light and the act can build.
+ * The push-it step is a preset of two values, so neither of them ever stands alone: leaving it by
+ * the point count takes its resolution with it, and asking for its resolution sets its point count.
+ * The resolution row therefore always lights one of the items it offers, and no run is ever asked
+ * for a size the step alone describes. Leaving it by one of the plain resolutions keeps the million
+ * points, which is a state the row can light and the act can build.
  */
 export function nextSettings(current: Settings, change: Change): Settings {
   switch (change.control) {
@@ -55,7 +56,9 @@ export function nextSettings(current: Settings, change: Change): Settings {
     case 'push':
       return { ...current, points: PUSH_POINTS, res: PUSH_RES }
     case 'res':
-      return { ...current, res: change.value }
+      return change.value === PUSH_RES
+        ? { ...current, points: PUSH_POINTS, res: PUSH_RES }
+        : { ...current, res: change.value }
     case 'points':
       return isPushed(current) && change.value !== PUSH_POINTS
         ? { ...current, points: change.value, res: OPEN_SETTINGS.res }

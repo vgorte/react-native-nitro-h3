@@ -88,7 +88,7 @@ const NOTES = [
   'past 100,000 points the run works in blocks, and keeps them for the next resolution',
   'the sort and the count then run unchunked on purpose, so the readout shows their cost',
   'above 20,000 cells the grid comes off and every cell is drawn inset',
-  'on the test emulator the first pans over the push-it scene ran near 40 fps, later ones at 60',
+  'on the test emulator pans over the push-it scene ran near 40 fps; the simulator held 60',
 ]
 
 /** Holds what one run has measured, a field per stage, filled in as the stages finish. */
@@ -244,11 +244,8 @@ export function Heatmap({ active }: ActProps) {
 
       const heat = buildHeatScene(aggregate.cells, buckets, frame)
 
-      // Everything the pipeline allocated is dead once the mesh is recorded: the distinct cells,
-      // their counts and their colours here, the boundaries and the projection inside the build.
-      // Only the drawn points are kept, for the next run at another resolution. Dropping the rest
-      // before the scene is handed to React leaves the collector its work between the run and the
-      // first frame, rather than in the middle of the first pan.
+      // the distinct cells, their counts and their colours are dead once the mesh is recorded: the
+      // scene holds its own copies, and only the drawn points are kept for the next resolution
       aggregate = null
       buckets = null
 

@@ -52,6 +52,14 @@ describe('nextSettings', () => {
     })
   })
 
+  test('takes the push-it resolution to stand for the whole step, wherever it is asked for', () => {
+    const plain: Settings = { seed: 1, points: 100_000, res: 9 }
+    const entered = nextSettings(plain, { control: 'res', value: PUSH_RES })
+
+    expect(entered).toEqual({ seed: 1, points: PUSH_POINTS, res: PUSH_RES })
+    expect(isPushed(entered)).toBe(true)
+  })
+
   test('never leaves a state the resolution row cannot light', () => {
     const changes = [
       { control: 'seed' },
@@ -61,6 +69,7 @@ describe('nextSettings', () => {
       { control: 'res', value: 7 },
       { control: 'res', value: 8 },
       { control: 'res', value: 9 },
+      { control: 'res', value: PUSH_RES },
     ] as const
 
     let states: Settings[] = [OPEN_SETTINGS]
