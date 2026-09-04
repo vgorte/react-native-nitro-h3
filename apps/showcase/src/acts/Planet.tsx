@@ -83,7 +83,7 @@ import { Row } from '../render/hud/Row'
 import { TileLayer } from '../render/TileLayer'
 import { type CameraAnchor, SETTLE_MS, useCamera } from '../render/useCamera'
 import { BUCKETS, CELL_FILL_OPACITY, colours, rampColours } from '../theme/tokens'
-import { rememberPlanetPosition } from './planetPosition'
+import { rememberMapPosition } from './mapPosition'
 import type { ActProps } from './types'
 
 /** Caps the cells the surface scene may build around the view centre. */
@@ -750,7 +750,7 @@ export function Planet({ active }: ActProps) {
     const radius = baseRadius * globeScale.value
     const centre = { lat: phi0.value * RAD_TO_DEG, lng: wrapLng(lambda0.value * RAD_TO_DEG) }
     const zoom = globeZoom(radius, centre.lat)
-    rememberPlanetPosition({ centre, zoom })
+    rememberMapPosition({ centre, zoom })
     if (!pastTheGlobe(zoom, centre.lat)) {
       setGlobeRes(globeResolution(radius, centre.lat))
       return
@@ -770,7 +770,7 @@ export function Planet({ active }: ActProps) {
     const radius = Math.min(range.radius, surface.radius * scale.value)
     const zoom = globeZoom(radius, centre.lat)
     const next = viewFor(centre, radius, epoch.current + 1)
-    rememberPlanetPosition({ centre: next.middle, zoom })
+    rememberMapPosition({ centre: next.middle, zoom })
     if (!pastTheGlobe(zoom, centre.lat)) {
       returnToGlobe(centre, radius)
       return

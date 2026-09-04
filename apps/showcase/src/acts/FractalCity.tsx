@@ -60,7 +60,7 @@ import { Row } from '../render/hud/Row'
 import { InspectHighlight } from '../render/InspectHighlight'
 import { type CameraAnchor, sceneToLatLng, screenToScene, useCamera } from '../render/useCamera'
 import { BUCKETS, colours, glass, type } from '../theme/tokens'
-import { lastPlanetPosition } from './planetPosition'
+import { lastMapPosition } from './mapPosition'
 import type { ActProps } from './types'
 
 // the act's published contract names these; the rules that use them live in engine/fractal.ts
@@ -165,7 +165,7 @@ export function FractalCity({ active, inspected, onInspect }: ActProps) {
   // the act reaches for the position store only once it is on screen, where Atlas has written it
   useEffect(() => {
     if (!active || openScale !== null) return
-    const last = lastPlanetPosition()
+    const last = lastMapPosition()
     const centre = last === null ? BERLIN : { lat: last.centre.lat, lng: last.centre.lng }
     const pixels = openingScale(centre.lat, getHexagonEdgeLengthAvgM)
     const middle = latLngToCell(centre.lat, centre.lng, START_RES)

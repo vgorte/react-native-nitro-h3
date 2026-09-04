@@ -43,7 +43,7 @@ import { Metric } from '../render/hud/Metric'
 import { Panel } from '../render/hud/Panel'
 import { Row } from '../render/hud/Row'
 import { CELL_FILL_OPACITY, colours, ramp, rampColours } from '../theme/tokens'
-import { lastPlanetPosition, rememberPlanetPosition } from './planetPosition'
+import { lastMapPosition, rememberMapPosition } from './mapPosition'
 import type { ActProps } from './types'
 
 /** Caps the disk this act asks for, the interactive ceiling every act shares. */
@@ -281,7 +281,7 @@ async function loadBasemap(): Promise<Basemap> {
 
 /** Answers the camera the act opens on, the position the shared store holds or Berlin without one. */
 function openingView(): InitialViewState {
-  const last = lastPlanetPosition()
+  const last = lastMapPosition()
   const zoom = last === null ? 0 : last.zoom - ZOOM_OFFSET
   // a global position names no place, so the act opens on a city rather than on an ocean
   if (last === null || zoom < MIN_START_ZOOM) {
@@ -406,7 +406,7 @@ export function Atlas({ active, inspected, onInspect }: ActProps) {
   const rebuild = useCallback((view: ViewState): void => {
     const [lng, lat] = view.center
     // the store keeps the app's own zoom, so a later act reads it the way the projection does
-    rememberPlanetPosition({ centre: { lat, lng }, zoom: view.zoom + ZOOM_OFFSET })
+    rememberMapPosition({ centre: { lat, lng }, zoom: view.zoom + ZOOM_OFFSET })
     const res = resolutionForZoom(view.zoom + ZOOM_OFFSET, lat, getHexagonEdgeLengthAvgM)
     const disk = diskAround(latLngToCell(lat, lng, res), coverage(view, res))
     const cells = disk.value
