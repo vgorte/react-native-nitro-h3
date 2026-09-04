@@ -9,7 +9,7 @@
     "android": "expo run:android",
     "prebuild": "expo prebuild",
     "typecheck": "tsc --noEmit",
-    "test": "bun test ./spikes/__tests__"
+    "test": "bun test ./src/__tests__"
   },
   "dependencies": {
     "@mapbox/vector-tile": "3.0.0",

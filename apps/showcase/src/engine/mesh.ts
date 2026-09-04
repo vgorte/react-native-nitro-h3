@@ -1,29 +1,4 @@
-import type { CellBoundaries, LatLng } from 'react-native-nitro-h3'
-
-const EARTH_RADIUS_M = 6378137
-const DEG_TO_RAD = Math.PI / 180
-
-/** Holds the axis-aligned extent of a projected cell set, in metres. */
-export interface Bounds {
-  minX: number
-  minY: number
-  maxX: number
-  maxY: number
-}
-
-/**
- * Holds a cell set projected to Web Mercator metres relative to a centre coordinate.
- *
- * The layout mirrors {@linkcode CellBoundaries}: cell `i` occupies `stride` slots of `points`
- * from `i * stride`, of which the first `vertexCounts[i]` `[x, y]` pairs are its vertices.
- */
-export interface ProjectedCells {
-  stride: number
-  points: Float32Array
-  vertexCounts: Uint8Array
-  cellCount: number
-  bounds: Bounds
-}
+import type { ProjectedCells } from './projection'
 
 /** Holds one drawable batch: the vertices of one colour bucket within one chunk. */
 export interface MeshGroup {
@@ -59,50 +34,6 @@ export interface MeshOptions {
 
 /** Names the ramp of the Observatory theme, low intensity to high. */
 export const RAMP_STOPS = ['#0F2F5A', '#1E6FD6', '#3FB0FF', '#C9EBFF', '#FFFFFF'] as const
-
-function mercatorY(lat: number): number {
-  return EARTH_RADIUS_M * Math.log(Math.tan(Math.PI / 4 + (lat * DEG_TO_RAD) / 2))
-}
-
-/**
- * Projects a cell set to Web Mercator metres relative to `centre`.
- *
- * The y axis is negated so it grows downward like the screen axis, which leaves the camera a
- * plain scale and translate.
- *
- * @param boundaries The boundaries as `cellsToBoundaries` answers them.
- * @param centre The coordinate that becomes the origin of the metre space.
- */
-export function projectCells(boundaries: CellBoundaries, centre: LatLng): ProjectedCells {
-  const { stride, vertices, vertexCounts } = boundaries
-  const cellCount = vertexCounts.length
-  const points = new Float32Array(cellCount * stride)
-  const centreX = EARTH_RADIUS_M * centre.lng * DEG_TO_RAD
-  const centreY = mercatorY(centre.lat)
-
-  let minX = Number.POSITIVE_INFINITY
-  let minY = Number.POSITIVE_INFINITY
-  let maxX = Number.NEGATIVE_INFINITY
-  let maxY = Number.NEGATIVE_INFINITY
-
-  for (let cell = 0; cell < cellCount; cell++) {
-    const base = cell * stride
-    const count = vertexCounts[cell]
-    for (let vertex = 0; vertex < count; vertex++) {
-      const slot = base + vertex * 2
-      const x = EARTH_RADIUS_M * vertices[slot + 1] * DEG_TO_RAD - centreX
-      const y = centreY - mercatorY(vertices[slot])
-      points[slot] = x
-      points[slot + 1] = y
-      if (x < minX) minX = x
-      if (x > maxX) maxX = x
-      if (y < minY) minY = y
-      if (y > maxY) maxY = y
-    }
-  }
-
-  return { stride, points, vertexCounts, cellCount, bounds: { minX, minY, maxX, maxY } }
-}
 
 /**
  * Writes the triangle fan of one cell from its first vertex, `count - 2` triangles.

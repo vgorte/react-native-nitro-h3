@@ -1,15 +1,13 @@
 import { describe, expect, test } from 'bun:test'
 import type { CellBoundaries } from 'react-native-nitro-h3'
 import {
-  buildGlobeFrame,
-  createGlobeFrame,
   type GlobeView,
   latLngToXyz,
   project,
+  projectCells,
   rotateToView,
-  toGlobeCells,
   unproject,
-} from '../globe'
+} from '../engine/projection'
 
 const STRIDE = 20
 const DEG_TO_RAD = Math.PI / 180
@@ -35,15 +33,44 @@ function boundaries(cells: number[][]): CellBoundaries {
   return { stride: STRIDE, vertices, vertexCounts }
 }
 
-/** Answers a small regular hexagon around a coordinate, a degree across. */
-function hexagon(lat: number, lng: number): number[] {
+/** Answers a regular polygon of `count` vertices around a coordinate, one degree across. */
+function polygon(count: number, lat: number, lng: number): number[] {
   const pairs: number[] = []
-  for (let vertex = 0; vertex < 6; vertex++) {
-    const angle = (vertex / 6) * 2 * Math.PI
-    pairs.push(lat + Math.sin(angle) * 0.5, lng + Math.cos(angle) * 0.5)
+  for (let vertex = 0; vertex < count; vertex++) {
+    const angle = (vertex / count) * 2 * Math.PI
+    pairs.push(lat + Math.sin(angle), lng + Math.cos(angle))
   }
   return pairs
 }
+
+const CENTRE = { lat: 0, lng: 0 }
+
+describe('projectCells', () => {
+  test('puts the centre at the origin and grows y downward', () => {
+    const projected = projectCells(boundaries([[0, 0, 1, 0, -1, 0]]), CENTRE)
+
+    expect(projected.points[0]).toBeCloseTo(0, 2)
+    expect(projected.points[1]).toBeCloseTo(0, 2)
+    expect(projected.points[2]).toBe(0)
+    expect(projected.points[3]).toBeLessThan(0)
+    expect(projected.points[5]).toBeGreaterThan(0)
+  })
+
+  test('projects a degree of longitude to the Web Mercator metre', () => {
+    const projected = projectCells(boundaries([[0, 1, 0, 0, 0, -1]]), CENTRE)
+
+    expect(projected.points[0]).toBeCloseTo((6378137 * Math.PI) / 180, 2)
+    expect(projected.bounds.maxX).toBeCloseTo((6378137 * Math.PI) / 180, 2)
+    expect(projected.bounds.minX).toBeCloseTo((-6378137 * Math.PI) / 180, 2)
+  })
+
+  test('leaves the padding slots of a cell untouched', () => {
+    const projected = projectCells(boundaries([polygon(6, 0, 0)]), CENTRE)
+
+    expect(projected.vertexCounts[0]).toBe(6)
+    expect(projected.points.slice(12, 20)).toEqual(new Float32Array(8))
+  })
+})
 
 describe('latLngToXyz', () => {
   test('puts the axes where the projection expects them', () => {
@@ -152,66 +179,5 @@ describe('unproject', () => {
 
     expect(point?.lng).toBeGreaterThan(-180)
     expect(point?.lng).toBeLessThanOrEqual(180)
-  })
-})
-
-describe('buildGlobeFrame', () => {
-  const centres = new Float64Array([0, 0, 0, 180, 0, 60])
-  const cells = toGlobeCells(
-    boundaries([hexagon(0, 0), hexagon(0, 180), hexagon(0, 60)]),
-    centres,
-    new Uint8Array([0, 0, 1]),
-  )
-
-  test('drops the cells facing away from the viewer', () => {
-    const frame = createGlobeFrame(cells, 2)
-    const visible = buildGlobeFrame(cells, frame, view(0, 0))
-
-    expect(visible).toBe(2)
-    expect(frame.pointCounts[0]).toBe(6)
-    expect(frame.pointCounts[1]).toBe(6)
-  })
-
-  test('fans every kept cell from its first vertex', () => {
-    const frame = createGlobeFrame(cells, 2)
-    buildGlobeFrame(cells, frame, view(0, 0))
-
-    expect(frame.indexCounts[0]).toBe(12)
-    expect(Array.from(frame.indices[0].slice(0, 12))).toEqual([0, 1, 2, 0, 2, 3, 0, 3, 4, 0, 4, 5])
-  })
-
-  test('packs the second cell of a bucket after the first', () => {
-    const wide = { ...cells, buckets: new Uint8Array([0, 0, 0]) }
-    const frame = createGlobeFrame(wide, 1)
-    const visible = buildGlobeFrame(wide, frame, view(0, 30))
-
-    expect(visible).toBe(2)
-    expect(frame.pointCounts[0]).toBe(12)
-    expect(Array.from(frame.indices[0].slice(12, 24))).toEqual([
-      6, 7, 8, 6, 8, 9, 6, 9, 10, 6, 10, 11,
-    ])
-  })
-
-  test('projects the centre cell onto the middle of the disk', () => {
-    const frame = createGlobeFrame(cells, 2)
-    buildGlobeFrame(cells, frame, view(0, 0))
-
-    for (let vertex = 0; vertex < 6; vertex++) {
-      const x = frame.positions[0][vertex * 2]
-      const y = frame.positions[0][vertex * 2 + 1]
-
-      expect(Math.hypot(x - 200, y - 400)).toBeLessThan(3)
-    }
-  })
-
-  test('resets the counts between frames', () => {
-    const frame = createGlobeFrame(cells, 2)
-    buildGlobeFrame(cells, frame, view(0, 0))
-    const visible = buildGlobeFrame(cells, frame, view(0, 180))
-
-    expect(visible).toBe(1)
-    expect(frame.pointCounts[0]).toBe(6)
-    expect(frame.pointCounts[1]).toBe(0)
-    expect(frame.indexCounts[1]).toBe(0)
   })
 })

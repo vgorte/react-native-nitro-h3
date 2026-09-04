@@ -8,7 +8,7 @@ import {
   type TilePoint,
   tileGrid,
   tileUrl,
-} from '../tiles'
+} from '../engine/tiles'
 
 /** Lays out a hand-built feature with the part of the vector-tile interface the builder reads. */
 function feature(

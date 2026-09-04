@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import type { CellBoundaries } from 'react-native-nitro-h3'
-import { buildMesh, buildOutlinePath, projectCells, rampColours } from '../mesh'
+import { buildMesh, buildOutlinePath, rampColours } from '../engine/mesh'
+import { projectCells } from '../engine/projection'
 
 const STRIDE = 20
 
@@ -27,33 +28,6 @@ function polygon(count: number, lat: number, lng: number): number[] {
 
 const CENTRE = { lat: 0, lng: 0 }
 const FULL = { chunkSize: 10_000, buckets: 16, inset: 0 }
-
-describe('projectCells', () => {
-  test('puts the centre at the origin and grows y downward', () => {
-    const projected = projectCells(boundaries([[0, 0, 1, 0, -1, 0]]), CENTRE)
-
-    expect(projected.points[0]).toBeCloseTo(0, 2)
-    expect(projected.points[1]).toBeCloseTo(0, 2)
-    expect(projected.points[2]).toBe(0)
-    expect(projected.points[3]).toBeLessThan(0)
-    expect(projected.points[5]).toBeGreaterThan(0)
-  })
-
-  test('projects a degree of longitude to the Web Mercator metre', () => {
-    const projected = projectCells(boundaries([[0, 1, 0, 0, 0, -1]]), CENTRE)
-
-    expect(projected.points[0]).toBeCloseTo((6378137 * Math.PI) / 180, 2)
-    expect(projected.bounds.maxX).toBeCloseTo((6378137 * Math.PI) / 180, 2)
-    expect(projected.bounds.minX).toBeCloseTo((-6378137 * Math.PI) / 180, 2)
-  })
-
-  test('leaves the padding slots of a cell untouched', () => {
-    const projected = projectCells(boundaries([polygon(6, 0, 0)]), CENTRE)
-
-    expect(projected.vertexCounts[0]).toBe(6)
-    expect(projected.points.slice(12, 20)).toEqual(new Float32Array(8))
-  })
-})
 
 describe('buildMesh', () => {
   test('fans a hexagon into four triangles from its first vertex', () => {

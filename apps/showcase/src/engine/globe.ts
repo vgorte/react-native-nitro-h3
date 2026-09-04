@@ -1,39 +1,7 @@
-import type { CellBoundaries, LatLng } from 'react-native-nitro-h3'
+import type { CellBoundaries } from 'react-native-nitro-h3'
 
 import { writeFan } from './mesh'
-
-const DEG_TO_RAD = Math.PI / 180
-const RAD_TO_DEG = 180 / Math.PI
-
-/** Holds a point on the unit sphere, `x` toward `[0, 0]`, `y` toward `[0, 90]`, `z` toward the pole. */
-export interface Xyz {
-  x: number
-  y: number
-  z: number
-}
-
-/**
- * Holds the view of the globe: the coordinate at the centre of the disk in radians, and the disk
- * itself in screen pixels.
- */
-export interface GlobeView {
-  /** Longitude at the centre of the disk, in radians. */
-  lambda0: number
-  /** Latitude at the centre of the disk, in radians. */
-  phi0: number
-  cx: number
-  cy: number
-  radius: number
-}
-
-/** Holds a projected point: the screen position and the depth toward the viewer. */
-export interface ProjectedPoint {
-  x: number
-  y: number
-  /** The cosine of the angle from the view centre, positive on the half facing the viewer. */
-  depth: number
-  visible: boolean
-}
+import { type GlobeView, latLngToXyz } from './projection'
 
 /** Holds the cells of the globe as unit-sphere geometry, built once and rotated every frame. */
 export interface GlobeCells {
@@ -62,72 +30,6 @@ export interface GlobeFrame {
   indices: Uint16Array[]
   pointCounts: Int32Array
   indexCounts: Int32Array
-}
-
-/** Converts a coordinate in degrees to a point on the unit sphere. */
-export function latLngToXyz(lat: number, lng: number): Xyz {
-  'worklet'
-  const phi = lat * DEG_TO_RAD
-  const lambda = lng * DEG_TO_RAD
-  const cosPhi = Math.cos(phi)
-  return { x: cosPhi * Math.cos(lambda), y: cosPhi * Math.sin(lambda), z: Math.sin(phi) }
-}
-
-/**
- * Rotates a point on the unit sphere into view space.
- *
- * The longitude turn comes first, about the polar axis, then the latitude tilt. The result is
- * oriented like the screen: `x` to the right, `y` up, `z` toward the viewer.
- */
-export function rotateToView(point: Xyz, view: GlobeView): Xyz {
-  'worklet'
-  const sinLambda = Math.sin(view.lambda0)
-  const cosLambda = Math.cos(view.lambda0)
-  const sinPhi = Math.sin(view.phi0)
-  const cosPhi = Math.cos(view.phi0)
-  const turnedX = point.x * cosLambda + point.y * sinLambda
-  return {
-    x: point.y * cosLambda - point.x * sinLambda,
-    y: cosPhi * point.z - sinPhi * turnedX,
-    z: sinPhi * point.z + cosPhi * turnedX,
-  }
-}
-
-/** Projects a coordinate in degrees onto the orthographic disk of `view`. */
-export function project(lat: number, lng: number, view: GlobeView): ProjectedPoint {
-  'worklet'
-  const rotated = rotateToView(latLngToXyz(lat, lng), view)
-  return {
-    x: view.cx + view.radius * rotated.x,
-    y: view.cy - view.radius * rotated.y,
-    depth: rotated.z,
-    visible: rotated.z > 0,
-  }
-}
-
-/**
- * Answers the coordinate under a screen point, or `undefined` outside the disk.
- *
- * Only the half facing the viewer can be hit, which is what a pick from a tap needs.
- */
-export function unproject(x: number, y: number, view: GlobeView): LatLng | undefined {
-  'worklet'
-  const viewX = (x - view.cx) / view.radius
-  const viewY = (view.cy - y) / view.radius
-  const squared = viewX * viewX + viewY * viewY
-  if (squared > 1) return undefined
-  const viewZ = Math.sqrt(1 - squared)
-
-  const sinPhi = Math.sin(view.phi0)
-  const cosPhi = Math.cos(view.phi0)
-  const turnedX = cosPhi * viewZ - sinPhi * viewY
-  const turnedZ = sinPhi * viewZ + cosPhi * viewY
-
-  const lat = Math.asin(Math.max(-1, Math.min(1, turnedZ))) * RAD_TO_DEG
-  let lng = (view.lambda0 + Math.atan2(viewX, turnedX)) * RAD_TO_DEG
-  if (lng > 180) lng -= 360 * Math.ceil((lng - 180) / 360)
-  if (lng <= -180) lng += 360 * Math.ceil((-180 - lng) / 360)
-  return { lat, lng }
 }
 
 /**
