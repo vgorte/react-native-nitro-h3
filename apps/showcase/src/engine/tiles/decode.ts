@@ -175,7 +175,7 @@ function appendProjected(
  * Builds one SVG path string per style class from a decoded tile.
  *
  * Water and buildings become closed subpaths, roads open polylines grouped by their `class`
- * property. Only the asked classes are read, so the cost tracks what ends up on screen. With a
+ * property. Only the asked classes are read, so the cost tracks what ends up on screen; with a
  * projection the numbers are screen pixels and a subpath breaks wherever a vertex faces away.
  */
 export function buildTilePaths(tile: DecodedTile, options: TilePathOptions): TilePaths {

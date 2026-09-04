@@ -55,10 +55,16 @@ export function patchBuckets(cells: BigUint64Array, res: number): PatchBuckets {
     ancestors.push(ancestor)
   }
 
+  // the centre child of each patch is climbed to outside the window too, so the row times the walk
+  const centres = new BigUint64Array(ancestors.length)
+  for (let patch = 0; patch < ancestors.length; patch++) {
+    centres[patch] = cellToCenterChild(ancestors[patch], res)
+  }
+
   const rings = timed('gridDiskDistances', () => {
     const walked = new Array<BigUint64Array[]>(ancestors.length)
     for (let patch = 0; patch < ancestors.length; patch++) {
-      walked[patch] = gridDiskDistances(cellToCenterChild(ancestors[patch], res), PATCH_RINGS)
+      walked[patch] = gridDiskDistances(centres[patch], PATCH_RINGS)
     }
     return walked
   })

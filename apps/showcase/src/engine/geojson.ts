@@ -17,17 +17,6 @@ const POLE = 90
  * this is the cost the act is there to show. Every ring closes on the vertex it started at, as
  * GeoJSON requires and H3 boundaries leave off, and the padding slots are never read.
  *
- * Two rings need more than the vertices H3 gives. A cell on the antimeridian holds longitudes at
- * both ends of the range, which a renderer fills the long way round as a strip across the world;
- * every negative longitude of such a ring is shifted east by a turn instead, which MapLibre draws
- * correctly past 180. A cell around a pole still spans half the world after that, because its ring
- * circles the pole without reaching it, so the ring is closed over the cap between its two extreme
- * longitudes. H3 answers a north cell in rising longitude and a south cell in falling longitude, so
- * the cap chain follows whichever extreme the ring reaches first; inserting it always after the
- * greatest longitude ties every south cell into a bow tie. A ring that circles a pole once always
- * has those two extremes next to each other, and one that does not is left as it came rather than
- * capped at a vertex the chain would cross the rest of the ring to reach.
- *
  * @param boundaries The boundaries as `cellsToBoundaries` answers them.
  * @param buckets The ramp bucket of each cell, which the fill layer's expression reads back.
  */
@@ -48,6 +37,7 @@ export function cellsToFeatureCollection(boundaries: CellBoundaries, buckets: Ui
       if (lng > maxLng) maxLng = lng
     }
 
+    // a ring holding both ends of the range draws the long way round, so its negatives shift east
     const wrapped = maxLng - minLng > HALF_TURN
     let lowest = 0
     let highest = 0
@@ -68,6 +58,8 @@ export function cellsToFeatureCollection(boundaries: CellBoundaries, buckets: Ui
       }
     }
 
+    // a ring around a pole spans half the world even shifted, so it closes over the cap between
+    // its two extreme longitudes
     const cap = vertices[base] >= 0 ? POLE : -POLE
     // the two extremes are the seam the ring crosses, and H3 answers a pole either way round
     const rising = (highest + 1) % count === lowest
@@ -75,6 +67,7 @@ export function cellsToFeatureCollection(boundaries: CellBoundaries, buckets: Ui
     // a ring whose extremes are not neighbours has no seam to close over, so it keeps its vertices
     const capped = wrapped && maxLng - minLng > HALF_TURN && (rising || falling)
     const capAfter = rising ? highest : lowest
+    // the chain follows the extreme the ring reaches first, or a south cell ties into a bow tie
     const capChain = rising
       ? `,[${maxLng},${cap}],[${minLng},${cap}]`
       : `,[${minLng},${cap}],[${maxLng},${cap}]`
