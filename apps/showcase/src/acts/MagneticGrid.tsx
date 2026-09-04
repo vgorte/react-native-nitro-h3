@@ -118,11 +118,13 @@ export function MagneticGrid({ active }: ActProps) {
     setWalk(walkOf(cell, MIN_K))
   }, [active, centre])
 
-  // the widest disk is framed from the first frame, its centre on the anchor's own origin
+  // The widest disk is framed from the first frame, its centre on the anchor's own origin. It sits
+  // in the middle of what the act indicator leaves rather than of the viewport, so the smallest
+  // disks stand clear of the panel instead of under it.
   useEffect(() => {
     if (centre === null) return
     translateX.value = width / 2
-    translateY.value = height / 2
+    translateY.value = (PANEL_TOP + height) / 2
     scale.value = openingScale(width, height, BERLIN.lat, getHexagonEdgeLengthAvgM)
   }, [centre, width, height, translateX, translateY, scale])
 

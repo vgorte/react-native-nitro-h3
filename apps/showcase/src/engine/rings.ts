@@ -10,8 +10,8 @@ export const MAX_K = 50
 /** The resolution the act's grid stands at, about a city block a cell. */
 export const GRID_RES = 9
 
-/** Points a cell has to span before the grid lines over it are worth drawing. */
-export const GRID_CELL_PX = 12
+// points a cell has to span before the grid lines over it are worth drawing
+const GRID_CELL_PX = 12
 
 // the fitted disk keeps a tenth of the narrow side free
 const FIT_MARGIN = 0.9
