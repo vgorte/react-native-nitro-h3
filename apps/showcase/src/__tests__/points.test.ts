@@ -7,10 +7,14 @@ import {
   bucketsOfCounts,
   centreOf,
   generatePoints,
+  type PointCache,
   pointStream,
+  servesRun,
 } from '../engine/points'
 
 const BUCKETS = 16
+
+const CACHE: PointCache = { seed: 3, count: 100_000, blocks: [], ms: 42 }
 
 describe('generatePoints', () => {
   test('answers two doubles per point inside the box', () => {
@@ -67,6 +71,21 @@ describe('blocksOf', () => {
 
   test('answers no block for a run of no points', () => {
     expect(blocksOf(0)).toEqual([])
+  })
+})
+
+describe('servesRun', () => {
+  test('serves a run of the same seed and count, whatever resolution it asks for', () => {
+    expect(servesRun(CACHE, 3, 100_000)).toBe(true)
+  })
+
+  test('refuses another seed and another count', () => {
+    expect(servesRun(CACHE, 4, 100_000)).toBe(false)
+    expect(servesRun(CACHE, 3, 1_000_000)).toBe(false)
+  })
+
+  test('refuses a run before anything has been drawn', () => {
+    expect(servesRun(null, 3, 100_000)).toBe(false)
   })
 })
 

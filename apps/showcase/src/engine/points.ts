@@ -15,6 +15,16 @@ export interface Block {
   count: number
 }
 
+/** Holds the points of one run, kept so a run that draws the same ones need not draw them again. */
+export interface PointCache {
+  seed: number
+  count: number
+  /** The points as they were drawn, one array a block, so no call is handed a windowed view. */
+  blocks: Float64Array[]
+  /** What drawing them took, which the HUD keeps showing, as a cached figure, while they serve. */
+  ms: number
+}
+
 /** The Berlin administrative bounding box, the sample region of the act. */
 export const BERLIN: BoundingBox = { south: 52.3383, west: 13.0884, north: 52.6755, east: 13.7612 }
 
@@ -100,6 +110,20 @@ export function blocksOf(count: number, size = BLOCK): Block[] {
     blocks.push({ from, count: Math.min(size, count - from) })
   }
   return blocks
+}
+
+/**
+ * Answers whether a cache of points can serve a run.
+ *
+ * The seed and the point count are what a run's points depend on; the resolution enters the pipeline
+ * one stage later, so changing it reuses the points the last run drew.
+ *
+ * @param cache The points the last run kept, absent before the first one.
+ * @param seed The run's seed.
+ * @param count The points the run holds.
+ */
+export function servesRun(cache: PointCache | null, seed: number, count: number): boolean {
+  return cache !== null && cache.seed === seed && cache.count === count
 }
 
 /**

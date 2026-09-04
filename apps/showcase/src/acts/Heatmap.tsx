@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
+import { withTiming } from 'react-native-reanimated'
 import { aggregateCells } from '../engine/aggregate'
 import { cellsFromPoints } from '../engine/cells'
 import {
@@ -8,7 +9,9 @@ import {
   boxBounds,
   bucketsOfCounts,
   centreOf,
+  type PointCache,
   pointStream,
+  servesRun,
 } from '../engine/points'
 import { formatCount, formatMs } from '../engine/stats'
 import { resetWorstGap } from '../render/BlockedReadout'
@@ -20,7 +23,7 @@ import { FinePrint } from '../render/hud/FinePrint'
 import { Metric } from '../render/hud/Metric'
 import { Panel } from '../render/hud/Panel'
 import { Row } from '../render/hud/Row'
-import { type CameraAnchor, useCamera } from '../render/useCamera'
+import { type CameraAnchor, fitTo, useCamera } from '../render/useCamera'
 import { BUCKETS, colours, glass, type } from '../theme/tokens'
 import type { ActProps } from './types'
 
@@ -42,9 +45,17 @@ const OPEN_SEED = 1
 const OPEN_POINTS = 100_000
 const OPEN_RES = 9
 
-/** Points and resolution of the push-it step, the largest set the act builds. */
+/**
+ * Points and resolution of the push-it step, the largest set the act builds.
+ *
+ * Resolution 11 is where a million points of this mixture land in about 123,000 distinct cells,
+ * which is the size spike 1 measured the inset variant at 60 fps for.
+ */
 const PUSH_POINTS = 1_000_000
-const PUSH_RES = 10
+const PUSH_RES = 11
+
+/** Cells the push-it step reaches, measured over the seed the act opens on. */
+const PUSH_CELLS = 123_000
 
 const POINT_OPTIONS: readonly ChoiceOption<number>[] = [
   { value: 100_000, label: '100,000' },
@@ -57,6 +68,15 @@ const RES_OPTIONS: readonly ChoiceOption<number>[] = [
   { value: 9, label: '9' },
 ]
 
+// the push-it step stands where the three plain resolutions do, so its own step is lit like them
+const PUSH_OPTIONS: readonly ChoiceOption<number>[] = [
+  ...RES_OPTIONS,
+  { value: PUSH_RES, label: `${PUSH_RES}` },
+]
+
+/** Milliseconds the camera takes to re-frame the box when a run starts. */
+const FIT_MS = 200
+
 // the scene stands in the frame of the box's own centre, which is where the camera opens
 const CENTRE: CameraAnchor = centreOf(BERLIN)
 
@@ -68,7 +88,8 @@ const CONTROL_BOTTOM = 118
 const NOTES = [
   'the points are synthetic, drawn from twelve gaussian hotspots over the Berlin box',
   'above 100,000 points the run generates and locates in blocks and yields between them',
-  'the sort and the count run once over the whole buffer, which is the block the readout reports',
+  'the sort and the count then run unchunked on purpose, so the readout shows what they cost',
+  'a run keeps its points, so a change of resolution locates the ones the last run drew',
   'above 20,000 cells the grid comes off and every cell is drawn inset instead',
 ]
 
@@ -79,6 +100,8 @@ interface Run {
   /** Points generated and located so far, which grows block by block. */
   points: number
   generateMs: number
+  /** Whether the points came from the last run's cache, in which case nothing was drawn. */
+  cached: boolean
   cellsMs: number
   /** Cells the points landed in, distinct. */
   distinct: number
@@ -94,6 +117,7 @@ interface Run {
 const NOTHING: Run = {
   points: 0,
   generateMs: 0,
+  cached: false,
   cellsMs: 0,
   distinct: 0,
   aggregateMs: 0,
@@ -139,11 +163,35 @@ export function Heatmap({ active }: ActProps) {
   // the run standing on screen, so paging back to the act does not rebuild what it already holds
   const built = useRef<string | null>(null)
   const framed = useRef(false)
+  // the points the last run drew, which a run of the same seed and count locates again
+  const drawn = useRef<PointCache | null>(null)
 
   // the scene stands in the anchor's own metre frame, so a settle has nothing to rebuild
   const settle = useCallback(() => {}, [])
   const camera = useCamera({ anchor: CENTRE, onSettle: settle })
-  const { anchor, fit } = camera
+  const { anchor, scale, translateX, translateY } = camera
+
+  /**
+   * Frames the whole box, so a run never builds into a view that has been panned off it.
+   *
+   * The opening frame is written straight, because there is nothing on screen to move away from;
+   * every run after it animates, so the visitor sees where the camera went.
+   */
+  const frameBox = useCallback(
+    (animated: boolean) => {
+      const fitted = fitTo(boxBounds(BERLIN), width, height)
+      if (!animated) {
+        scale.value = fitted.scale
+        translateX.value = fitted.translateX
+        translateY.value = fitted.translateY
+        return
+      }
+      scale.value = withTiming(fitted.scale, { duration: FIT_MS })
+      translateX.value = withTiming(fitted.translateX, { duration: FIT_MS })
+      translateY.value = withTiming(fitted.translateY, { duration: FIT_MS })
+    },
+    [width, height, scale, translateX, translateY],
+  )
 
   /** Runs one whole pipeline, reporting the stages as they finish and stopping where cancelled. */
   const execute = useCallback(
@@ -157,27 +205,40 @@ export function Heatmap({ active }: ActProps) {
       setScene(null)
       setRun(NOTHING)
 
+      // the points depend on the seed and the count alone, so a change of resolution reuses them
+      const held = servesRun(drawn.current, wanted.seed, wanted.points) ? drawn.current : null
       const draw = pointStream(wanted.seed, BERLIN)
       const blocks = blocksOf(wanted.points)
       const cells = new BigUint64Array(wanted.points)
-      let generateMs = 0
+      const kept: Float64Array[] = []
+      let generateMs = held === null ? 0 : held.ms
       let cellsMs = 0
 
-      for (const block of blocks) {
+      for (const [index, block] of blocks.entries()) {
         if (signal.aborted) return
-        const started = performance.now()
-        const drawn = draw(block.count)
-        generateMs += performance.now() - started
+        let coords: Float64Array
+        if (held === null) {
+          const started = performance.now()
+          coords = draw(block.count)
+          generateMs += performance.now() - started
+          kept.push(coords)
+        } else {
+          coords = held.blocks[index]
+        }
 
-        const located = cellsFromPoints(drawn, wanted.res)
+        const located = cellsFromPoints(coords, wanted.res)
         cellsMs += located.ms
         cells.set(located.value, block.from)
-        setRun({ ...NOTHING, points: block.from + block.count, generateMs, cellsMs })
+        const placed = block.from + block.count
+        setRun({ ...NOTHING, points: placed, generateMs, cellsMs, cached: held !== null })
 
         // a chunked run leaves the loop a turn between blocks, so the act answers while it runs
         if (blocks.length > 1) await yieldToLoop()
       }
       if (signal.aborted) return
+      if (held === null) {
+        drawn.current = { seed: wanted.seed, count: wanted.points, blocks: kept, ms: generateMs }
+      }
 
       const sorted = performance.now()
       const aggregate = aggregateCells(cells)
@@ -193,6 +254,7 @@ export function Heatmap({ active }: ActProps) {
       setRun({
         points: wanted.points,
         generateMs,
+        cached: held !== null,
         cellsMs,
         distinct: aggregate.cells.length,
         aggregateMs,
@@ -211,6 +273,8 @@ export function Heatmap({ active }: ActProps) {
 
   useEffect(() => {
     if (!active || built.current === key) return
+    frameBox(framed.current)
+    framed.current = true
     const signal: Signal = { aborted: false, finished: false }
     void execute({ seed, points, res }, anchor, signal).then(() => {
       if (signal.finished) built.current = key
@@ -218,14 +282,7 @@ export function Heatmap({ active }: ActProps) {
     return () => {
       signal.aborted = true
     }
-  }, [active, key, seed, points, res, anchor, execute])
-
-  // the act opens on the whole box, and keeps whatever the visitor has panned to afterwards
-  useEffect(() => {
-    if (!active || framed.current) return
-    framed.current = true
-    fit(boxBounds(BERLIN), width, height)
-  }, [active, width, height, fit])
+  }, [active, key, seed, points, res, anchor, execute, frameBox])
 
   const pushed = points === PUSH_POINTS && res === PUSH_RES
   const pushIt = useCallback(() => {
@@ -249,7 +306,12 @@ export function Heatmap({ active }: ActProps) {
         <Panel collapsible collapsed={collapsed} onToggle={() => setCollapsed((held) => !held)}>
           <Metric value={formatCount(run?.points ?? 0)} caption="points placed" />
           <Row label="resolution" value={`${res}`} />
-          <Row label="generate" value={run === null ? '-' : formatMs(run.generateMs)} />
+          {/* a cached run drew nothing, so its row says whose measurement it is showing */}
+          <Row
+            label={run?.cached === true ? 'generate, from the cache' : 'generate'}
+            value={run === null ? '-' : formatMs(run.generateMs)}
+            tone={run?.cached === true ? 'muted' : 'text'}
+          />
           <Row
             label="locate"
             value={run === null ? '-' : formatMs(run.cellsMs)}
@@ -276,8 +338,16 @@ export function Heatmap({ active }: ActProps) {
       <View style={styles.control}>
         <Panel align="right">
           <Choice label="points" options={POINT_OPTIONS} value={points} onChange={setPoints} />
-          <Choice label="resolution" options={RES_OPTIONS} value={res} onChange={setRes} />
-          <Text style={styles.hint}>push it runs 1,000,000 points at resolution 10</Text>
+          {/* the push-it resolution joins the row while its step stands, and leaves with it */}
+          <Choice
+            label="resolution"
+            options={pushed ? PUSH_OPTIONS : RES_OPTIONS}
+            value={res}
+            onChange={setRes}
+          />
+          <Text style={styles.hint}>
+            {`push it runs 1,000,000 points at resolution ${PUSH_RES}, about ${formatCount(PUSH_CELLS)} cells`}
+          </Text>
           <View style={styles.buttons}>
             <Pressable
               style={styles.button}
