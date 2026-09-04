@@ -1,23 +1,29 @@
 import { Canvas, Fill } from '@shopify/react-native-skia'
+import { useFonts } from 'expo-font'
 import { StatusBar } from 'expo-status-bar'
 import { StyleSheet, Text, View } from 'react-native'
 import { cellToLatLng } from 'react-native-nitro-h3'
+import { fontAssets } from './theme/fonts'
+import { colours, type } from './theme/tokens'
 
-const GROUND = '#060911'
 const SAMPLE_CELL = 0x8928308280fffffn
 
 export default function App() {
+  const [fontsLoaded] = useFonts(fontAssets)
   const { lat, lng } = cellToLatLng(SAMPLE_CELL)
+
+  // the ground colour already fills the window, so an unstyled first frame is worse than none
+  if (!fontsLoaded) return <View style={styles.root} />
 
   return (
     <View style={styles.root}>
       <Canvas style={StyleSheet.absoluteFill}>
-        <Fill color={GROUND} />
+        <Fill color={colours.ground} />
       </Canvas>
       <View style={styles.readout} pointerEvents="none">
         <Text style={styles.label}>cellToLatLng</Text>
         <Text style={styles.cell}>0x{SAMPLE_CELL.toString(16)}</Text>
-        <Text style={styles.value}>
+        <Text style={styles.metric}>
           {lat.toFixed(6)}, {lng.toFixed(6)}
         </Text>
       </View>
@@ -29,7 +35,7 @@ export default function App() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: GROUND,
+    backgroundColor: colours.ground,
   },
   readout: {
     flex: 1,
@@ -38,17 +44,15 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   label: {
-    color: '#4d6f9a',
-    fontSize: 13,
+    ...type.label,
+    color: colours.muted,
   },
   cell: {
-    color: '#9fc4ea',
-    fontSize: 16,
-    fontVariant: ['tabular-nums'],
+    ...type.value,
+    color: colours.text,
   },
-  value: {
-    color: '#e8f3ff',
-    fontSize: 28,
-    fontVariant: ['tabular-nums'],
+  metric: {
+    ...type.metric,
+    color: colours.text,
   },
 })

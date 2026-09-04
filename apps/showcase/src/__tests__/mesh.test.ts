@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import type { CellBoundaries } from 'react-native-nitro-h3'
-import { buildMesh, buildOutlinePath, rampColours } from '../engine/mesh'
+import { buildMesh, buildOutlinePath } from '../engine/mesh'
 import { projectCells } from '../engine/projection'
 
 const STRIDE = 20
@@ -101,16 +101,5 @@ describe('buildOutlinePath', () => {
     const cells = projectCells(boundaries([[0, 0, 1, 0, 1, 1]]), CENTRE)
 
     expect(buildOutlinePath(cells, 3).match(/L/g)).toHaveLength(2)
-  })
-})
-
-describe('rampColours', () => {
-  test('spans the theme ramp from its first stop to its last', () => {
-    const colours = rampColours(16)
-
-    expect(colours).toHaveLength(16)
-    expect(colours[0]).toBe('#0f2f5a')
-    expect(colours[15]).toBe('#ffffff')
-    expect(new Set(colours).size).toBe(16)
   })
 })

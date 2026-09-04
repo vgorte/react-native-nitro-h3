@@ -32,9 +32,6 @@ export interface MeshOptions {
   inset: number
 }
 
-/** Names the ramp of the Observatory theme, low intensity to high. */
-export const RAMP_STOPS = ['#0F2F5A', '#1E6FD6', '#3FB0FF', '#C9EBFF', '#FFFFFF'] as const
-
 /**
  * Writes the triangle fan of one cell from its first vertex, `count - 2` triangles.
  *
@@ -166,29 +163,4 @@ export function buildOutlinePath(projected: ProjectedCells, edges: number): stri
   }
 
   return parts.join('')
-}
-
-function channel(hex: string, offset: number): number {
-  return Number.parseInt(hex.slice(offset, offset + 2), 16)
-}
-
-/** Quantises the theme ramp into `count` colours, evenly spaced between its stops. */
-export function rampColours(count: number): string[] {
-  const colours: string[] = []
-  for (let step = 0; step < count; step++) {
-    const position = count === 1 ? 0 : (step / (count - 1)) * (RAMP_STOPS.length - 1)
-    const lower = Math.min(Math.floor(position), RAMP_STOPS.length - 2)
-    const weight = position - lower
-    const from = RAMP_STOPS[lower]
-    const to = RAMP_STOPS[lower + 1]
-    let colour = '#'
-    for (let offset = 1; offset < 7; offset += 2) {
-      const value = Math.round(
-        channel(from, offset) + (channel(to, offset) - channel(from, offset)) * weight,
-      )
-      colour += value.toString(16).padStart(2, '0')
-    }
-    colours.push(colour)
-  }
-  return colours
 }
