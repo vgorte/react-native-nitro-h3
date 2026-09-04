@@ -44,7 +44,7 @@ const SHEET_MAX = 0.7
 /** Opacity of the ground behind the sheet, high enough that no reading under it stays legible. */
 const SHEET_BACKING = 0.92
 
-// the head, the gap under it and the panel's own padding, which the rows do not get
+// the head, the gap under it and the panel's own padding, until a layout has measured them
 const SHEET_CHROME = 48
 
 /** Configures {@linkcode Inspector}. */
@@ -81,12 +81,16 @@ export function Inspector({ cell, onClose }: InspectorProps) {
   const rise = useSharedValue(0)
   // the cell the sheet draws, which it holds on to while it falls back out of the screen
   const [shown, setShown] = useState<bigint | null>(cell)
+  // the sheet and its rows as they were laid out, whose difference is everything but the rows
+  const [sheetPx, setSheetPx] = useState(0)
+  const [rowsPx, setRowsPx] = useState(0)
   const rows = useMemo(() => (shown === null ? null : inspectRows(shown, H3)), [shown])
+  const chrome = sheetPx > 0 && rowsPx > 0 ? sheetPx - rowsPx : SHEET_CHROME
 
   useEffect(() => {
     if (cell !== null) {
       setShown(cell)
-      rise.value = 0
+      // this assignment cancels a fall, and rising from where it left the sheet leaves no jump
       rise.value = withTiming(1, { duration: SHEET_MS })
       return
     }
@@ -115,7 +119,10 @@ export function Inspector({ cell, onClose }: InspectorProps) {
         accessibilityRole="button"
         accessibilityLabel="close the inspector"
       />
-      <Animated.View style={[styles.sheet, rising]}>
+      <Animated.View
+        style={[styles.sheet, rising]}
+        onLayout={(event) => setSheetPx(event.nativeEvent.layout.height)}
+      >
         {/* the ground behind the glass: this sheet lies over the HUD, not over the scene */}
         <View style={styles.backing} pointerEvents="none" />
         <Panel>
@@ -126,9 +133,10 @@ export function Inspector({ cell, onClose }: InspectorProps) {
             </Pressable>
           </View>
           <ScrollView
-            style={[styles.rows, { maxHeight: height * SHEET_MAX - SHEET_CHROME }]}
+            style={[styles.rows, { maxHeight: height * SHEET_MAX - chrome }]}
             contentContainerStyle={styles.list}
             showsVerticalScrollIndicator={false}
+            onLayout={(event) => setRowsPx(event.nativeEvent.layout.height)}
           >
             {rows.map((row) => (
               <Reading key={row.label} row={row} />
