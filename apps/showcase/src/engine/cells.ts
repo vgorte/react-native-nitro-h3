@@ -4,6 +4,7 @@ import {
   cellsToLatLngs,
   cellToChildren,
   compactCells,
+  getBaseCellNumber,
   getRes0Cells,
   gridDisk,
   gridDiskDistances,
@@ -76,4 +77,14 @@ export function earthAt(res: number): Timed<BigUint64Array> {
   // read outside the window, so the duration covers `uncompactCells` alone
   const res0 = getRes0Cells()
   return timed('uncompactCells', () => uncompactCells(res0, res))
+}
+
+/**
+ * Answers the ramp bucket of a cell by the base cell it descends from.
+ *
+ * A global view has no patch to colour by. The 122 base cells spread a world of cells over the ramp
+ * on one call a cell, which is how the globe colours itself.
+ */
+export function bucketOfBaseCell(cell: bigint, buckets: number): number {
+  return getBaseCellNumber(cell) % buckets
 }

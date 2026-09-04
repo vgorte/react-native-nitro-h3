@@ -37,7 +37,8 @@ export function Panel({
   const edge = align === 'right' ? styles.right : styles.left
 
   return (
-    // only the head of a collapsible panel takes a touch; the readings let the scene have them
+    // a collapsed panel is its head alone, so the scene keeps every touch outside it; expanded, the
+    // readings pass their touches on but the glass behind them still takes one on iOS
     <View style={[styles.panel, edge]} pointerEvents={collapsible ? 'box-none' : 'auto'}>
       {/* Android has no backdrop to sample without a blur target, and falls back to a dark scrim */}
       <BlurView intensity={BLUR_INTENSITY} tint="dark" style={StyleSheet.absoluteFill} />

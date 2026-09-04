@@ -11,16 +11,6 @@ const FULL_TURN = 360
 const POLE = 90
 
 /**
- * Estimates the bytes one hexagon adds to the collection, at H3's full coordinate precision.
- *
- * Measured in the Atlas act on 2026-09-04 in a release build on the Android emulator: a settle at
- * resolution 8 turned 817 cells into a 299,294 byte string, which is 366.3 bytes a cell. A
- * pentagon costs one vertex less, and a cell whose coordinates happen to be shorter comes out
- * under it.
- */
-export const GEOJSON_BYTES_PER_CELL = 366
-
-/**
  * Builds the `FeatureCollection` of a cell set as one JSON string, ready for a `GeoJSONSource`.
  *
  * The string is written in one pass over the padded layout, without an object per vertex, because
@@ -31,7 +21,10 @@ export const GEOJSON_BYTES_PER_CELL = 366
  * both ends of the range, which a renderer fills the long way round as a strip across the world;
  * every negative longitude of such a ring is shifted east by a turn instead, which MapLibre draws
  * correctly past 180. A cell around a pole still spans half the world after that, because its ring
- * circles the pole without reaching it, so the ring is closed over the cap.
+ * circles the pole without reaching it, so the ring is closed over the cap between its two extreme
+ * longitudes. H3 answers a north cell in rising longitude and a south cell in falling longitude, so
+ * the cap chain follows whichever extreme the ring reaches first; inserting it always after the
+ * greatest longitude ties every south cell into a bow tie.
  *
  * @param boundaries The boundaries as `cellsToBoundaries` answers them.
  * @param buckets The ramp bucket of each cell, which the fill layer's expression reads back.
@@ -54,22 +47,33 @@ export function cellsToFeatureCollection(boundaries: CellBoundaries, buckets: Ui
     }
 
     const wrapped = maxLng - minLng > HALF_TURN
-    let peak = 0
+    let lowest = 0
+    let highest = 0
     if (wrapped) {
       minLng = Number.POSITIVE_INFINITY
       maxLng = Number.NEGATIVE_INFINITY
       for (let vertex = 0; vertex < count; vertex++) {
         const raw = vertices[base + vertex * 2 + 1]
         const lng = raw < 0 ? raw + FULL_TURN : raw
-        if (lng < minLng) minLng = lng
+        if (lng < minLng) {
+          minLng = lng
+          lowest = vertex
+        }
         if (lng > maxLng) {
           maxLng = lng
-          peak = vertex
+          highest = vertex
         }
       }
     }
+
     const capped = wrapped && maxLng - minLng > HALF_TURN
     const cap = vertices[base] >= 0 ? POLE : -POLE
+    // the two extremes are the seam the ring crosses, and H3 answers a pole either way round
+    const rising = (highest + 1) % count === lowest
+    const capAfter = rising ? highest : lowest
+    const capChain = rising
+      ? `,[${maxLng},${cap}],[${minLng},${cap}]`
+      : `,[${minLng},${cap}],[${maxLng},${cap}]`
 
     let first = ''
     let ring = ''
@@ -80,7 +84,7 @@ export function cellsToFeatureCollection(boundaries: CellBoundaries, buckets: Ui
       const point = `[${lng},${vertices[slot]}]`
       if (vertex === 0) first = point
       ring += vertex === 0 ? point : `,${point}`
-      if (capped && vertex === peak) ring += `,[${maxLng},${cap}],[${minLng},${cap}]`
+      if (capped && vertex === capAfter) ring += capChain
     }
 
     const head = `${FEATURE_HEAD}${buckets[cell]}${FEATURE_GEOMETRY}`

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import type { FeatureCollection, Polygon } from 'geojson'
+import type { FeatureCollection, Polygon, Position } from 'geojson'
 import type { CellBoundaries } from 'react-native-nitro-h3'
 import { cellsToFeatureCollection } from '../engine/geojson'
 
@@ -98,8 +98,37 @@ describe('cellsToFeatureCollection', () => {
 })
 
 const ANTIMERIDIAN = [0, 179, 1, 179.9, 1, -179.5, 0, -179, -1, -179.5, -1, 179.9]
-const NORTH_POLE = [89.5, -150, 89.5, -90, 89.5, -30, 89.5, 30, 89.5, 90, 89.5, 150]
-const SOUTH_POLE = [-89.5, -150, -89.5, -90, -89.5, -30, -89.5, 30, -89.5, 90, -89.5, 150]
+
+// `cellToBoundary` of `latLngToCell(90, 0, 8)`, which H3 answers in rising longitude
+const NORTH_POLE = [
+  89.991558, 14.512916, 89.99358, 49.86234, 89.997287, 98.11663, 89.997514, -110.48311, 89.99398,
+  -58.289035, 89.991786, -20.66643,
+]
+
+// `cellToBoundary` of `latLngToCell(-90, 0, 8)`, which H3 answers in falling longitude
+const SOUTH_POLE = [
+  -89.991786, 159.33357, -89.99398, 121.710965, -89.997514, 69.51689, -89.997287, -81.88337,
+  -89.99358, -130.13766, -89.991558, -165.487084,
+]
+
+/** Reports whether two segments cross anywhere other than at a shared endpoint. */
+function crosses(a: Position, b: Position, c: Position, d: Position): boolean {
+  const side = (p: Position, q: Position, r: Position): number =>
+    Math.sign((q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]))
+  const shared = [a, b].some(([x, y]) => [c, d].some(([u, v]) => x === u && y === v))
+  if (shared) return false
+  return side(a, b, c) !== side(a, b, d) && side(c, d, a) !== side(c, d, b)
+}
+
+/** Reports whether a closed ring crosses itself, which a cell's polygon never may. */
+function selfIntersects(ring: Position[]): boolean {
+  for (let edge = 0; edge < ring.length - 1; edge++) {
+    for (let other = edge + 1; other < ring.length - 1; other++) {
+      if (crosses(ring[edge], ring[edge + 1], ring[other], ring[other + 1])) return true
+    }
+  }
+  return false
+}
 
 describe('cellsToFeatureCollection across the world edge', () => {
   test('keeps a ring on the antimeridian in one copy of the hemisphere', () => {
@@ -114,7 +143,7 @@ describe('cellsToFeatureCollection across the world edge', () => {
     expect(ring).toHaveLength(7)
   })
 
-  test('closes a ring around the north pole over the cap', () => {
+  test('closes a ring that rises in longitude over the north cap', () => {
     const collection = parse(
       cellsToFeatureCollection(boundaries([NORTH_POLE]), new Uint8Array([0])),
     )
@@ -123,17 +152,31 @@ describe('cellsToFeatureCollection across the world edge', () => {
     expect(ring).toHaveLength(9)
     const capped = ring.filter(([, lat]) => lat === 90)
     expect(capped).toHaveLength(2)
+    // the ring reaches its greatest longitude first, so the cap runs back from it
     expect(capped[0][0]).toBeGreaterThan(capped[1][0])
+    expect(selfIntersects(ring)).toBe(false)
   })
 
-  test('closes a ring around the south pole over its own cap', () => {
+  test('closes a ring that falls in longitude over the south cap', () => {
     const collection = parse(
       cellsToFeatureCollection(boundaries([SOUTH_POLE]), new Uint8Array([0])),
     )
 
     const ring = collection.features[0].geometry.coordinates[0]
-    expect(ring.filter(([, lat]) => lat === -90)).toHaveLength(2)
+    expect(ring).toHaveLength(9)
+    const capped = ring.filter(([, lat]) => lat === -90)
+    expect(capped).toHaveLength(2)
+    // the ring reaches its smallest longitude first, so the cap runs forward from it
+    expect(capped[0][0]).toBeLessThan(capped[1][0])
     expect(ring.filter(([, lat]) => lat === 90)).toHaveLength(0)
+  })
+
+  test('leaves the real south polar cell a ring that never crosses itself', () => {
+    const collection = parse(
+      cellsToFeatureCollection(boundaries([SOUTH_POLE]), new Uint8Array([0])),
+    )
+
+    expect(selfIntersects(collection.features[0].geometry.coordinates[0])).toBe(false)
   })
 
   test('leaves a ring that never crosses the edge alone', () => {

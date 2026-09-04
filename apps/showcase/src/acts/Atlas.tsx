@@ -23,7 +23,7 @@ import {
   gridDiskDistances,
   latLngToCell,
 } from 'react-native-nitro-h3'
-import { boundariesOf, diskAround, timed } from '../engine/cells'
+import { boundariesOf, bucketOfBaseCell, diskAround, timed } from '../engine/cells'
 import { cellsToFeatureCollection } from '../engine/geojson'
 import { bucketForDistance, PATCH_RINGS } from '../engine/mesh'
 import { DEG_TO_RAD, EARTH_RADIUS_M, resolutionForZoom } from '../engine/projection'
@@ -61,6 +61,7 @@ const ZOOM_OFFSET = 1
 const CELL_SPACING = Math.sqrt(3)
 // a disk of k rings is a hexagon of cells, and only its apothem is covered in every direction
 const DISK_APOTHEM = Math.sqrt(3) / 2
+// the largest k whose disk of 3k(k + 1) + 1 cells still fits under the cap, k = 81
 const MAX_K = Math.floor((Math.sqrt((4 * ATLAS_CELL_CAP - 1) / 3) - 1) / 2)
 
 // resolutions between a cell and the patch it is coloured in, so a patch holds 343 cells
@@ -130,17 +131,21 @@ interface Scene {
   cells: number
   res: number
   diskMs: number
-  patchMs: number
+  patchMs: number | null
+  ringsCall: string
   ringsMs: number
   boundariesMs: number
   jsonMs: number
   bytes: number
 }
 
-/** Holds the colour of every cell and what the two calls behind it cost. */
+/** Holds the colour of every cell and what the calls behind it cost. */
 interface PatchBuckets {
   buckets: Uint8Array
-  patchMs: number
+  /** The call the second duration belongs to, which a global view answers differently. */
+  call: string
+  /** Absent where the view is global and no ancestor was climbed to. */
+  patchMs: number | null
   ringsMs: number
 }
 
@@ -219,7 +224,12 @@ async function attributionOf(style: StyleSpecification): Promise<string> {
 /** Loads the basemap once: the style JSON in the theme's colours and the line under the map. */
 async function loadBasemap(): Promise<Basemap> {
   const style = recolour((await (await fetch(STYLE_URL)).json()) as StyleSpecification)
-  return { style, attribution: await attributionOf(style) }
+  try {
+    return { style, attribution: await attributionOf(style) }
+  } catch {
+    // a source whose TileJSON will not answer costs the licence line, not the recoloured style
+    return { style, attribution: DEFAULT_ATTRIBUTION }
+  }
 }
 
 /** Answers the camera the act opens on, the position the shared store holds or Berlin without one. */
@@ -237,42 +247,64 @@ function openingView(): InitialViewState {
  * Answers the ramp bucket of every cell, its ring distance to the centre of the patch it lies in.
  *
  * A patch is the {@linkcode PATCH_DEPTH} generations up of a cell, so the pattern is anchored to
- * the grid rather than to the view: panning slides the bullseyes, it does not move them.
+ * the grid rather than to the view: panning slides the bullseyes, it does not move them. Under that
+ * depth there is no ancestor to climb to and the patches would overlap, so a global view falls back
+ * on the base cell, which is what the globe colours by.
  *
  * @param cells The cells the collection is built from.
  * @param res The resolution they were asked for.
  */
 function patchBuckets(cells: BigUint64Array, res: number): PatchBuckets {
+  if (res < PATCH_DEPTH) {
+    const global = timed('getBaseCellNumber', () => {
+      const buckets = new Uint8Array(cells.length)
+      for (let cell = 0; cell < cells.length; cell++) {
+        buckets[cell] = bucketOfBaseCell(cells[cell], PATCH_BUCKETS)
+      }
+      return buckets
+    })
+    return { buckets: global.value, call: 'getBaseCellNumber', patchMs: 0, ringsMs: global.ms }
+  }
+
   const patches = timed('cellToParent', () => {
     const ancestors = new BigUint64Array(cells.length)
-    // a resolution under the patch depth has no ancestor to climb to, so the patch is the cell
-    const patchRes = Math.max(0, res - PATCH_DEPTH)
     for (let cell = 0; cell < cells.length; cell++) {
-      ancestors[cell] = cellToParent(cells[cell], patchRes)
+      ancestors[cell] = cellToParent(cells[cell], res - PATCH_DEPTH)
     }
     return ancestors
+  })
+
+  // the distinct ancestors are counted outside the window, so the row times H3 and nothing else
+  const seen = new Set<bigint>()
+  const ancestors: bigint[] = []
+  for (const ancestor of patches.value) {
+    if (seen.has(ancestor)) continue
+    seen.add(ancestor)
+    ancestors.push(ancestor)
+  }
+
+  const rings = timed('gridDiskDistances', () => {
+    const walked = new Array<BigUint64Array[]>(ancestors.length)
+    for (let patch = 0; patch < ancestors.length; patch++) {
+      walked[patch] = gridDiskDistances(cellToCenterChild(ancestors[patch], res), PATCH_RINGS)
+    }
+    return walked
   })
 
   const index = new Map<bigint, number>()
   for (let cell = 0; cell < cells.length; cell++) index.set(cells[cell], cell)
   const buckets = new Uint8Array(cells.length)
-  const rings = timed('gridDiskDistances', () => {
-    const seen = new Set<bigint>()
-    for (const ancestor of patches.value) {
-      if (seen.has(ancestor)) continue
-      seen.add(ancestor)
-      const patch = gridDiskDistances(cellToCenterChild(ancestor, res), PATCH_RINGS)
-      for (let ring = 0; ring < patch.length; ring++) {
-        const bucket = bucketForDistance(ring, PATCH_BUCKETS)
-        for (const member of patch[ring]) {
-          const found = index.get(member)
-          if (found !== undefined) buckets[found] = bucket
-        }
+  for (const patch of rings.value) {
+    for (let ring = 0; ring < patch.length; ring++) {
+      const bucket = bucketForDistance(ring, PATCH_BUCKETS)
+      for (const member of patch[ring]) {
+        const found = index.get(member)
+        if (found !== undefined) buckets[found] = bucket
       }
     }
-  })
+  }
 
-  return { buckets, patchMs: patches.ms, ringsMs: rings.ms }
+  return { buckets, call: 'gridDiskDistances', patchMs: patches.ms, ringsMs: rings.ms }
 }
 
 /** Answers the ring count whose disk reaches every corner of the viewport, under the cap. */
@@ -344,6 +376,7 @@ export function Atlas({ active, onCellPress }: AtlasProps) {
       res,
       diskMs: disk.ms,
       patchMs: patched.patchMs,
+      ringsCall: patched.call,
       ringsMs: patched.ringsMs,
       boundariesMs: boundaries.ms,
       jsonMs: json.ms,
@@ -375,7 +408,8 @@ export function Atlas({ active, onCellPress }: AtlasProps) {
 
   const applied = useCallback((): void => {
     const now = performance.now()
-    noteFrame(mapWait.current, now, setAppliedMs)
+    // a tap owns the frames that follow it, so the map row never collects the highlight's tail
+    if (pickWait.current.from === 0) noteFrame(mapWait.current, now, setAppliedMs)
     noteFrame(pickWait.current, now, setHighlightMs)
   }, [])
 
@@ -451,15 +485,13 @@ export function Atlas({ active, onCellPress }: AtlasProps) {
                 value={built === null ? '-' : formatMs(built.diskMs)}
                 call="gridDisk"
               />
-              <Row
-                label="patches"
-                value={built === null ? '-' : formatMs(built.patchMs)}
-                call="cellToParent"
-              />
+              {built === null || built.patchMs === null ? null : (
+                <Row label="patches" value={formatMs(built.patchMs)} call="cellToParent" />
+              )}
               <Row
                 label="rings"
                 value={built === null ? '-' : formatMs(built.ringsMs)}
-                call="gridDiskDistances"
+                call={built?.ringsCall ?? 'gridDiskDistances'}
               />
               <Row
                 label="boundaries"
