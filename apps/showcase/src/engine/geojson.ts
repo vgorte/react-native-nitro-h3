@@ -24,7 +24,9 @@ const POLE = 90
  * circles the pole without reaching it, so the ring is closed over the cap between its two extreme
  * longitudes. H3 answers a north cell in rising longitude and a south cell in falling longitude, so
  * the cap chain follows whichever extreme the ring reaches first; inserting it always after the
- * greatest longitude ties every south cell into a bow tie.
+ * greatest longitude ties every south cell into a bow tie. A ring that circles a pole once always
+ * has those two extremes next to each other, and one that does not is left as it came rather than
+ * capped at a vertex the chain would cross the rest of the ring to reach.
  *
  * @param boundaries The boundaries as `cellsToBoundaries` answers them.
  * @param buckets The ramp bucket of each cell, which the fill layer's expression reads back.
@@ -66,10 +68,12 @@ export function cellsToFeatureCollection(boundaries: CellBoundaries, buckets: Ui
       }
     }
 
-    const capped = wrapped && maxLng - minLng > HALF_TURN
     const cap = vertices[base] >= 0 ? POLE : -POLE
     // the two extremes are the seam the ring crosses, and H3 answers a pole either way round
     const rising = (highest + 1) % count === lowest
+    const falling = (lowest + 1) % count === highest
+    // a ring whose extremes are not neighbours has no seam to close over, so it keeps its vertices
+    const capped = wrapped && maxLng - minLng > HALF_TURN && (rising || falling)
     const capAfter = rising ? highest : lowest
     const capChain = rising
       ? `,[${maxLng},${cap}],[${minLng},${cap}]`

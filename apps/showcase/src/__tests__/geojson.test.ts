@@ -111,6 +111,10 @@ const SOUTH_POLE = [
   -89.99358, -130.13766, -89.991558, -165.487084,
 ]
 
+// a ring wide enough to look polar whose greatest and smallest longitudes are three apart; H3
+// answers no such cell, and the builder has to leave it alone rather than tie it into a bow tie
+const SCATTERED = [89, 10, 89, 120, 89, -10, 89, -160, 89, 60, 89, -60]
+
 /** Reports whether two segments cross anywhere other than at a shared endpoint. */
 function crosses(a: Position, b: Position, c: Position, d: Position): boolean {
   const side = (p: Position, q: Position, r: Position): number =>
@@ -170,6 +174,15 @@ describe('cellsToFeatureCollection across the world edge', () => {
     expect(capped[0][0]).toBeLessThan(capped[1][0])
     expect(ring.filter(([, lat]) => lat === 90)).toHaveLength(0)
     expect(selfIntersects(ring)).toBe(false)
+  })
+
+  test('leaves a wide ring uncapped where its two extreme longitudes are not neighbours', () => {
+    const collection = parse(cellsToFeatureCollection(boundaries([SCATTERED]), new Uint8Array([0])))
+
+    const ring = collection.features[0].geometry.coordinates[0]
+    expect(ring).toHaveLength(7)
+    expect(ring.filter(([, lat]) => Math.abs(lat) === 90)).toHaveLength(0)
+    expect(ring.map(([lng]) => lng)).toEqual([10, 120, 350, 200, 60, 300, 10])
   })
 
   test('leaves a ring that never crosses the edge alone', () => {
