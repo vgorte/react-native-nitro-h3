@@ -85,6 +85,7 @@ const DISABLED_OPACITY = 0.4
 const NOTES = [
   'a tap splits the cell under it, a long press folds a cell and its siblings back into the parent',
   'the children do not tile the parent exactly, because the aperture is 7 and the grid is rotated',
+  'the boundaries row sums two calls, the leaves and the fills of the cells already split',
 ]
 
 /** Holds the children of one split while they grow, in the scene's own metre frame. */
@@ -144,6 +145,8 @@ export function FractalCity({ active, inspected, onInspect }: ActProps) {
 
   const merged = useRef<Tree | null>(null)
   const fading = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // the metre frame the ghost and the growth were built in, which a re-anchor leaves behind
+  const frame = useRef<CameraAnchor>(BERLIN)
 
   const progress = useSharedValue(0)
   const ghostAlpha = useSharedValue(0)
@@ -177,15 +180,12 @@ export function FractalCity({ active, inspected, onInspect }: ActProps) {
       ancestors: new BigUint64Array(0),
     })
     setFocus(focusOf(middle, null))
-  }, [active, openScale, width, height, setAnchor])
-
-  // the opening scene stands in the anchor's own frame, so the camera starts from its origin
-  useEffect(() => {
-    if (openScale === null) return
+    // the opening scene stands in the anchor's own frame, so the camera starts from its origin,
+    // and a viewport that changes later leaves both the disk and the camera where they are
     translateX.value = width / 2
     translateY.value = height / 2
-    scale.value = openScale
-  }, [openScale, width, height, translateX, translateY, scale])
+    scale.value = pixels
+  }, [active, openScale, width, height, setAnchor, translateX, translateY, scale])
 
   useEffect(() => {
     if (!active) return
@@ -249,6 +249,17 @@ export function FractalCity({ active, inspected, onInspect }: ActProps) {
     merged.current = null
     setGrowth(null)
   }, [])
+
+  // A re-anchor moves the metre frame the scene is rebuilt in, and the ghost and the growing
+  // children stand in the one before it. Dropping the ghost and merging what is growing puts both
+  // in the new frame rather than leaving them to jump off the geography.
+  useEffect(() => {
+    if (frame.current === anchor) return
+    frame.current = anchor
+    if (fading.current !== null) clearTimeout(fading.current)
+    setGhost(null)
+    merge()
+  }, [anchor, merge])
 
   const split = useCallback(
     (x: number, y: number): void => {

@@ -40,7 +40,13 @@ export function bucketsOf(cells: BigUint64Array): Uint8Array {
   return buckets
 }
 
-/** Orders split cells shallowest first, so a deeper one paints over the parent it came from. */
+/**
+ * Orders split cells shallowest first, which settles the paint order where two share a bucket.
+ *
+ * A recording emits one picture a bucket in ascending order, so cells at different resolutions
+ * already paint deepest last; the sort is what decides the rest, after a fold below the opening
+ * resolution has put several of them on the same step of the ramp.
+ */
 export function inDepthOrder(cells: bigint[]): BigUint64Array {
   return BigUint64Array.from(
     [...cells].sort((left, right) => getResolution(left) - getResolution(right)),
@@ -58,8 +64,8 @@ export function sceneOf(at: LatLng, anchor: CameraAnchor): { x: number; y: numbe
 /**
  * Builds the closed outline of every projected cell, which is what makes the nesting read.
  *
- * A mixed-resolution tiling has no direction every cell shares, so no run of edges covers it the way
- * three consecutive ones cover a grid of one resolution, and every cell carries its own ring.
+ * A mixed-resolution tiling has no direction every cell shares, so no run of edges covers it the
+ * way three consecutive ones cover a grid of one resolution, and every cell carries its own ring.
  */
 export function outlinePath(projected: ProjectedCells): SkPath {
   const { stride, points, vertexCounts, cellCount } = projected

@@ -136,7 +136,7 @@ export function reachOf(leaves: Leaves): Reach {
  * cosine, which is why the latitude appears here at all.
  *
  * @param lat The latitude the act opens over.
- * @param edgeLengthM The average edge length of a resolution, as `getHexagonEdgeLengthAvgM` gives it.
+ * @param edgeLengthM The average edge of a resolution, as `getHexagonEdgeLengthAvgM` gives it.
  */
 export function openingScale(lat: number, edgeLengthM: (res: number) => number): number {
   return (OPEN_CELL_PX * Math.cos(lat * DEG_TO_RAD)) / (2 * edgeLengthM(START_RES))
