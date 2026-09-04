@@ -78,12 +78,7 @@ export function BlockedReadout() {
 
   return (
     <View style={styles.panel} pointerEvents="none">
-      <BlurView
-        intensity={BLUR_INTENSITY}
-        tint="dark"
-        experimentalBlurMethod="dimezisBlurView"
-        style={StyleSheet.absoluteFill}
-      />
+      <BlurView intensity={BLUR_INTENSITY} tint="dark" style={StyleSheet.absoluteFill} />
       <View style={styles.tint} />
       <Canvas style={StyleSheet.absoluteFill}>
         <Text x={TEXT_INSET} y={24} text={label} font={labelFont} color={colours.muted} />

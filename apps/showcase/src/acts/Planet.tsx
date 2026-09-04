@@ -59,13 +59,12 @@ import {
 import { resetWorstGap } from '../render/BlockedReadout'
 import { CellPictures, type CellScene, recordCellScene } from '../render/CellPictures'
 import { EngineCanvas } from '../render/EngineCanvas'
-import { type GlowImage, GlowLayer, renderGlow } from '../render/GlowLayer'
 import { Attribution } from '../render/hud/Attribution'
 import { Metric } from '../render/hud/Metric'
 import { Panel } from '../render/hud/Panel'
 import { Row } from '../render/hud/Row'
 import { TileLayer } from '../render/TileLayer'
-import { type CameraAnchor, SETTLE_MS, sceneViewport, useCamera } from '../render/useCamera'
+import { type CameraAnchor, SETTLE_MS, useCamera } from '../render/useCamera'
 import { BUCKETS, colours, rampColours } from '../theme/tokens'
 import { rememberPlanetPosition } from './planetPosition'
 import type { ActProps } from './types'
@@ -336,14 +335,23 @@ function globeZoom(radius: number, lat: number): number {
   return zoomForMetresPerPixel(EARTH_RADIUS_M / radius, lat)
 }
 
-/**
- * Answers the resolution a globe of `radius` pixels shows.
- *
- * Above {@linkcode GLOBE_MAX_RESOLUTION} the answer is the signal to hand over to city mode, and
- * both directions read it, so the two modes cannot disagree about where the boundary is.
- */
+/** Answers the resolution a globe of `radius` pixels shows, up to the globe's last one. */
 function globeResolution(radius: number, lat: number): number {
-  return resolutionForZoom(globeZoom(radius, lat), lat, getHexagonEdgeLengthAvgM, GLOBE_TARGET_PX)
+  return Math.min(
+    GLOBE_MAX_RESOLUTION,
+    resolutionForZoom(globeZoom(radius, lat), lat, getHexagonEdgeLengthAvgM, GLOBE_TARGET_PX),
+  )
+}
+
+/**
+ * Answers whether a view has zoomed past the globe, which is city mode's own question.
+ *
+ * The handoff waits for the city ladder rather than the globe's, so resolution 3 arrives at the
+ * cell size it is drawn at; asking for it earlier means a disk wide enough to reach a pentagon,
+ * where `gridDiskDistances` costs hundreds of milliseconds instead of one.
+ */
+function pastTheGlobe(zoom: number, lat: number): boolean {
+  return resolutionFor(zoom, lat) >= CITY_MIN_RESOLUTION
 }
 
 /** Answers the request that covers a viewport, with the disk radius under the cell cap. */
@@ -403,12 +411,9 @@ export function Planet({ active }: ActProps) {
   const baseRadius = Math.min(width / 2, (globeBottom - globeTop) / 2) * GLOBE_MARGIN
 
   const [mode, setMode] = useState<Mode>('globe')
-  const [globeRes, setGlobeRes] = useState(() =>
-    Math.min(GLOBE_MAX_RESOLUTION, globeResolution(baseRadius, START_ANCHOR.lat)),
-  )
+  const [globeRes, setGlobeRes] = useState(() => globeResolution(baseRadius, START_ANCHOR.lat))
   const [build, setBuild] = useState<BuildRequest | null>(null)
   const [handoff, setHandoff] = useState<CellScene | null>(null)
-  const [glow, setGlow] = useState<GlowImage | null>(null)
   const [tiles, setTiles] = useState<TileId[]>([])
   const [classes, setClasses] = useState<StyleClass[]>([])
   const [reading, setReading] = useState({ median: 0, p95: 0, visible: 0 })
@@ -455,18 +460,6 @@ export function Planet({ active }: ActProps) {
     setClasses(classesForZoom(zoom))
     for (const tile of visible) source.request(tile)
   }, [active, width, height, source, centreOf, zoomAt])
-
-  const paintGlow = useCallback(
-    (cells: CellScene) => {
-      const values = {
-        translateX: camera.translateX.value,
-        translateY: camera.translateY.value,
-        scale: camera.scale.value,
-      }
-      setGlow(renderGlow(cells, sceneViewport(width, height, values), values.scale))
-    },
-    [width, height, camera.translateX, camera.translateY, camera.scale],
-  )
 
   const report = useCallback((values: number[], visible: number) => {
     setReading({ median: median(values), p95: percentile(values, 0.95), visible })
@@ -551,11 +544,10 @@ export function Planet({ active }: ActProps) {
 
   useEffect(() => {
     if (!active || scene === null) return
-    paintGlow(scene.cells)
     refreshTiles()
     // the build cost lands before the first frame, and is no run
     resetWorstGap()
-  }, [active, scene, paintGlow, refreshTiles])
+  }, [active, scene, refreshTiles])
 
   function startHandoff(view: GlobeView, centre: LatLng): void {
     const target = handoffCamera(view, centre)
@@ -605,7 +597,7 @@ export function Planet({ active }: ActProps) {
     globeScale.value = Math.min(GLOBE_MAX_SCALE, Math.max(GLOBE_MIN_SCALE, radius / baseRadius))
     lambda0.value = centre.lng * DEG_TO_RAD
     phi0.value = centre.lat * DEG_TO_RAD
-    setGlobeRes(Math.min(GLOBE_MAX_RESOLUTION, globeResolution(radius, centre.lat)))
+    setGlobeRes(globeResolution(radius, centre.lat))
     setTiles([])
     setBuild(null)
     setMode('globe')
@@ -614,10 +606,10 @@ export function Planet({ active }: ActProps) {
   function settleGlobe(): void {
     const radius = baseRadius * globeScale.value
     const centre = { lat: phi0.value * RAD_TO_DEG, lng: wrapLng(lambda0.value * RAD_TO_DEG) }
-    rememberPlanetPosition({ centre, zoom: globeZoom(radius, centre.lat) })
-    const res = globeResolution(radius, centre.lat)
-    if (res <= GLOBE_MAX_RESOLUTION) {
-      setGlobeRes(res)
+    const zoom = globeZoom(radius, centre.lat)
+    rememberPlanetPosition({ centre, zoom })
+    if (!pastTheGlobe(zoom, centre.lat)) {
+      setGlobeRes(globeResolution(radius, centre.lat))
       return
     }
     startHandoff({ lambda0: lambda0.value, phi0: phi0.value, cx, cy, radius }, centre)
@@ -627,18 +619,16 @@ export function Planet({ active }: ActProps) {
     const centre = centreOf(width, height)
     const zoom = zoomAt(centre.lat)
     rememberPlanetPosition({ centre, zoom })
-    const radius = (camera.scale.value * EARTH_RADIUS_M) / Math.cos(centre.lat * DEG_TO_RAD)
-    if (globeResolution(radius, centre.lat) <= GLOBE_MAX_RESOLUTION) {
+    if (!pastTheGlobe(zoom, centre.lat)) {
       returnToGlobe(centre)
       return
     }
-    const res = Math.max(CITY_MIN_RESOLUTION, resolutionFor(zoom, centre.lat))
+    const res = resolutionFor(zoom, centre.lat)
     const next = requestFor(centre, res, camera.scale.value, width, height)
     if (needsRebuild(build, next)) {
       setBuild(next)
       return
     }
-    if (scene !== null) paintGlow(scene.cells)
     refreshTiles()
     resetWorstGap()
   }
@@ -692,12 +682,12 @@ export function Planet({ active }: ActProps) {
     () =>
       scene === null ? null : (
         <>
+          {/* no glow here: it would sit over the basemap the translucent cells uncover */}
           <TileLayer source={source} tiles={tiles} classes={classes} anchor={anchor} />
-          <GlowLayer glow={glow} />
           <CellPictures scene={scene.cells} opacity={CITY_OPACITY} />
         </>
       ),
-    [source, tiles, classes, anchor, glow, scene],
+    [source, tiles, classes, anchor, scene],
   )
 
   const overlay = useMemo(

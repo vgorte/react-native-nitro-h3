@@ -17,13 +17,8 @@ const BLUR_INTENSITY = 60
 export function Panel({ children, align = 'left' }: PanelProps) {
   return (
     <View style={[styles.panel, align === 'right' ? styles.right : styles.left]}>
-      <BlurView
-        intensity={BLUR_INTENSITY}
-        tint="dark"
-        // the Android blur is opt-in and falls back to a flat tint without it
-        experimentalBlurMethod="dimezisBlurView"
-        style={StyleSheet.absoluteFill}
-      />
+      {/* Android has no backdrop to sample without a blur target, and falls back to a dark scrim */}
+      <BlurView intensity={BLUR_INTENSITY} tint="dark" style={StyleSheet.absoluteFill} />
       <View style={styles.tint} pointerEvents="none" />
       {children}
     </View>
