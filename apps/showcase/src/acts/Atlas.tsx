@@ -13,18 +13,22 @@ import {
   type ViewState,
   type ViewStateChangeEvent,
 } from '@maplibre/maplibre-react-native'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { type NativeSyntheticEvent, StyleSheet, View } from 'react-native'
 import {
   cellToCenterChild,
+  cellToChildren,
   cellToParent,
   cellToString,
   getHexagonEdgeLengthAvgM,
+  getResolution,
+  gridDisk,
   gridDiskDistances,
   latLngToCell,
 } from 'react-native-nitro-h3'
 import { boundariesOf, bucketOfBaseCell, diskAround, timed } from '../engine/cells'
 import { cellsToFeatureCollection } from '../engine/geojson'
+import { neighbourhoodOf } from '../engine/inspect'
 import { bucketForDistance, PATCH_RINGS } from '../engine/mesh'
 import { DEG_TO_RAD, EARTH_RADIUS_M, resolutionForZoom } from '../engine/projection'
 import { formatCount, formatMs } from '../engine/stats'
@@ -41,12 +45,6 @@ import type { ActProps } from './types'
 
 /** Caps the disk this act asks for, the interactive ceiling every act shares. */
 export const ATLAS_CELL_CAP = 20_000
-
-/** Configures {@linkcode Atlas}. */
-export interface AtlasProps extends ActProps {
-  /** Receives the cell a tap landed on, which the Inspector opens on. */
-  onCellPress?: (cell: bigint) => void
-}
 
 const STYLE_URL = 'https://tiles.openfreemap.org/styles/dark'
 const DEFAULT_ATTRIBUTION = 'OpenFreeMap © OpenMapTiles, data from OpenStreetMap'
@@ -71,6 +69,9 @@ const PATCH_BUCKETS = PATCH_RINGS + 1
 
 const CELL_LINE_WIDTH = 0.5
 const PICK_LINE_WIDTH = 1.5
+const NEIGHBOUR_LINE_WIDTH = 1
+const CHILD_FILL_OPACITY = 0.28
+const PARENT_LINE_OPACITY = 0.7
 const PANEL_TOP = 104
 const PRINT_WIDTH = 268
 
@@ -116,6 +117,22 @@ const CELL_LINE: LinePaint = {
 const PICK_LINE: LinePaint = {
   'line-color': colours.text,
   'line-width': PICK_LINE_WIDTH,
+}
+
+const CHILD_FILL: FillPaint = {
+  'fill-color': colours.text,
+  'fill-opacity': CHILD_FILL_OPACITY,
+}
+
+const NEIGHBOUR_LINE: LinePaint = {
+  'line-color': colours.contrast,
+  'line-width': NEIGHBOUR_LINE_WIDTH,
+}
+
+const PARENT_LINE: LinePaint = {
+  'line-color': colours.text,
+  'line-width': PICK_LINE_WIDTH,
+  'line-opacity': PARENT_LINE_OPACITY,
 }
 
 /** Holds the basemap the act draws on and the line its licence requires. */
@@ -186,6 +203,29 @@ function noteFrame(wait: Wait, at: number, report: (ms: number) => void): void {
 interface Picked {
   data: string
   index: string
+}
+
+/** Holds what the map draws around an inspected cell, one collection a layer. */
+interface Highlight {
+  parent: string
+  children: string
+  neighbours: string
+}
+
+/** Builds the one-feature collection of a cell set, which the highlight layers draw from. */
+function collectionOf(cells: BigUint64Array): string {
+  return cellsToFeatureCollection(boundariesOf(cells).value, new Uint8Array(cells.length))
+}
+
+/** Answers the three collections the sheet's highlight is drawn from. */
+function highlightOf(cell: bigint): Highlight {
+  const around = neighbourhoodOf(cell, { getResolution, cellToParent, cellToChildren, gridDisk })
+  return {
+    parent:
+      around.parent === null ? EMPTY_COLLECTION : collectionOf(BigUint64Array.of(around.parent)),
+    children: around.children.length === 0 ? EMPTY_COLLECTION : collectionOf(around.children),
+    neighbours: collectionOf(around.neighbours),
+  }
 }
 
 /** Pulls the style's ground and water toward the theme, which is all the spec lets us restate. */
@@ -329,7 +369,7 @@ function coverage(view: ViewState, res: number): number {
  * calls and the two costs the classic path adds apart, because the second pair is what this act
  * exists to show. Nothing here animates on its own.
  */
-export function Atlas({ active, onCellPress }: AtlasProps) {
+export function Atlas({ active, inspected, onInspect }: ActProps) {
   const map = useRef<MapRef>(null)
   const scene = useRef<Scene | null>(null)
   const mapWait = useRef<Wait>({ from: 0, last: 0, timer: null })
@@ -427,7 +467,7 @@ export function Atlas({ active, onCellPress }: AtlasProps) {
       if (current === null) return
       const [lng, lat] = event.nativeEvent.lngLat
       const cell = latLngToCell(lat, lng, current.res)
-      onCellPress?.(cell)
+      onInspect?.(cell)
 
       // a second tap on the same cell hands the map what it already holds, so it opens no wait
       const index = cellToString(cell)
@@ -439,7 +479,12 @@ export function Atlas({ active, onCellPress }: AtlasProps) {
       openWait(pickWait.current, at)
       setPicked({ data: cellsToFeatureCollection(boundaries.value, ONE_BUCKET), index })
     },
-    [onCellPress],
+    [onInspect],
+  )
+
+  const highlight = useMemo(
+    () => (inspected === null || inspected === undefined ? null : highlightOf(inspected)),
+    [inspected],
   )
 
   return (
@@ -467,6 +512,19 @@ export function Atlas({ active, onCellPress }: AtlasProps) {
           {/* the highlight is its own one-feature source, which the map applies sooner */}
           <GeoJSONSource id="atlas-pick" data={picked?.data ?? EMPTY_COLLECTION}>
             <Layer id="atlas-pick-line" type="line" paint={PICK_LINE} />
+          </GeoJSONSource>
+          {/* what the inspected cell stands between, in the order the sheet names them */}
+          <GeoJSONSource id="atlas-inspect-children" data={highlight?.children ?? EMPTY_COLLECTION}>
+            <Layer id="atlas-inspect-children-fill" type="fill" paint={CHILD_FILL} />
+          </GeoJSONSource>
+          <GeoJSONSource
+            id="atlas-inspect-neighbours"
+            data={highlight?.neighbours ?? EMPTY_COLLECTION}
+          >
+            <Layer id="atlas-inspect-neighbours-line" type="line" paint={NEIGHBOUR_LINE} />
+          </GeoJSONSource>
+          <GeoJSONSource id="atlas-inspect-parent" data={highlight?.parent ?? EMPTY_COLLECTION}>
+            <Layer id="atlas-inspect-parent-line" type="line" paint={PARENT_LINE} />
           </GeoJSONSource>
         </MapLibreMap>
       )}

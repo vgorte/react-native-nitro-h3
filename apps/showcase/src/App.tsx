@@ -13,6 +13,7 @@ import { Trail } from './acts/Trail'
 import type { ActProps } from './acts/types'
 import { resetWorstGap } from './render/BlockedReadout'
 import { ActIndicator } from './render/hud/ActIndicator'
+import { Inspector } from './render/Inspector'
 import { fontAssets } from './theme/fonts'
 import { colours } from './theme/tokens'
 
@@ -39,11 +40,15 @@ export default function App() {
   const [fontsLoaded] = useFonts(fontAssets)
   const pager = useRef<PagerView>(null)
   const [current, setCurrent] = useState(0)
+  // the cell the Inspector stands on, which the act it was opened from highlights
+  const [inspected, setInspected] = useState<bigint | null>(null)
 
   // the page follows the pager, so the outgoing act keeps drawing
   const select = useCallback((index: number) => {
     pager.current?.setPage(index)
   }, [])
+
+  const closeInspector = useCallback(() => setInspected(null), [])
 
   // an unstyled first frame is worse than the bare ground
   if (!fontsLoaded) return <View style={styles.root} />
@@ -64,11 +69,17 @@ export default function App() {
       >
         {PAGES.map((Act, index) => (
           <View key={ACTS[index]} style={styles.page} collapsable={false}>
-            <Act active={current === index} />
+            <Act
+              active={current === index}
+              inspected={current === index ? inspected : null}
+              onInspect={setInspected}
+            />
           </View>
         ))}
       </PagerView>
       <ActIndicator acts={ACTS} current={current} onSelect={select} />
+      {/* the sheet stands over every act and over the indicator, which its backdrop covers */}
+      <Inspector cell={inspected} onClose={closeInspector} />
       <StatusBar style="light" />
     </GestureHandlerRootView>
   )

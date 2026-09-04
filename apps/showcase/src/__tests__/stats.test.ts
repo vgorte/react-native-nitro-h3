@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { formatCount, formatMs, formatUs, median, percentile } from '../engine/stats'
+import { formatAreaKm2, formatCount, formatMs, formatUs, median, percentile } from '../engine/stats'
 
 describe('stats', () => {
   test('takes the upper of the two middle samples', () => {
@@ -17,6 +17,11 @@ describe('stats', () => {
     expect(formatMs(425.63)).toBe('425.6 ms')
     expect(formatMs(0.085)).toBe('0.085 ms')
     expect(formatUs(0.0426)).toBe('42.6 us')
+  })
+
+  test('drops a cell area to an exponent below a square metre', () => {
+    expect(formatAreaKm2(4.357)).toBe('4.357 km²')
+    expect(formatAreaKm2(0.0000009)).toBe('9.00e-7 km²')
   })
 
   test('groups thousands in a count', () => {

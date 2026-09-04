@@ -21,6 +21,11 @@ export function formatUs(ms: number): string {
   return `${(ms * 1000).toFixed(1)} us`
 }
 
+/** Formats a cell area, which spans nine orders of magnitude between the two ends of the ladder. */
+export function formatAreaKm2(km2: number): string {
+  return `${km2 < 0.001 ? km2.toExponential(2) : km2.toPrecision(4)} km²`
+}
+
 /** Formats a count with thousands separators. */
 export function formatCount(value: number): string {
   return value.toLocaleString('en-US')

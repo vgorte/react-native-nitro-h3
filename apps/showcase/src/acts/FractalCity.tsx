@@ -1,6 +1,6 @@
 import { Group, Path, type SkPath } from '@shopify/react-native-skia'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { StyleSheet, Text, useWindowDimensions, View } from 'react-native'
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
 import { Gesture } from 'react-native-gesture-handler'
 import {
   cellAreaKm2,
@@ -39,7 +39,7 @@ import {
   type Tree,
   withoutBranch,
 } from '../engine/fractal'
-import { formatCount, formatMs } from '../engine/stats'
+import { formatAreaKm2, formatCount, formatMs } from '../engine/stats'
 import { resetWorstGap } from '../render/BlockedReadout'
 import { CellPictures, type CellScene } from '../render/CellPictures'
 import { EngineCanvas } from '../render/EngineCanvas'
@@ -57,8 +57,9 @@ import { FinePrint } from '../render/hud/FinePrint'
 import { Metric } from '../render/hud/Metric'
 import { Panel } from '../render/hud/Panel'
 import { Row } from '../render/hud/Row'
+import { InspectHighlight } from '../render/InspectHighlight'
 import { type CameraAnchor, sceneToLatLng, screenToScene, useCamera } from '../render/useCamera'
-import { BUCKETS, colours, type } from '../theme/tokens'
+import { BUCKETS, colours, glass, type } from '../theme/tokens'
 import { lastPlanetPosition } from './planetPosition'
 import type { ActProps } from './types'
 
@@ -76,6 +77,10 @@ const BERLIN: CameraAnchor = { lat: 52.52, lng: 13.405 }
 const LONG_PRESS_MS = 400
 const PANEL_TOP = 104
 const PRINT_WIDTH = 268
+// clears the blocked readout, which stands on the same line at the other edge
+const CONTROL_BOTTOM = 118
+// the control is there but has nothing to open on, until the first cell is in focus
+const DISABLED_OPACITY = 0.4
 
 const NOTES = [
   'a tap splits the cell under it, a long press folds a cell and its siblings back into the parent',
@@ -91,6 +96,8 @@ interface Growth {
 
 /** Holds what the HUD says about the cell in focus: the one last touched, or the opening centre. */
 interface Focus {
+  /** The cell itself, which the inspect control opens the sheet on. */
+  cell: bigint
   res: number
   areaKm2: number
   /** Cells the next level down holds, `0` at the floor where there is no next level. */
@@ -106,16 +113,12 @@ const NO_REACH: Reach = { split: false, fold: false, note: null }
 function focusOf(cell: bigint, childrenMs: number | null): Focus {
   const res = getResolution(cell)
   return {
+    cell,
     res,
     areaKm2: cellAreaKm2(cell),
     childrenSize: res === MAX_RES ? 0 : cellToChildrenSize(cell, res + 1),
     childrenMs,
   }
-}
-
-/** Formats a cell area, which spans nine orders of magnitude between the two ends of the ladder. */
-function formatAreaKm2(km2: number): string {
-  return `${km2 < 0.001 ? km2.toExponential(2) : km2.toPrecision(4)} km²`
 }
 
 /**
@@ -128,7 +131,7 @@ function formatAreaKm2(km2: number): string {
  * drawn is a tree: leaves at many resolutions at once over the fills of every cell already split,
  * both coloured by how far down they stand.
  */
-export function FractalCity({ active }: ActProps) {
+export function FractalCity({ active, inspected, onInspect }: ActProps) {
   const { width, height } = useWindowDimensions()
   // the pixel scale the act opened at, which doubles as the flag that it has opened
   const [openScale, setOpenScale] = useState<number | null>(null)
@@ -400,6 +403,7 @@ export function FractalCity({ active }: ActProps) {
                 />
               </Group>
             )}
+            <InspectHighlight cell={inspected ?? null} anchor={anchor} scale={scale} />
           </>
         )}
       </EngineCanvas>
@@ -443,6 +447,21 @@ export function FractalCity({ active }: ActProps) {
           </View>
         </Panel>
       </View>
+      <View style={styles.control}>
+        <Panel align="right">
+          <Pressable
+            style={[styles.button, focus === null ? styles.disabled : null]}
+            onPress={() => {
+              if (focus !== null) onInspect?.(focus.cell)
+            }}
+            disabled={focus === null}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: focus === null }}
+          >
+            <Text style={styles.buttonLabel}>inspect</Text>
+          </Pressable>
+        </Panel>
+      </View>
     </View>
   )
 }
@@ -457,6 +476,11 @@ const styles = StyleSheet.create({
     top: PANEL_TOP,
     right: 16,
   },
+  control: {
+    position: 'absolute',
+    right: 16,
+    bottom: CONTROL_BOTTOM,
+  },
   note: {
     width: PRINT_WIDTH,
   },
@@ -465,4 +489,14 @@ const styles = StyleSheet.create({
     width: PRINT_WIDTH,
     marginTop: 4,
   },
+  button: {
+    borderWidth: 1,
+    borderColor: glass.border,
+    borderRadius: glass.radius,
+    backgroundColor: glass.fill,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  disabled: { opacity: DISABLED_OPACITY },
+  buttonLabel: { ...type.value, lineHeight: 16, color: colours.muted },
 })

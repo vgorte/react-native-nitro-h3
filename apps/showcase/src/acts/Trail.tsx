@@ -36,8 +36,9 @@ import { FinePrint } from '../render/hud/FinePrint'
 import { Metric } from '../render/hud/Metric'
 import { Panel } from '../render/hud/Panel'
 import { Row } from '../render/hud/Row'
+import { InspectHighlight } from '../render/InspectHighlight'
 import { buildTrailScene, type TrailScene } from '../render/trailScene'
-import { type CameraAnchor, useCamera } from '../render/useCamera'
+import { type CameraAnchor, sceneToLatLng, screenToScene, useCamera } from '../render/useCamera'
 import { colours, glass, type } from '../theme/tokens'
 import { REPLAY_ROUTE } from './replayRoute'
 import type { ActProps } from './types'
@@ -150,7 +151,7 @@ function walkRoute(fixes: readonly TrailFix[], res: number): Walk {
  * follows the head until the visitor takes it over, after which the recentre control gives it back.
  * Refusing the location plays {@linkcode REPLAY_ROUTE} instead, at the pace it was recorded.
  */
-export function Trail({ active }: ActProps) {
+export function Trail({ active, inspected, onInspect }: ActProps) {
   const { width, height } = useWindowDimensions()
   const [source, setSource] = useState<Source | null>(null)
   const [res, setRes] = useState(TRAIL_RES)
@@ -378,6 +379,26 @@ export function Trail({ active }: ActProps) {
     setScene(buildTrailScene(trail, anchor))
   }, [trail, anchor, interacting])
 
+  // a tap opens the sheet on the cell under it, and lands on the ground where the trail is not
+  const inspect = useCallback(
+    (x: number, y: number) => {
+      const point = screenToScene(x, y, {
+        translateX: translateX.value,
+        translateY: translateY.value,
+        scale: scale.value,
+      })
+      const at = sceneToLatLng(point.x, point.y, anchored.current)
+      try {
+        const cell = latLngToCell(at.lat, at.lng, res)
+        if (held.current.some((step) => step.cell === cell)) onInspect?.(cell)
+      } catch (error) {
+        // a tap that inverts to a coordinate off the projection has no cell to inspect
+        if (!(error instanceof H3Error)) throw error
+      }
+    },
+    [res, onInspect, translateX, translateY, scale],
+  )
+
   const edgeM = useMemo(() => getHexagonEdgeLengthAvgM(res), [res])
   const filled = useMemo(() => filledCells(trail), [trail])
 
@@ -386,8 +407,9 @@ export function Trail({ active }: ActProps) {
 
   return (
     <View style={styles.root}>
-      <EngineCanvas camera={camera}>
+      <EngineCanvas camera={camera} onTap={inspect}>
         <CellPictures scene={scene?.scene ?? null} />
+        <InspectHighlight cell={inspected ?? null} anchor={anchor} scale={scale} />
       </EngineCanvas>
       {/* box-none leaves the scene every touch the panel head does not take */}
       <View
