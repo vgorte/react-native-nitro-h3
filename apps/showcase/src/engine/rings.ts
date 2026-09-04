@@ -1,5 +1,10 @@
+import { bucketForDistance } from './mesh'
+
 /** Milliseconds a newly added ring takes to fade in. */
 export const RING_FADE_MS = 200
+
+/** Milliseconds the camera takes to re-fit a disk that has outgrown the viewport. */
+export const REFIT_MS = 200
 
 /** The smallest k the slider sets: the centre cell and the six cells around it. */
 export const MIN_K = 1
@@ -7,8 +12,14 @@ export const MIN_K = 1
 /** The largest k the slider sets, a disk of 7,651 cells. */
 export const MAX_K = 50
 
+/** Rings the act frames when it opens, where a cell reads about 24 points across. */
+export const OPEN_K = 8
+
 /** The resolution the act's grid stands at, about a city block a cell. */
 export const GRID_RES = 9
+
+/** Rings over which the ramp runs from its brightest step to its darkest and back. */
+export const RING_PERIOD = 30
 
 // points a cell has to span before the grid lines over it are worth drawing
 const GRID_CELL_PX = 12
@@ -29,18 +40,20 @@ export function ringsToKeep(current: number[], k: number): number[] {
 }
 
 /**
- * Answers the ramp bucket of a ring, its distance from the centre cell.
+ * Answers the ramp bucket of a ring, its distance from the centre on a triangle wave.
  *
- * The centre takes the brightest step and {@linkcode MAX_K} the darkest, so the disk reads as one
- * bullseye around the cell the rings are walked from. There are more rings than buckets, so a step
- * covers a few rings at a time and the bands are what carries the distance.
+ * The centre takes the brightest step, half a period out takes the darkest and a full period out is
+ * back at the brightest, so the disk reads as one bullseye every {@linkcode RING_PERIOD} rings. The
+ * wave is what lets a disk of a few rings already show most of the ramp while a ring keeps the one
+ * colour it was recorded in for as long as it stands, whatever k the slider moves to.
  *
  * @param ring The ring's distance from the centre, in cells.
  * @param buckets Steps the ramp is cut into, which the caller takes from the theme.
  */
 export function bucketOfRing(ring: number, buckets: number): number {
-  const held = Math.max(0, Math.min(MAX_K, ring))
-  return Math.round(((MAX_K - held) / MAX_K) * (buckets - 1))
+  const half = RING_PERIOD / 2
+  const phase = ring % RING_PERIOD
+  return bucketForDistance(phase <= half ? phase : RING_PERIOD - phase, buckets, half)
 }
 
 /** Answers the cells a walk holds, the sum of its ring lengths. */
@@ -51,34 +64,36 @@ export function cellsInRings(rings: readonly { length: number }[]): number {
 }
 
 /**
- * Answers the scene metres the widest disk spans, which is what the act frames.
+ * Answers the scene metres a disk of `rings` rings spans, which is what the act frames.
  *
  * The scene is measured in Web Mercator metres, of which a ground metre at `lat` spans one over the
  * cosine, which is why the latitude appears here at all.
  */
-function diskSpanM(lat: number, edgeLengthM: EdgeLengthM): number {
-  const reach = (MAX_K + 1) * CELL_SPACING * edgeLengthM(GRID_RES)
+function diskSpanM(rings: number, lat: number, edgeLengthM: EdgeLengthM): number {
+  const reach = (rings + 1) * CELL_SPACING * edgeLengthM(GRID_RES)
   return (2 * reach) / Math.cos(lat * DEG_TO_RAD)
 }
 
 /**
- * Answers the pixel scale the act opens at, the one that frames a disk of {@linkcode MAX_K} rings.
+ * Answers the pixel scale that frames a disk of `rings` rings, on the narrow side of the viewport.
  *
- * The camera never follows the slider, so the frame has to hold the widest disk from the first
- * frame; the narrow side of the viewport is what it is fitted to.
+ * The act opens on {@linkcode OPEN_K} and asks again for every k that outgrows the frame, so this
+ * answers both the opening and every re-fit after it.
  *
  * @param width The viewport width in points.
  * @param height The viewport height in points.
  * @param lat The latitude the disk is centred on.
  * @param edgeLengthM The average edge length of a resolution.
+ * @param rings The rings the disk holds, which is the slider's k.
  */
-export function openingScale(
+export function scaleForDisk(
   width: number,
   height: number,
   lat: number,
   edgeLengthM: EdgeLengthM,
+  rings: number,
 ): number {
-  return (Math.min(width, height) * FIT_MARGIN) / diskSpanM(lat, edgeLengthM)
+  return (Math.min(width, height) * FIT_MARGIN) / diskSpanM(rings, lat, edgeLengthM)
 }
 
 /**
@@ -94,9 +109,9 @@ export function cellSpacingM(lat: number, edgeLengthM: EdgeLengthM): number {
 /**
  * Answers whether the grid lines read at a pixel scale, which is what decides they are drawn.
  *
- * A cell is about three points across when the widest disk is framed, where a line every cell
- * would cover the colour it is meant to sit over rather than show a tiling. The spacing is passed
- * in because this runs on the UI thread, where no H3 call can be made.
+ * The opening frame is well over this, and a pinch out past a few dozen rings takes a cell under it,
+ * where a line every cell would cover the colour it is meant to sit over rather than show a tiling.
+ * The spacing is passed in because this runs on the UI thread, where no H3 call can be made.
  *
  * @param spacing Scene metres between two cell centres, from {@linkcode cellSpacingM}.
  * @param scale Pixels per Web Mercator metre the scene is drawn at.

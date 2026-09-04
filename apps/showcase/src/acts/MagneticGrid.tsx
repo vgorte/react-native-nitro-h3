@@ -1,5 +1,5 @@
 import { Group, Paint, Path } from '@shopify/react-native-skia'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { StyleSheet, useWindowDimensions, View } from 'react-native'
 import { getHexagonEdgeLengthAvgM, latLngToCell } from 'react-native-nitro-h3'
 import {
@@ -18,9 +18,11 @@ import {
   gridReads,
   MAX_K,
   MIN_K,
-  openingScale,
+  OPEN_K,
+  REFIT_MS,
   RING_FADE_MS,
   ringsToKeep,
+  scaleForDisk,
 } from '../engine/rings'
 import { formatCount, formatMs } from '../engine/stats'
 import { resetWorstGap } from '../render/BlockedReadout'
@@ -45,11 +47,17 @@ const PRINT_WIDTH = 268
 const SLIDER_WIDTH = 200
 // clears the blocked readout, which stands on the same line at the other edge
 const CONTROL_BOTTOM = 118
+// a scale this far from the one the act wrote can only have come from the visitor's own pinch
+const PINCH_TOLERANCE = 0.002
 
+const NO_RINGS: ReadonlySet<number> = new Set()
+
+// one line each, so the panel stops short of the disk the smallest k draws under it
 const NOTES = [
-  'a ring is built once and kept, so raising k appends and lowering it drops',
-  'the last three rows are the rings the last step added, not the whole disk',
-  'the grid lines come in where a cell is wide enough to carry them, so pinch in to see the tiling',
+  'a ring is built once, kept until a smaller k drops it',
+  'the last three rows are what the last step built',
+  'the camera re-fits the disk until you pinch it',
+  'the grid lines stand while a cell can carry them',
 ]
 
 /** Holds what one change of k built, which is what the three call rows report. */
@@ -76,15 +84,17 @@ function walkOf(centre: bigint, k: number): Walk {
  *
  * The slider sets k, and every step it crosses builds the rings that step adds and nothing else: a
  * ring is its own recorded picture, fades in over {@linkcode RING_FADE_MS} and is kept until a
- * smaller k drops it. Colour is the ring's own distance from the centre, so the disk reads as the
- * bullseye the walk describes. The camera is framed on the widest disk from the first frame and
- * never follows the slider, which leaves the growth to the geometry alone.
+ * smaller k drops it. Colour is the ring's own distance from the centre on a triangle wave over the
+ * ramp, so the disk reads as a bullseye at every k and a ring keeps the colour it was recorded in.
+ * The act opens framed on {@linkcode OPEN_K}, where a cell carries its own grid line, and re-fits
+ * the frame whenever a raised k outgrows it, until the visitor pinches and takes the camera over.
  */
 export function MagneticGrid({ active }: ActProps) {
   const { width, height } = useWindowDimensions()
   const [centre, setCentre] = useState<bigint | null>(null)
   const [k, setK] = useState(MIN_K)
   const [layers, setLayers] = useState<RingLayer[]>([])
+  const [fading, setFading] = useState<ReadonlySet<number>>(NO_RINGS)
   const [append, setAppend] = useState<Append | null>(null)
   const [walk, setWalk] = useState<Walk | null>(null)
   const [grid, setGrid] = useState(false)
@@ -93,18 +103,55 @@ export function MagneticGrid({ active }: ActProps) {
   // the rings already built, held outside the render so a rebuild of the act rebuilds no geometry
   const built = useRef<RingLayer[]>([])
   const frame = useRef<CameraAnchor | null>(null)
+  const fades = useRef<ReturnType<typeof setTimeout>[]>([])
 
   // the rings stand in the anchor's own metre frame, so a settle has nothing to rebuild
   const settle = useCallback(() => {}, [])
   const camera = useCamera({ anchor: BERLIN, onSettle: settle })
   const { anchor, translateX, translateY, scale } = camera
 
+  // the scale the act itself last wrote, and zero until it has framed the disk for the first time
+  const framed = useSharedValue(0)
+  // the moment the act's own re-fit lands, before which a moving scale is the act's and not a pinch
+  const refitUntil = useSharedValue(0)
+  // set once the visitor has pinched, after which the camera is theirs until the act opens again
+  const pinched = useSharedValue(false)
+
   const spacing = useMemo(() => cellSpacingM(BERLIN.lat, getHexagonEdgeLengthAvgM), [])
 
-  // the grid appears and goes on the UI thread's own reading of the scale, so a pinch answers
-  // without waiting for the settle, and the JS thread hears only the two moments it crosses
+  const fitFor = useCallback(
+    (rings: number) => scaleForDisk(width, height, BERLIN.lat, getHexagonEdgeLengthAvgM, rings),
+    [width, height],
+  )
+
+  const frameAt = useCallback(
+    (fit: number, animated: boolean) => {
+      framed.value = fit
+      if (!animated) {
+        scale.value = fit
+        return
+      }
+      refitUntil.value = Date.now() + REFIT_MS
+      scale.value = withTiming(fit, { duration: REFIT_MS })
+    },
+    [framed, refitUntil, scale],
+  )
+
+  // A scale the act did not write itself can only have come from a pinch, and the visitor who made
+  // it owns the camera from then on. The reaction waits for the first frame the act writes, so the
+  // camera's own opening scale is never read as one.
   useAnimatedReaction(
-    () => gridReads(spacing, scale.value),
+    () => scale.value,
+    (now) => {
+      if (framed.value === 0 || pinched.value || Date.now() < refitUntil.value) return
+      if (Math.abs(now - framed.value) > framed.value * PINCH_TOLERANCE) pinched.value = true
+    },
+  )
+
+  // the grid answers the UI thread's own reading of the scale, so a pinch brings it in and out
+  // without waiting for a settle, and the JS thread hears only the moments it crosses
+  useAnimatedReaction(
+    () => framed.value !== 0 && gridReads(spacing, scale.value),
     (reads, before) => {
       if (reads !== before) runOnJS(setGrid)(reads)
     },
@@ -118,21 +165,39 @@ export function MagneticGrid({ active }: ActProps) {
     setWalk(walkOf(cell, MIN_K))
   }, [active, centre])
 
-  // The widest disk is framed from the first frame, its centre on the anchor's own origin. It sits
-  // in the middle of what the act indicator leaves rather than of the viewport, so the smallest
-  // disks stand clear of the panel instead of under it.
+  // The opening frame holds the disk of `OPEN_K`, where a cell reads at about two dozen points. It
+  // stands in the middle of what the act indicator leaves rather than of the viewport, so the
+  // smallest disks are clear of the panel instead of under it.
   useEffect(() => {
     if (centre === null) return
     translateX.value = width / 2
     translateY.value = (PANEL_TOP + height) / 2
-    scale.value = openingScale(width, height, BERLIN.lat, getHexagonEdgeLengthAvgM)
-  }, [centre, width, height, translateX, translateY, scale])
+    frameAt(fitFor(OPEN_K), false)
+  }, [centre, width, height, translateX, translateY, fitFor, frameAt])
+
+  // a k that has outgrown the frame pulls the camera back to it, unless the visitor holds the zoom
+  useEffect(() => {
+    if (centre === null || framed.value === 0 || pinched.value) return
+    const fit = fitFor(k)
+    if (fit >= scale.value) return
+    frameAt(fit, true)
+  }, [centre, k, fitFor, frameAt, framed, pinched, scale])
 
   useEffect(() => {
     if (!active) return
     // the gaps of the builds that follow belong to this act, and to no act before it
     resetWorstGap()
-  }, [active])
+    // an act opened again is the act's camera again
+    pinched.value = false
+  }, [active, pinched])
+
+  // a fade that outlives its act would leave a ring composited through a layer it no longer needs
+  useEffect(() => {
+    const timers = fades
+    return () => {
+      for (const timer of timers.current) clearTimeout(timer)
+    }
+  }, [])
 
   useEffect(() => {
     if (centre === null) return
@@ -142,23 +207,39 @@ export function MagneticGrid({ active }: ActProps) {
 
     const held = new Map(current.map((layer) => [layer.ring, layer]))
     const started = performance.now()
+    const added: number[] = []
     let ringMs = 0
     let boundariesMs = 0
-    let added = 0
     const next = ringsToKeep([...held.keys()], k).map((ring) => {
       const standing = held.get(ring)
       if (standing !== undefined) return standing
       const layer = buildRing(centre, ring, anchor)
       ringMs += layer.ringMs
       boundariesMs += layer.boundariesMs
-      added += 1
+      added.push(ring)
       return layer
     })
 
     built.current = next
     setLayers(next)
-    // a step that only drops rings built nothing, and the rows keep what the last build measured
-    if (added > 0) setAppend({ ringMs, boundariesMs, buildMs: performance.now() - started })
+    // a step that only drops rings built nothing, and the rows that describe a build say so
+    if (added.length === 0) {
+      setAppend(null)
+      return
+    }
+    setAppend({ ringMs, boundariesMs, buildMs: performance.now() - started })
+
+    // one timer an append rather than one a ring, so a step that adds many ends in one render
+    setFading((current) => new Set([...current, ...added]))
+    const timer = setTimeout(() => {
+      fades.current = fades.current.filter((held) => held !== timer)
+      setFading((current) => {
+        const left = new Set(current)
+        for (const ring of added) left.delete(ring)
+        return left
+      })
+    }, RING_FADE_MS)
+    fades.current.push(timer)
   }, [centre, anchor, k])
 
   const settleK = useCallback(
@@ -180,7 +261,13 @@ export function MagneticGrid({ active }: ActProps) {
     <View style={styles.root}>
       <EngineCanvas camera={camera}>
         {layers.map((layer) => (
-          <Ring key={layer.ring} layer={layer} width={gridWidth} grid={grid} />
+          <Ring
+            key={layer.ring}
+            layer={layer}
+            width={gridWidth}
+            grid={grid}
+            fading={fading.has(layer.ring)}
+          />
         ))}
       </EngineCanvas>
       {/* box-none leaves the scene every touch the panel head does not take */}
@@ -234,6 +321,8 @@ interface RingProps {
   width: DerivedValue<number>
   /** Whether the cells are wide enough for the grid over them to read. */
   grid: boolean
+  /** Whether the ring is still fading in, which is the only time it needs a layer. */
+  fading: boolean
 }
 
 /**
@@ -243,14 +332,11 @@ interface RingProps {
  * has to come from a layer the picture is composited through. That layer costs an offscreen every
  * frame, which a ring that has finished fading no longer needs and no longer asks for.
  */
-function Ring({ layer, width, grid }: RingProps) {
+const Ring = memo(function Ring({ layer, width, grid, fading }: RingProps) {
   const alpha = useSharedValue(0)
-  const [faded, setFaded] = useState(false)
 
   useEffect(() => {
     alpha.value = withTiming(1, { duration: RING_FADE_MS })
-    const timer = setTimeout(() => setFaded(true), RING_FADE_MS)
-    return () => clearTimeout(timer)
   }, [alpha])
 
   const drawn = (
@@ -262,9 +348,9 @@ function Ring({ layer, width, grid }: RingProps) {
     </>
   )
 
-  if (faded) return drawn
+  if (!fading) return drawn
   return <Group layer={<Paint opacity={alpha} />}>{drawn}</Group>
-}
+})
 
 const styles = StyleSheet.create({
   root: {

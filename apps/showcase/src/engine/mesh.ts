@@ -40,15 +40,16 @@ export const PATCH_RINGS = 10
 /**
  * Answers the colour bucket of a cell `distance` rings from the centre of its patch.
  *
- * The centre takes the brightest step and {@linkcode PATCH_RINGS} the darkest, so a patch reads as
- * a bullseye; a cell whose distance is unknown or outside the patch takes the darkest step too.
+ * The centre takes the brightest step and the last ring the darkest, so a patch reads as a
+ * bullseye; a cell whose distance is unknown or outside the patch takes the darkest step too.
  *
  * @param distance Grid distance to the patch centre, negative where H3 could not answer one.
  * @param buckets Steps the ramp is cut into, which the caller takes from the theme.
+ * @param span Rings the ramp is spread over, {@linkcode PATCH_RINGS} for a patch.
  */
-export function bucketForDistance(distance: number, buckets: number): number {
-  if (distance < 0 || distance > PATCH_RINGS) return 0
-  return Math.round(((PATCH_RINGS - distance) / PATCH_RINGS) * (buckets - 1))
+export function bucketForDistance(distance: number, buckets: number, span = PATCH_RINGS): number {
+  if (distance < 0 || distance > span) return 0
+  return Math.round(((span - distance) / span) * (buckets - 1))
 }
 
 /**

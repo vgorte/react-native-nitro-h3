@@ -7,8 +7,10 @@ import {
   gridReads,
   MAX_K,
   MIN_K,
-  openingScale,
+  OPEN_K,
+  RING_PERIOD,
   ringsToKeep,
+  scaleForDisk,
 } from '../engine/rings'
 
 // the average edge of a resolution, an aperture of seven below the resolution 0 average
@@ -19,10 +21,10 @@ const LAT = 52.52
 const WIDTH = 402
 const HEIGHT = 874
 
-// the scene metres the widest disk spans: a ring of cells either side of the centre, plus a margin
-// ring, in Web Mercator metres, of which a ground metre at `LAT` spans one over the cosine
-const DISK_SPAN_M =
-  (2 * (MAX_K + 1) * Math.sqrt(3) * EDGE_M(GRID_RES)) / Math.cos((LAT * Math.PI) / 180)
+// a ground metre at `LAT` spans one over the cosine of the scene's own Web Mercator metres
+const SCENE_M = 1 / Math.cos((LAT * Math.PI) / 180)
+// the scene metres a disk spans: a ring of cells either side of the centre, plus a margin ring
+const spanOf = (rings: number) => 2 * (rings + 1) * Math.sqrt(3) * EDGE_M(GRID_RES) * SCENE_M
 
 describe('ringsToKeep', () => {
   test('appends only the rings a larger k adds', () => {
@@ -43,25 +45,18 @@ describe('ringsToKeep', () => {
 })
 
 describe('bucketOfRing', () => {
-  test('puts the centre on the brightest step and the outermost ring on the darkest', () => {
+  test('runs the ramp from the centre to the darkest step and back every period', () => {
     expect(bucketOfRing(0, BUCKETS)).toBe(BUCKETS - 1)
-    expect(bucketOfRing(MAX_K, BUCKETS)).toBe(0)
+    expect(bucketOfRing(RING_PERIOD / 2, BUCKETS)).toBe(0)
+    expect(bucketOfRing(RING_PERIOD, BUCKETS)).toBe(BUCKETS - 1)
+    expect(bucketOfRing(RING_PERIOD + RING_PERIOD / 2, BUCKETS)).toBe(0)
   })
 
-  test('never brightens outward, and steps down about every third ring', () => {
-    let previous = BUCKETS
-    const steps = new Set<number>()
-    for (let ring = 0; ring <= MAX_K; ring++) {
-      const bucket = bucketOfRing(ring, BUCKETS)
-      expect(bucket).toBeLessThanOrEqual(previous)
-      previous = bucket
-      steps.add(bucket)
-    }
-    expect(steps.size).toBe(BUCKETS)
-  })
+  test('spreads most of the ramp over the disk the act opens on', () => {
+    const steps = []
+    for (let ring = 0; ring <= OPEN_K; ring++) steps.push(bucketOfRing(ring, BUCKETS))
 
-  test('holds a ring past the widest disk on the darkest step', () => {
-    expect(bucketOfRing(MAX_K + 10, BUCKETS)).toBe(0)
+    expect(steps).toEqual([15, 14, 13, 12, 11, 10, 9, 8, 7])
   })
 })
 
@@ -75,29 +70,45 @@ describe('cellsInRings', () => {
   })
 })
 
-describe('openingScale', () => {
-  test('opens at a scale where the widest disk fits inside the viewport', () => {
-    const span = DISK_SPAN_M * openingScale(WIDTH, HEIGHT, LAT, EDGE_M)
-    expect(span).toBeLessThanOrEqual(WIDTH)
-    expect(span).toBeGreaterThan(WIDTH * 0.75)
+describe('scaleForDisk', () => {
+  test('opens with a cell about 24 points across', () => {
+    const across = 2 * EDGE_M(GRID_RES) * SCENE_M * scaleForDisk(WIDTH, HEIGHT, LAT, EDGE_M, OPEN_K)
+
+    expect(across).toBeGreaterThan(20)
+    expect(across).toBeLessThan(28)
+  })
+
+  test('frames the disk it is asked for inside the viewport', () => {
+    for (const rings of [OPEN_K, 20, MAX_K]) {
+      const span = spanOf(rings) * scaleForDisk(WIDTH, HEIGHT, LAT, EDGE_M, rings)
+
+      expect(span).toBeLessThanOrEqual(WIDTH)
+      expect(span).toBeGreaterThan(WIDTH * 0.75)
+    }
+  })
+
+  test('zooms out as the disk grows, so a raised k never frames tighter', () => {
+    const opening = scaleForDisk(WIDTH, HEIGHT, LAT, EDGE_M, OPEN_K)
+
+    expect(scaleForDisk(WIDTH, HEIGHT, LAT, EDGE_M, OPEN_K + 1)).toBeLessThan(opening)
+    expect(scaleForDisk(WIDTH, HEIGHT, LAT, EDGE_M, MAX_K)).toBeLessThan(opening)
   })
 
   test('fits the narrow side, so a viewport turned on its side still holds the disk', () => {
-    const span = DISK_SPAN_M * openingScale(HEIGHT, WIDTH, LAT, EDGE_M)
+    const span = spanOf(MAX_K) * scaleForDisk(HEIGHT, WIDTH, LAT, EDGE_M, MAX_K)
+
     expect(span).toBeLessThanOrEqual(WIDTH)
   })
 })
 
 describe('gridReads', () => {
   const spacing = cellSpacingM(LAT, EDGE_M)
-  const opening = openingScale(WIDTH, HEIGHT, LAT, EDGE_M)
 
-  test('leaves the grid out at the opening scale, where a cell is a few points across', () => {
-    expect(spacing * opening).toBeLessThan(6)
-    expect(gridReads(spacing, opening)).toBe(false)
+  test('has the grid on at the opening, where a cell is two dozen points across', () => {
+    expect(gridReads(spacing, scaleForDisk(WIDTH, HEIGHT, LAT, EDGE_M, OPEN_K))).toBe(true)
   })
 
-  test('brings the grid in once a pinch has made the cells wide enough to read', () => {
-    expect(gridReads(spacing, opening * 8)).toBe(true)
+  test('drops the grid once the disk has grown past what a line every cell can carry', () => {
+    expect(gridReads(spacing, scaleForDisk(WIDTH, HEIGHT, LAT, EDGE_M, MAX_K))).toBe(false)
   })
 })
