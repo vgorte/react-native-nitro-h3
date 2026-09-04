@@ -9,13 +9,15 @@
     "android": "expo run:android",
     "prebuild": "expo prebuild",
     "typecheck": "tsc --noEmit",
-    "test": "bun test ./spikes/__tests__/mesh.test.ts"
+    "test": "bun test ./spikes/__tests__"
   },
   "dependencies": {
+    "@mapbox/vector-tile": "3.0.0",
     "@shopify/react-native-skia": "2.6.2",
     "expo": "~57.0.19",
     "expo-dev-client": "~57.0.18",
     "expo-status-bar": "~57.0.1",
+    "pbf": "5.1.2",
     "react": "19.2.3",
     "react-native": "0.86.3",
     "react-native-gesture-handler": "~2.32.0",
