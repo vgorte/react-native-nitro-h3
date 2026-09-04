@@ -105,6 +105,32 @@ export function projectCells(boundaries: CellBoundaries, centre: LatLng): Projec
 }
 
 /**
+ * Writes the triangle fan of one cell from its first vertex, `count - 2` triangles.
+ *
+ * @param indices The buffer to write into.
+ * @param cursor The first free slot of `indices`.
+ * @param first The index of the cell's first vertex.
+ * @param count The cell's vertex count.
+ * @returns The next free slot of `indices`.
+ */
+export function writeFan(
+  indices: Uint16Array,
+  cursor: number,
+  first: number,
+  count: number,
+): number {
+  'worklet'
+  let index = cursor
+  for (let triangle = 1; triangle <= count - 2; triangle++) {
+    indices[index] = first
+    indices[index + 1] = first + triangle
+    indices[index + 2] = first + triangle + 1
+    index += 3
+  }
+  return index
+}
+
+/**
  * Groups projected cells into batches of at most `chunkSize` cells and `buckets` colours.
  *
  * Every cell becomes a triangle fan from its first vertex, so a hexagon carries four triangles
@@ -180,14 +206,7 @@ export function buildMesh(projected: ProjectedCells, options: MeshOptions): Mesh
     }
     pointCursors[target] = first + count
 
-    let index = indexCursors[target]
-    for (let triangle = 1; triangle <= count - 2; triangle++) {
-      group.indices[index] = first
-      group.indices[index + 1] = first + triangle
-      group.indices[index + 2] = first + triangle + 1
-      index += 3
-    }
-    indexCursors[target] = index
+    indexCursors[target] = writeFan(group.indices, indexCursors[target], first, count)
   }
 
   return { groups, chunkCount, pointCount, indexCount }
