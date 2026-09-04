@@ -733,7 +733,9 @@ function selectTarget(argv: string[]): IconTarget {
   for (const target of Object.values(TARGETS)) {
     if (target.name === name) return target
   }
-  throw new Error(`Unknown target "${name}"; expected ${Object.keys(TARGETS).join(' or ')}`)
+  const expected = Object.keys(TARGETS).join(' or ')
+  process.stderr.write(`Unknown target "${name}"; expected ${expected}\n`)
+  process.exit(1)
 }
 
 async function main(): Promise<void> {

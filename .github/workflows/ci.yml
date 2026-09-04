@@ -28,3 +28,5 @@ jobs:
         run: bun run vendor:h3 --check
       - name: App icons match the logo
         run: bun run icons --check
+      - name: Showcase icons match the logo
+        run: bun run icons:showcase --check

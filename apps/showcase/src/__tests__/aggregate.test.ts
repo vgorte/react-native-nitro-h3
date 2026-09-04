@@ -31,7 +31,7 @@ describe('aggregateCells', () => {
 
     expect(result.cells.length).toBe(expected.size)
     for (let index = 0; index < result.cells.length; index++) {
-      // a cell the reference never saw answers 0, which no run length can match
+      // an unseen cell reads 0 here, never a real run length
       expect(result.counts[index]).toBe(expected.get(result.cells[index]) ?? 0)
     }
   })
