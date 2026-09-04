@@ -18,6 +18,7 @@ import {
   filledCells,
   MAX_TRAIL_RES,
   MIN_TRAIL_RES,
+  pathOrJump,
   scaleForTrail,
   TRAIL_RES,
   type TrailFix,
@@ -96,34 +97,36 @@ interface Reading {
 
 const NOTHING: Reading = { fixes: 0, locateMs: 0, gap: null }
 
-/** Holds a trail extended by one fix together with what the two calls behind it took. */
-interface Step {
+/** Holds a trail walked one fix further, together with what the two calls behind it took. */
+interface Walk {
   trail: TrailStep[]
   locateMs: number
   gap: Gap | null
 }
 
 /** Walks one fix onto the trail, timing the two calls the HUD names. */
-function stepOf(trail: TrailStep[], fix: TrailFix, res: number): Step {
+function walkFix(trail: TrailStep[], fix: TrailFix, res: number): Walk {
   const located = timed('latLngToCell', () => latLngToCell(fix.lat, fix.lng, res))
   const closed: { gap: Gap | null } = { gap: null }
-  const walked = extendTrail(trail, located.value, areNeighborCells, (from, to) => {
-    const between = pathBetween(from, to)
-    // the two ends of the path are the head and the fix, so the gap is what stands between them
-    closed.gap = { cells: between.value.length - 2, ms: between.ms }
-    return between.value
-  })
+  const walked = extendTrail(trail, located.value, areNeighborCells, (from, to) =>
+    pathOrJump(from, to, (a, b) => {
+      const between = pathBetween(a, b)
+      // the two ends of the path are the head and the fix, so the gap is what stands between them
+      closed.gap = { cells: between.value.length - 2, ms: between.ms }
+      return between.value
+    }),
+  )
   return { trail: capTrail(walked, AGE_SPAN), locateMs: located.ms, gap: closed.gap }
 }
 
 /** Answers the trail a whole run of fixes builds at one resolution, which a new one rebuilds. */
-function trailOf(fixes: readonly TrailFix[], res: number): Step {
-  let step: Step = { trail: [], locateMs: 0, gap: null }
+function walkRoute(fixes: readonly TrailFix[], res: number): Walk {
+  let walk: Walk = { trail: [], locateMs: 0, gap: null }
   for (const fix of fixes) {
-    const walked = stepOf(step.trail, fix, res)
-    step = { trail: walked.trail, locateMs: walked.locateMs, gap: walked.gap ?? step.gap }
+    const walked = walkFix(walk.trail, fix, res)
+    walk = { trail: walked.trail, locateMs: walked.locateMs, gap: walked.gap ?? walk.gap }
   }
-  return step
+  return walk
 }
 
 /**
@@ -199,7 +202,7 @@ export function Trail({ active }: ActProps) {
         anchored.current = { lat: fix.lat, lng: fix.lng }
         setAnchor(anchored.current)
       }
-      const walked = stepOf(held.current, fix, res)
+      const walked = walkFix(held.current, fix, res)
       held.current = walked.trail
       setTrail(walked.trail)
       setReading((before) => ({
@@ -220,7 +223,7 @@ export function Trail({ active }: ActProps) {
 
   // a resolution is a tiling of its own, so the whole route is walked again at the new one
   useEffect(() => {
-    const walked = trailOf(fixes.current, res)
+    const walked = walkRoute(fixes.current, res)
     held.current = walked.trail
     setTrail(walked.trail)
     setReading((before) => ({ ...before, locateMs: walked.locateMs, gap: walked.gap }))
@@ -231,7 +234,10 @@ export function Trail({ active }: ActProps) {
     if (!active || source !== null) return
     let cancelled = false
     void Location.requestForegroundPermissionsAsync().then(({ granted }) => {
-      if (!cancelled) setSource(granted ? 'live' : 'replay')
+      if (cancelled) return
+      // the system holds the app while its dialog stands, and that gap is not the act's to report
+      resetWorstGap()
+      setSource(granted ? 'live' : 'replay')
     })
     return () => {
       cancelled = true

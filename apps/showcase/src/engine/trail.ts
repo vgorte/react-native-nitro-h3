@@ -56,6 +56,25 @@ export function extendTrail(
 }
 
 /**
+ * Answers the cells from `from` to `to`, or the two ends alone where H3 cannot walk a path.
+ *
+ * `gridPathCells` refuses a path it cannot express, and a location feed that was away for a while
+ * comes back with exactly that: a fix on the other side of the country. The trail then holds the
+ * jump as a jump rather than losing the fix to a call that threw.
+ */
+export function pathOrJump(
+  from: bigint,
+  to: bigint,
+  path: (a: bigint, b: bigint) => BigUint64Array,
+): BigUint64Array {
+  try {
+    return path(from, to)
+  } catch {
+    return BigUint64Array.from([from, to])
+  }
+}
+
+/**
  * Drops the oldest cells off the tail, so the drawn trail never grows past `span` cells.
  *
  * One gap can fill in more cells than the span holds, which is why this cuts to the last `span`

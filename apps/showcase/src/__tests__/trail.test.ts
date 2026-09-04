@@ -9,6 +9,7 @@ import {
   filledCells,
   MAX_TRAIL_RES,
   MIN_TRAIL_RES,
+  pathOrJump,
   scaleForTrail,
   TRAIL_RES,
   type TrailStep,
@@ -58,6 +59,34 @@ describe('extendTrail', () => {
 
   test('starts the trail from the first fix', () => {
     expect(extendTrail([], 5n, neighbours, path)).toEqual([{ cell: 5n, filled: false }])
+  })
+})
+
+describe('pathOrJump', () => {
+  test('answers the path H3 walked', () => {
+    expect(Array.from(pathOrJump(5n, 8n, path))).toEqual([5n, 6n, 7n, 8n])
+  })
+
+  test('answers the two ends where the path is refused', () => {
+    const refuse = (): BigUint64Array => {
+      throw new Error('H3 could not walk this path')
+    }
+
+    expect(Array.from(pathOrJump(5n, 900n, refuse))).toEqual([5n, 900n])
+  })
+
+  test('leaves a refused jump without filled cells', () => {
+    const refuse = (): BigUint64Array => {
+      throw new Error('H3 could not walk this path')
+    }
+    const trail = extendTrail([{ cell: 5n, filled: false }], 900n, neighbours, (from, to) =>
+      pathOrJump(from, to, refuse),
+    )
+
+    expect(trail).toEqual([
+      { cell: 5n, filled: false },
+      { cell: 900n, filled: false },
+    ])
   })
 })
 
