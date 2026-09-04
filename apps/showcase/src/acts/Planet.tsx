@@ -1,10 +1,13 @@
 import {
   BlendMode,
   Circle,
+  Fill,
   PaintStyle,
+  Path,
   Picture,
   Skia,
   type SkPaint,
+  type SkPath,
   type SkPicture,
   type SkPoint,
   VertexMode,
@@ -27,25 +30,29 @@ import {
   type GlobeFrame,
   toGlobeCells,
 } from '../engine/globe'
-import { createLandRuns, type LandRuns, loadLand, projectLand } from '../engine/land'
-import { buildMesh, buildOutlinePath, fillMesh, type MeshOptions } from '../engine/mesh'
 import {
+  createLandRuns,
+  type LandRings,
+  type LandRuns,
+  loadLand,
+  projectLand,
+} from '../engine/land'
+import { buildMesh, buildOutlinePath } from '../engine/mesh'
+import {
+  type Bounds,
   cullCells,
   DEG_TO_RAD,
   EARTH_RADIUS_M,
   type GlobeView,
-  handoffCamera,
-  handoffEase,
-  lerpPositions,
-  mercatorX,
-  mercatorY,
-  type ProjectedCells,
-  projectCells,
-  projectCellsCity,
-  projectCellsOrthographic,
+  latLngToXyz,
+  project,
+  projectCellsGlobeLocal,
   RAD_TO_DEG,
   radiusForResolution,
   resolutionForZoom,
+  rotateToView,
+  unproject,
+  type VertexProjector,
   zoomForMetresPerPixel,
 } from '../engine/projection'
 import { formatCount, formatMs, median, percentile } from '../engine/stats'
@@ -70,11 +77,16 @@ import { BUCKETS, colours, rampColours } from '../theme/tokens'
 import { rememberPlanetPosition } from './planetPosition'
 import type { ActProps } from './types'
 
-/** Caps the cells city mode may build around the view centre. */
+/** Caps the cells the surface scene may build around the view centre. */
 export const PLANET_CELL_CAP = 12_000
 
-/** Milliseconds the resolution 2 to 3 handoff blends over. */
-export const HANDOFF_MS = 250
+/**
+ * Caps the resolution the per-frame globe loop draws.
+ *
+ * Above it the same orthographic view is rebuilt on settle instead, so the projection never
+ * changes and the camera carries the motion between two rebuilds.
+ */
+export const GLOBE_LOOP_MAX_RES = 2
 
 /**
  * States whether the globe turns on its own, which it does not.
@@ -84,16 +96,15 @@ export const HANDOFF_MS = 250
  */
 export const IDLE_ROTATION = false
 
-const GLOBE_MAX_RESOLUTION = 2
-const CITY_MIN_RESOLUTION = 3
-const CITY_MAX_RESOLUTION = 9
+const SURFACE_MIN_RESOLUTION = 3
+const SURFACE_MAX_RESOLUTION = 9
 const START_ANCHOR: CameraAnchor = { lat: 20, lng: 10 }
 // the globe leaves a twelfth of the space it is given free
 const GLOBE_MARGIN = 0.88
 const GLOBE_MIN_SCALE = 0.4
-// the globe must be able to grow past the handoff on any screen, with a little room to spare
+// the globe must be able to grow past the last globe resolution on any screen, with room to spare
 const GLOBE_MAX_MARGIN = 1.25
-// a global view reads at a smaller cell than a city view, and keeps the earth on screen
+// a global view reads at a smaller cell than a close view, and keeps the earth on screen
 const GLOBE_TARGET_PX = 18
 const PANEL_TOP = 104
 const PANEL_GAP = 16
@@ -105,19 +116,30 @@ const CHUNK_SIZE = 10_000
 const INSET = 0.08
 const OUTLINE_EDGES = 3
 const OUTLINE_LIMIT = 20_000
-// the mesh reaches past the viewport, so a small pan needs no rebuild
+// the scene reaches past the viewport, so a small pan needs no rebuild
 const CULL_MARGIN = 1.5
 const REBUILD_DRIFT = 0.25
+// a quarter of a resolution step of zoom before the projection is worth redoing
+const REBUILD_ZOOM = 0.24
 // the basemap has to read through the cells, which carry the ring index and nothing else
-const CITY_OPACITY = 0.35
+const BASEMAP_OPACITY = 0.35
 const FRAME_SAMPLES = 120
 const FRAME_REPORT_MS = 250
-// the tilt stops at the Web Mercator limit, so the handoff always lands on a usable camera
+// the tilt stops at the Web Mercator limit, so a coordinate the act hands on stays usable
 const MAX_TILT = 85.05112878 * DEG_TO_RAD
 const CELL_SPACING = Math.sqrt(3)
+// a disk of k rings is a hexagon of cells, and only its apothem is covered in every direction
+const DISK_APOTHEM = Math.sqrt(3) / 2
+// the disk has to reach every corner of the viewport, whichever is furthest from its centre
+const CORNERS = [
+  { x: 0, y: 0 },
+  { x: 1, y: 0 },
+  { x: 0, y: 1 },
+  { x: 1, y: 1 },
+]
 const MAX_K = Math.floor((Math.sqrt((4 * PLANET_CELL_CAP - 1) / 3) - 1) / 2)
 
-type Mode = 'globe' | 'handoff' | 'city'
+type Mode = 'globe' | 'surface'
 
 const BUCKET_PAINTS: SkPaint[] = rampColours(BUCKETS).map((colour) => {
   const paint = Skia.Paint()
@@ -154,25 +176,47 @@ interface GlobeData {
   meshMs: number
 }
 
-/** Holds what city mode builds around: the view centre, the resolution and the disk radius. */
-interface BuildRequest {
+/** Holds the settled view a surface scene stands in, and the disk it was built from. */
+interface SurfaceView {
+  /**
+   * The coordinate the projection is tangent to, and the origin of the scene's pixel frame.
+   *
+   * It stays where the globe's own centre is, so crossing into the surface changes nothing but
+   * the resolution.
+   */
   centre: LatLng
+  /** The coordinate under the middle of the viewport, which the disk is built around. */
+  middle: LatLng
+  /** The globe radius in pixels the scene was projected at. */
+  radius: number
   res: number
   k: number
-  /** Half the viewport, in Web Mercator metres. */
-  halfWidthM: number
-  halfHeightM: number
+  /** Increments on every rebuild, so no tile path of an older view is drawn. */
+  epoch: number
 }
 
-/** Holds a built city scene together with the durations that built it. */
-interface CityScene {
+/** Holds a built surface scene together with the durations that built it. */
+interface SurfaceScene {
   cells: CellScene
+  coast: SkPath
   cellCount: number
   rings: string
   ringsMs: number
   boundariesMs: number
+  projectMs: number
   meshMs: number
-  res: number
+  buildMs: number
+}
+
+/** Answers the view of a settled scene, whose pixel frame the anchor sits at the origin of. */
+function localView(view: SurfaceView): GlobeView {
+  return {
+    lambda0: view.centre.lng * DEG_TO_RAD,
+    phi0: view.centre.lat * DEG_TO_RAD,
+    cx: 0,
+    cy: 0,
+    radius: view.radius,
+  }
 }
 
 /** Builds the whole earth at a resolution as unit-sphere geometry, once per resolution. */
@@ -232,26 +276,58 @@ function ringBuckets(rings: BigUint64Array[]): { cells: BigUint64Array; buckets:
   return { cells, buckets }
 }
 
-/** Builds the city-mode disk of a request, culled to the viewport it was requested for. */
-function buildCity(anchor: CameraAnchor, request: BuildRequest): CityScene {
-  const { centre, res, k } = request
-  const rings = diskDistancesAround(latLngToCell(centre.lat, centre.lng, res), k)
+/** Builds the coastline of one settle as a path, dropping the segments the rectangle misses. */
+function coastPath(runs: LandRuns, rect: Bounds): SkPath {
+  const builder = Skia.PathBuilder.Make()
+  const { points, starts } = runs
+
+  for (let run = 0; run < runs.runCount[0]; run++) {
+    let open = false
+    for (let slot = starts[run]; slot + 3 < starts[run + 1]; slot += 2) {
+      const fromX = points[slot]
+      const fromY = points[slot + 1]
+      const toX = points[slot + 2]
+      const toY = points[slot + 3]
+      if (
+        Math.max(fromX, toX) < rect.minX ||
+        Math.min(fromX, toX) > rect.maxX ||
+        Math.max(fromY, toY) < rect.minY ||
+        Math.min(fromY, toY) > rect.maxY
+      ) {
+        open = false
+        continue
+      }
+      if (!open) {
+        builder.moveTo(fromX, fromY)
+        open = true
+      }
+      builder.lineTo(toX, toY)
+    }
+  }
+
+  return builder.detach()
+}
+
+/** Builds the disk of a settled view, projected onto the sphere and culled to the viewport. */
+function buildSurface(
+  view: SurfaceView,
+  land: LandRings,
+  runs: LandRuns,
+  rect: Bounds,
+): SurfaceScene {
+  const started = performance.now()
+  const at = localView(view)
+  const rings = diskDistancesAround(
+    latLngToCell(view.middle.lat, view.middle.lng, view.res),
+    view.k,
+  )
   const disk = ringBuckets(rings.value)
   const boundaries = boundariesOf(disk.cells)
-  const projected = projectCells(boundaries.value, anchor)
-  const offsetX = mercatorX(centre.lng) - mercatorX(anchor.lng)
-  const offsetY = mercatorY(anchor.lat) - mercatorY(centre.lat)
-  const sources = new Uint32Array(projected.cellCount)
-  const culled = cullCells(
-    projected,
-    {
-      minX: offsetX - request.halfWidthM * CULL_MARGIN,
-      maxX: offsetX + request.halfWidthM * CULL_MARGIN,
-      minY: offsetY - request.halfHeightM * CULL_MARGIN,
-      maxY: offsetY + request.halfHeightM * CULL_MARGIN,
-    },
-    sources,
+  const projected = timed('projection', () =>
+    projectCellsGlobeLocal(boundaries.value, at, view.centre),
   )
+  const sources = new Uint32Array(projected.value.cellCount)
+  const culled = cullCells(projected.value, rect, sources)
   const bucketOf = new Uint8Array(culled.cellCount)
   for (let cell = 0; cell < culled.cellCount; cell++) bucketOf[cell] = disk.buckets[sources[cell]]
 
@@ -265,6 +341,7 @@ function buildCity(anchor: CameraAnchor, request: BuildRequest): CityScene {
       bucketOf,
     }),
   )
+  projectLand(land, at, runs)
 
   return {
     cells: recordCellScene(
@@ -272,12 +349,14 @@ function buildCity(anchor: CameraAnchor, request: BuildRequest): CityScene {
       culled.bounds,
       outlined ? buildOutlinePath(culled, OUTLINE_EDGES) : null,
     ),
+    coast: coastPath(runs, rect),
     cellCount: culled.cellCount,
     rings: rings.label,
     ringsMs: rings.ms,
     boundariesMs: boundaries.ms,
+    projectMs: projected.ms,
     meshMs: mesh.ms,
-    res,
+    buildMs: performance.now() - started,
   }
 }
 
@@ -329,7 +408,7 @@ function recordGlobe(frame: GlobeFrame, runs: LandRuns, view: GlobeView): SkPict
 
 /** Answers the resolution a zoom asks for, capped where the act stops following it. */
 function resolutionFor(zoom: number, lat: number): number {
-  return Math.min(CITY_MAX_RESOLUTION, resolutionForZoom(zoom, lat, getHexagonEdgeLengthAvgM))
+  return Math.min(SURFACE_MAX_RESOLUTION, resolutionForZoom(zoom, lat, getHexagonEdgeLengthAvgM))
 }
 
 /** Answers the zoom a globe of `radius` pixels stands at. */
@@ -337,58 +416,23 @@ function globeZoom(radius: number, lat: number): number {
   return zoomForMetresPerPixel(EARTH_RADIUS_M / radius, lat)
 }
 
-/** Answers the resolution a globe of `radius` pixels shows, up to the globe's last one. */
+/** Answers the resolution a globe of `radius` pixels shows, up to the loop's last one. */
 function globeResolution(radius: number, lat: number): number {
   return Math.min(
-    GLOBE_MAX_RESOLUTION,
+    GLOBE_LOOP_MAX_RES,
     resolutionForZoom(globeZoom(radius, lat), lat, getHexagonEdgeLengthAvgM, GLOBE_TARGET_PX),
   )
 }
 
 /**
- * Answers whether a view has zoomed past the globe, which is city mode's own question.
+ * Answers whether a view has zoomed past the globe loop, which is the surface scene's own question.
  *
- * The handoff waits for the city ladder rather than the globe's, so resolution 3 arrives at the
- * cell size it is drawn at; asking for it earlier means a disk wide enough to reach a pentagon,
- * where `gridDiskDistances` costs hundreds of milliseconds instead of one.
+ * The switch waits for the drawn cell size rather than the globe's own target, so resolution 3
+ * arrives at the size it is drawn at; asking for it earlier means a disk wide enough to reach a
+ * pentagon, where `gridDiskDistances` costs hundreds of milliseconds instead of one.
  */
 function pastTheGlobe(zoom: number, lat: number): boolean {
-  return resolutionFor(zoom, lat) >= CITY_MIN_RESOLUTION
-}
-
-/** Answers the request that covers a viewport, with the disk radius under the cell cap. */
-function requestFor(
-  centre: LatLng,
-  res: number,
-  scale: number,
-  width: number,
-  height: number,
-): BuildRequest {
-  const halfWidthM = width / 2 / scale
-  const halfHeightM = height / 2 / scale
-  const groundRadiusM = Math.hypot(halfWidthM, halfHeightM) * Math.cos(centre.lat * DEG_TO_RAD)
-  const spacing = CELL_SPACING * getHexagonEdgeLengthAvgM(res)
-  return {
-    centre,
-    res,
-    k: Math.max(1, Math.min(MAX_K, Math.ceil(groundRadiusM / spacing) + 1)),
-    halfWidthM,
-    halfHeightM,
-  }
-}
-
-/** Answers whether a settle asks for geometry the built scene does not already cover. */
-function needsRebuild(current: BuildRequest | null, next: BuildRequest): boolean {
-  if (current === null) return true
-  if (current.res !== next.res || current.k !== next.k) return true
-  if (Math.abs(current.halfWidthM - next.halfWidthM) > current.halfWidthM * REBUILD_DRIFT) {
-    return true
-  }
-  const drift = Math.hypot(
-    mercatorX(next.centre.lng) - mercatorX(current.centre.lng),
-    mercatorY(next.centre.lat) - mercatorY(current.centre.lat),
-  )
-  return drift > current.halfWidthM * REBUILD_DRIFT
+  return resolutionFor(zoom, lat) >= SURFACE_MIN_RESOLUTION
 }
 
 /** Wraps a longitude the rotation has run past into the range the library takes. */
@@ -397,10 +441,11 @@ function wrapLng(lng: number): number {
 }
 
 /**
- * Draws the earth: a rotating globe up to resolution 2, a Web Mercator disk from resolution 3.
+ * Draws the earth under one orthographic projection, from the whole globe down to the street.
  *
- * The globe's per-frame loop runs as a worklet on the UI thread, so a rotation costs the JS
- * thread nothing and no H3 call happens inside a frame.
+ * Up to {@linkcode GLOBE_LOOP_MAX_RES} a worklet rebuilds the globe every frame on the UI thread;
+ * above it the same view is rebuilt on settle in a pixel frame anchored at the view centre, and
+ * the camera carries the pan and the pinch in between.
  */
 export function Planet({ active }: ActProps) {
   const { width, height } = useWindowDimensions()
@@ -411,21 +456,22 @@ export function Planet({ active }: ActProps) {
   const cx = width / 2
   const cy = (globeTop + globeBottom) / 2
   const baseRadius = Math.min(width / 2, (globeBottom - globeTop) / 2) * GLOBE_MARGIN
-  // a fixed multiple leaves city mode unreachable on a short screen, so the ceiling follows the ladder
-  const maxScale = useMemo(
-    () =>
-      Math.max(
+  // a fixed multiple leaves the surface unreachable on a short screen, so the range follows the ladder
+  const range = useMemo(
+    () => ({
+      scale: Math.max(
         1,
-        (radiusForResolution(CITY_MIN_RESOLUTION, getHexagonEdgeLengthAvgM) * GLOBE_MAX_MARGIN) /
+        (radiusForResolution(SURFACE_MIN_RESOLUTION, getHexagonEdgeLengthAvgM) * GLOBE_MAX_MARGIN) /
           baseRadius,
       ),
+      radius: radiusForResolution(SURFACE_MAX_RESOLUTION + 1, getHexagonEdgeLengthAvgM),
+    }),
     [baseRadius],
   )
 
   const [mode, setMode] = useState<Mode>('globe')
   const [globeRes, setGlobeRes] = useState(() => globeResolution(baseRadius, START_ANCHOR.lat))
-  const [build, setBuild] = useState<BuildRequest | null>(null)
-  const [handoff, setHandoff] = useState<CellScene | null>(null)
+  const [surface, setSurface] = useState<SurfaceView | null>(null)
   const [tiles, setTiles] = useState<TileId[]>([])
   const [classes, setClasses] = useState<StyleClass[]>([])
   const [reading, setReading] = useState({ median: 0, p95: 0, visible: 0 })
@@ -456,22 +502,60 @@ export function Planet({ active }: ActProps) {
 
   const bumpSettle = useCallback(() => setSettle((count) => count + 1), [])
   const camera = useCamera({ anchor: START_ANCHOR, onSettle: bumpSettle })
-  const { centreOf, zoomAt, anchor } = camera
-  const scene = useMemo(() => (build === null ? null : buildCity(anchor, build)), [anchor, build])
+  const { translateX, translateY, scale } = camera
+
+  // the scene reaches a margin past the viewport, measured from the anchor at the disk centre
+  const cull = useMemo<Bounds>(() => {
+    const marginX = (width * (CULL_MARGIN - 1)) / 2
+    const marginY = (height * (CULL_MARGIN - 1)) / 2
+    return {
+      minX: -cx - marginX,
+      maxX: width - cx + marginX,
+      minY: -cy - marginY,
+      maxY: height - cy + marginY,
+    }
+  }, [width, height, cx, cy])
+
+  const scene = useMemo(
+    () => (surface === null ? null : buildSurface(surface, land, runs, cull)),
+    [surface, land, runs, cull],
+  )
+
+  // one tuple is reused per call, which `buildTilePaths` reads before it asks for the next vertex
+  const projectVertex = useMemo<VertexProjector>(() => {
+    if (surface === null) return () => undefined
+    const at = localView(surface)
+    const origin = rotateToView(latLngToXyz(surface.centre.lat, surface.centre.lng), at)
+    const screen: [number, number] = [0, 0]
+    return (lng, lat) => {
+      const rotated = rotateToView(latLngToXyz(lat, lng), at)
+      if (rotated.z <= 0) return undefined
+      screen[0] = at.radius * (rotated.x - origin.x)
+      screen[1] = -at.radius * (rotated.y - origin.y)
+      return screen
+    }
+  }, [surface])
+
+  // warming the epoch's paths here times the build, and leaves the layer a cache read
+  const basemapMs = useMemo(() => {
+    if (surface === null || tiles.length === 0) return 0
+    const started = performance.now()
+    for (const tile of tiles) source.paths(tile, classes, projectVertex, surface.epoch)
+    return performance.now() - started
+  }, [surface, tiles, classes, projectVertex, source])
 
   const refreshTiles = useCallback(() => {
-    if (!active) return
-    const centre = centreOf(width, height)
-    const zoom = zoomAt(centre.lat)
+    if (!active || surface === null) return
+    const zoom = globeZoom(surface.radius, surface.middle.lat)
     if (zoom < TILE_MIN_ZOOM) {
       setTiles([])
       return
     }
-    const visible = visibleTiles(centre, zoom, width, height)
+    const visible = visibleTiles(surface.middle, zoom, width, height)
     setTiles(visible)
     setClasses(classesForZoom(zoom))
     for (const tile of visible) source.request(tile)
-  }, [active, width, height, source, centreOf, zoomAt])
+  }, [active, surface, width, height, source])
 
   const report = useCallback((values: number[], visible: number) => {
     setReading({ median: median(values), p95: percentile(values, 0.95), visible })
@@ -554,69 +638,66 @@ export function Planet({ active }: ActProps) {
     sampleCount.value = 0
   }, [active, mode, globe, running, onGlobe, lastLambda, sampleCursor, sampleCount])
 
+  // a rebuilt scene stands in its own frame, so the camera starts from it again
   useEffect(() => {
-    if (!active || scene === null) return
+    if (surface === null) return
+    translateX.value = cx
+    translateY.value = cy
+    scale.value = 1
+  }, [surface, cx, cy, translateX, translateY, scale])
+
+  useEffect(() => {
+    if (!active || surface === null) return
     refreshTiles()
     // the build cost lands before the first frame, and is no run
     resetWorstGap()
-  }, [active, scene, refreshTiles])
+  }, [active, surface, refreshTiles])
 
-  function startHandoff(view: GlobeView, centre: LatLng): void {
-    const target = handoffCamera(view, centre)
-    const request = requestFor(centre, CITY_MIN_RESOLUTION, target.scale, width, height)
-    const disk = ringBuckets(
-      diskDistancesAround(latLngToCell(centre.lat, centre.lng, request.res), request.k).value,
-    )
-    const boundaries = boundariesOf(disk.cells).value
-    const from = projectCellsOrthographic(boundaries, view)
-    const to = projectCellsCity(boundaries, target)
-    const blended = new Float32Array(from)
-    const blending: ProjectedCells = {
-      stride: boundaries.stride,
-      points: blended,
-      vertexCounts: boundaries.vertexCounts,
-      cellCount: boundaries.vertexCounts.length,
-      bounds: { minX: 0, minY: 0, maxX: width, maxY: height },
-    }
-    // the grouping and the fans do not move, so a step rewrites the vertices and records again
-    const options: MeshOptions = {
-      chunkSize: CHUNK_SIZE,
-      buckets: BUCKETS,
-      inset: 0,
-      bucketOf: disk.buckets,
-    }
-    const mesh = buildMesh(blending, options)
-    const started = performance.now()
-
-    setMode('handoff')
-    const step = (): void => {
-      const t = Math.min(1, (performance.now() - started) / HANDOFF_MS)
-      lerpPositions(from, to, handoffEase(t), blended)
-      fillMesh(mesh, blending, options)
-      setHandoff(recordCellScene(mesh, blending.bounds, null))
-      if (t < 1) {
-        requestAnimationFrame(step)
-        return
+  /** Answers the view a settle asks for, with a disk that reaches the viewport corners. */
+  function viewFor(centre: LatLng, radius: number, epoch: number): SurfaceView {
+    const at = { lambda0: centre.lng * DEG_TO_RAD, phi0: centre.lat * DEG_TO_RAD, cx, cy, radius }
+    const middle = unproject(width / 2, height / 2, at) ?? centre
+    const from = latLngToXyz(middle.lat, middle.lng)
+    let reach = 0
+    for (const corner of CORNERS) {
+      const point = unproject(corner.x * width, corner.y * height, at)
+      if (point === undefined) {
+        reach = Math.PI / 2
+        break
       }
-      camera.setAnchor(centre)
-      camera.scale.value = target.scale
-      camera.translateX.value = target.cx
-      camera.translateY.value = target.cy
-      setBuild(request)
-      setHandoff(null)
-      setMode('city')
+      const to = latLngToXyz(point.lat, point.lng)
+      reach = Math.max(reach, Math.acos(Math.min(1, from.x * to.x + from.y * to.y + from.z * to.z)))
     }
-    step()
+    const res = resolutionFor(globeZoom(radius, centre.lat), centre.lat)
+    const spacing = CELL_SPACING * getHexagonEdgeLengthAvgM(res)
+    return {
+      centre,
+      middle,
+      radius,
+      res,
+      k: Math.max(
+        1,
+        Math.min(MAX_K, Math.ceil((EARTH_RADIUS_M * reach) / (spacing * DISK_APOTHEM)) + 1),
+      ),
+      epoch,
+    }
   }
 
-  function returnToGlobe(centre: LatLng): void {
-    const radius = (camera.scale.value * EARTH_RADIUS_M) / Math.cos(centre.lat * DEG_TO_RAD)
-    globeScale.value = Math.min(maxScale, Math.max(GLOBE_MIN_SCALE, radius / baseRadius))
+  /** Answers whether a settle asks for geometry the built scene does not already carry. */
+  function needsRebuild(current: SurfaceView, next: SurfaceView): boolean {
+    if (current.res !== next.res || current.k !== next.k) return true
+    if (Math.abs(Math.log(next.radius / current.radius)) > REBUILD_ZOOM) return true
+    const moved = project(next.centre.lat, next.centre.lng, localView(current))
+    return Math.hypot(moved.x, moved.y) > Math.min(width, height) * REBUILD_DRIFT
+  }
+
+  function returnToGlobe(centre: LatLng, radius: number): void {
+    globeScale.value = Math.min(range.scale, Math.max(GLOBE_MIN_SCALE, radius / baseRadius))
     lambda0.value = centre.lng * DEG_TO_RAD
     phi0.value = centre.lat * DEG_TO_RAD
     setGlobeRes(globeResolution(radius, centre.lat))
     setTiles([])
-    setBuild(null)
+    setSurface(null)
     setMode('globe')
   }
 
@@ -629,21 +710,27 @@ export function Planet({ active }: ActProps) {
       setGlobeRes(globeResolution(radius, centre.lat))
       return
     }
-    startHandoff({ lambda0: lambda0.value, phi0: phi0.value, cx, cy, radius }, centre)
+    setSurface(viewFor(centre, radius, 1))
+    setMode('surface')
   }
 
-  function settleCity(): void {
-    const centre = centreOf(width, height)
-    const zoom = zoomAt(centre.lat)
-    rememberPlanetPosition({ centre, zoom })
+  function settleSurface(): void {
+    if (surface === null) return
+    // the camera holds the offset since the last settle, so the view centre is read back through it
+    const at = { ...localView(surface), cx, cy }
+    const pointX = cx + (cx - translateX.value) / scale.value
+    const pointY = cy + (cy - translateY.value) / scale.value
+    const centre = unproject(pointX, pointY, at) ?? surface.centre
+    const radius = Math.min(range.radius, surface.radius * scale.value)
+    const zoom = globeZoom(radius, centre.lat)
+    const next = viewFor(centre, radius, surface.epoch + 1)
+    rememberPlanetPosition({ centre: next.middle, zoom })
     if (!pastTheGlobe(zoom, centre.lat)) {
-      returnToGlobe(centre)
+      returnToGlobe(centre, radius)
       return
     }
-    const res = resolutionFor(zoom, centre.lat)
-    const next = requestFor(centre, res, camera.scale.value, width, height)
-    if (needsRebuild(build, next)) {
-      setBuild(next)
+    if (needsRebuild(surface, next)) {
+      setSurface(next)
       return
     }
     refreshTiles()
@@ -656,10 +743,12 @@ export function Planet({ active }: ActProps) {
     handled.current = settle
     if (!active) return
     if (mode === 'globe') settleGlobe()
-    else if (mode === 'city') settleCity()
+    else settleSurface()
   })
 
   const radius = useDerivedValue(() => baseRadius * globeScale.value)
+  // the coastline keeps its width while the camera zooms between two settles
+  const coastWidth = useDerivedValue(() => 1 / scale.value)
 
   const gesture = useMemo(() => {
     const pan = Gesture.Pan()
@@ -686,51 +775,58 @@ export function Planet({ active }: ActProps) {
       .onChange((event) => {
         'worklet'
         const next = globeScale.value * event.scaleChange
-        globeScale.value = Math.max(GLOBE_MIN_SCALE, Math.min(maxScale, next))
+        globeScale.value = Math.max(GLOBE_MIN_SCALE, Math.min(range.scale, next))
       })
       .onFinalize(() => {
         'worklet'
         turning.value = false
       })
     return Gesture.Simultaneous(pan, pinch)
-  }, [baseRadius, maxScale, globeScale, lambda0, phi0, turning])
+  }, [baseRadius, range.scale, globeScale, lambda0, phi0, turning])
 
-  const cityLayers = useMemo(
+  const surfaceLayers = useMemo(
     () =>
-      scene === null ? null : (
+      scene === null || surface === null ? null : (
         <>
+          {/* the sphere already covers the viewport at this radius, so its disk is a fill */}
+          <Fill color={colours.vignette} />
+          <TileLayer
+            source={source}
+            tiles={tiles}
+            classes={classes}
+            project={projectVertex}
+            epoch={surface.epoch}
+          />
           {/* no glow here: it would sit over the basemap the translucent cells uncover */}
-          <TileLayer source={source} tiles={tiles} classes={classes} anchor={anchor} />
-          <CellPictures scene={scene.cells} opacity={CITY_OPACITY} />
+          <CellPictures scene={scene.cells} opacity={tiles.length === 0 ? 1 : BASEMAP_OPACITY} />
+          <Path
+            path={scene.coast}
+            color={colours.hairline}
+            style="stroke"
+            strokeWidth={coastWidth}
+          />
         </>
       ),
-    [source, tiles, classes, anchor, scene],
+    [source, tiles, classes, scene, surface, projectVertex, coastWidth],
   )
 
   const overlay = useMemo(
-    () => (
-      <>
-        {mode === 'city' ? null : (
-          <>
-            <Circle cx={cx} cy={cy} r={radius} color={colours.vignette} />
-            {mode === 'globe' ? (
-              <Picture picture={picture} />
-            ) : (
-              <CellPictures scene={handoff} opacity={CITY_OPACITY} />
-            )}
-            <Circle
-              cx={cx}
-              cy={cy}
-              r={radius}
-              color={colours.hairline}
-              style="stroke"
-              strokeWidth={1}
-            />
-          </>
-        )}
-      </>
-    ),
-    [mode, cx, cy, radius, picture, handoff],
+    () =>
+      mode === 'surface' ? null : (
+        <>
+          <Circle cx={cx} cy={cy} r={radius} color={colours.vignette} />
+          <Picture picture={picture} />
+          <Circle
+            cx={cx}
+            cy={cy}
+            r={radius}
+            color={colours.hairline}
+            style="stroke"
+            strokeWidth={1}
+          />
+        </>
+      ),
+    [mode, cx, cy, radius, picture],
   )
 
   // an act off screen keeps its mesh and draws nothing
@@ -740,27 +836,30 @@ export function Planet({ active }: ActProps) {
     <View style={styles.root}>
       <EngineCanvas
         camera={camera}
-        gesture={mode === 'city' ? undefined : gesture}
+        gesture={mode === 'surface' ? undefined : gesture}
         overlay={overlay}
       >
-        {mode === 'city' ? cityLayers : null}
+        {mode === 'surface' ? surfaceLayers : null}
       </EngineCanvas>
       <View
         style={styles.panel}
         onLayout={(event) => setPanelHeight(event.nativeEvent.layout.height)}
       >
         <Panel>
-          {mode === 'city' && scene !== null ? (
+          {mode === 'surface' && scene !== null && surface !== null ? (
             <>
               <Metric value={formatCount(scene.cellCount)} caption="cells drawn" />
-              <Row label="resolution" value={`${scene.res}`} />
+              <Row label="resolution" value={`${surface.res}`} />
               <Row label="rings" value={formatMs(scene.ringsMs)} call={scene.rings} />
               <Row
                 label="boundaries"
                 value={formatMs(scene.boundariesMs)}
                 call="cellsToBoundaries"
               />
+              <Row label="projection" value={formatMs(scene.projectMs)} />
               <Row label="mesh" value={formatMs(scene.meshMs)} />
+              <Row label="rebuild" value={formatMs(scene.buildMs)} />
+              <Row label="basemap" value={formatMs(basemapMs)} call="buildTilePaths" />
             </>
           ) : (
             <>
@@ -784,7 +883,7 @@ export function Planet({ active }: ActProps) {
           )}
         </Panel>
       </View>
-      {mode === 'city' ? <Attribution text={source.attribution} /> : null}
+      {tiles.length > 0 ? <Attribution text={source.attribution} /> : null}
     </View>
   )
 }

@@ -56,6 +56,9 @@ export interface CityCamera {
   cy: number
 }
 
+/** Projects one coordinate to a screen position, or answers `undefined` where it faces away. */
+export type VertexProjector = (lng: number, lat: number) => [x: number, y: number] | undefined
+
 /** Holds a projected point: the screen position and the depth toward the viewer. */
 export interface ProjectedPoint {
   x: number
@@ -361,6 +364,69 @@ export function projectCellsOrthographic(
     }
   }
   return points
+}
+
+/**
+ * Projects a cell set onto the orthographic disk, in pixels measured from the projected `anchor`.
+ *
+ * Every vertex is computed in double and stored as `Float32`, so a frame anchored at the view
+ * centre holds pixel accuracy at any radius; the disk centre cancels out of the subtraction. A
+ * vertex on the far side stays `NaN`, as do the padding slots.
+ *
+ * @param boundaries The boundaries as `cellsToBoundaries` answers them.
+ * @param view The globe the cells are projected onto.
+ * @param anchor The coordinate that becomes the origin, which the view centre is meant to be.
+ */
+export function projectCellsGlobeLocal(
+  boundaries: CellBoundaries,
+  view: GlobeView,
+  anchor: LatLng,
+): ProjectedCells {
+  const { stride, vertices, vertexCounts } = boundaries
+  const cellCount = vertexCounts.length
+  const points = new Float32Array(vertices.length).fill(Number.NaN)
+  const { radius } = view
+
+  const sinLambda = Math.sin(view.lambda0)
+  const cosLambda = Math.cos(view.lambda0)
+  const sinPhi = Math.sin(view.phi0)
+  const cosPhi = Math.cos(view.phi0)
+  const origin = rotateToView(latLngToXyz(anchor.lat, anchor.lng), view)
+
+  let minX = Number.POSITIVE_INFINITY
+  let minY = Number.POSITIVE_INFINITY
+  let maxX = Number.NEGATIVE_INFINITY
+  let maxY = Number.NEGATIVE_INFINITY
+
+  for (let cell = 0; cell < cellCount; cell++) {
+    const base = cell * stride
+    const count = vertexCounts[cell]
+    for (let vertex = 0; vertex < count; vertex++) {
+      const slot = base + vertex * 2
+      const phi = vertices[slot] * DEG_TO_RAD
+      const lambda = vertices[slot + 1] * DEG_TO_RAD
+      const cosLat = Math.cos(phi)
+      const pointX = cosLat * Math.cos(lambda)
+      const pointY = cosLat * Math.sin(lambda)
+      const pointZ = Math.sin(phi)
+      const turnedX = pointX * cosLambda + pointY * sinLambda
+      if (sinPhi * pointZ + cosPhi * turnedX <= 0) continue
+      const x = radius * (pointY * cosLambda - pointX * sinLambda - origin.x)
+      const y = -radius * (cosPhi * pointZ - sinPhi * turnedX - origin.y)
+      points[slot] = x
+      points[slot + 1] = y
+      if (x < minX) minX = x
+      if (x > maxX) maxX = x
+      if (y < minY) minY = y
+      if (y > maxY) maxY = y
+    }
+  }
+
+  const bounds =
+    minX === Number.POSITIVE_INFINITY
+      ? { minX: 0, minY: 0, maxX: 0, maxY: 0 }
+      : { minX, minY, maxX, maxY }
+  return { stride, points, vertexCounts, cellCount, bounds }
 }
 
 /** Projects a cell set through Web Mercator, in screen pixels, keeping the input layout. */

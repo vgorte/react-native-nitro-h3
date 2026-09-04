@@ -1,10 +1,27 @@
+import type { VertexProjector } from '../projection'
 import { type TileId, tileUrl } from './arithmetic'
-import { buildTilePaths, decodeTile, type StyleClass, type TilePaths } from './decode'
+import {
+  buildTilePaths,
+  type DecodedTile,
+  decodeTile,
+  type StyleClass,
+  type TilePaths,
+} from './decode'
 
 /** Serves decoded tiles from memory and fetches the ones the camera asks for. */
 export interface TileSource {
-  /** Answers a decoded tile when it holds geometry in `classes`, or `undefined` while it comes. */
-  paths(tile: TileId, classes: StyleClass[]): TilePaths | undefined
+  /**
+   * Answers a tile's paths when it holds geometry in `classes`, or `undefined` while it comes.
+   *
+   * With a projector the paths are screen pixels of the view `epoch` names, built on the first
+   * call of that epoch and kept until the next one; without it they stay in tile coordinates.
+   */
+  paths(
+    tile: TileId,
+    classes: StyleClass[],
+    project?: VertexProjector,
+    epoch?: number,
+  ): TilePaths | undefined
   /** Queues a tile for fetching and decoding; a tile already held or queued is ignored. */
   request(tile: TileId): void
   /** Drops every queued tile outside `visible`, so a pan does not decode what it left behind. */
@@ -43,7 +60,9 @@ function plainAttribution(html: string): string {
  * @param onDecoded Called after tiles enter the cache, coalesced so a burst is a few calls.
  */
 export function createTileSource(onDecoded?: () => void): TileSource {
-  const cache = new Map<string, TilePaths>()
+  const cache = new Map<string, DecodedTile>()
+  const built = new Map<string, TilePaths>()
+  let builtFor = ''
   const pending = new Set<string>()
   const wanted: TileId[] = []
   const queue: { tile: TileId; bytes: Uint8Array }[] = []
@@ -74,9 +93,8 @@ export function createTileSource(onDecoded?: () => void): TileSource {
       if (next !== undefined) {
         try {
           const decoded = decodeTile(next.bytes)
-          const paths = buildTilePaths(decoded.tile, { buildings: true })
           if (cache.size >= LRU_TILES) cache.delete(cache.keys().next().value as string)
-          cache.set(key(next.tile), paths)
+          cache.set(key(next.tile), decoded.tile)
           landed = true
         } catch {
           // a non-tile body is as silent as a failed fetch
@@ -130,13 +148,38 @@ export function createTileSource(onDecoded?: () => void): TileSource {
   }
 
   return {
-    paths(tile: TileId, classes: StyleClass[]): TilePaths | undefined {
+    paths(
+      tile: TileId,
+      classes: StyleClass[],
+      project?: VertexProjector,
+      epoch = 0,
+    ): TilePaths | undefined {
       const id = key(tile)
-      const entry = cache.get(id)
-      if (entry === undefined) return undefined
+      const decoded = cache.get(id)
+      if (decoded === undefined) return undefined
       // re-inserting moves the tile to the young end of the cache
       cache.delete(id)
-      cache.set(id, entry)
+      cache.set(id, decoded)
+
+      const generation = `${epoch}|${classes.join(',')}`
+      if (generation !== builtFor) {
+        built.clear()
+        builtFor = generation
+      }
+      let entry = built.get(id)
+      if (entry === undefined) {
+        try {
+          entry = buildTilePaths(decoded, {
+            buildings: classes.includes('building'),
+            classes,
+            projection: project === undefined ? undefined : { id: tile, project },
+          })
+        } catch {
+          // a tile whose geometry does not decode is as silent as a failed fetch
+          return undefined
+        }
+        built.set(id, entry)
+      }
       return classes.some((style) => entry.paths[style] !== '') ? entry : undefined
     },
     request(tile: TileId): void {

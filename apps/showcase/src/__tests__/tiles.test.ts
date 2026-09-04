@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import { PbfWriter } from 'pbf'
-import { EARTH_RADIUS_M, mercatorX, mercatorY } from '../engine/projection'
+import { EARTH_RADIUS_M, mercatorX, mercatorY, type VertexProjector } from '../engine/projection'
 import {
   buildTilePaths,
   classesForZoom,
@@ -163,6 +163,69 @@ describe('buildTilePaths', () => {
 
   test('falls back to the default extent for a tile without a drawn layer', () => {
     expect(buildTilePaths(tile({}), BUILD).extent).toBe(4096)
+  })
+})
+
+describe('buildTilePaths with a projection', () => {
+  // the top-level tile turns its coordinates into whole degrees of longitude
+  const WORLD = { z: 0, x: 0, y: 0 }
+  const plain: VertexProjector = (lng, lat) => [lng, lat]
+  const nearSide: VertexProjector = (lng, lat) => (lat > 80 ? undefined : [lng, lat])
+
+  test('writes the projected vertices instead of the tile coordinates', () => {
+    const built = buildTilePaths(
+      tile({
+        water: layer([
+          feature(3, { class: 'river' }, [ring([2048, 2048, 0, 2048, 2048, 0, 2048, 2048])]),
+        ]),
+      }),
+      { buildings: true, projection: { id: WORLD, project: plain } },
+    )
+
+    expect(built.paths.water).toBe('M0.0 0.0L-180.0 0.0L0.0 85.1L0.0 0.0Z')
+    expect(built.projected).toBe(true)
+  })
+
+  test('breaks a polyline where the projection answers nothing', () => {
+    const built = buildTilePaths(
+      tile({
+        transportation: layer([
+          feature(2, { class: 'primary' }, [
+            ring([0, 2048, 1024, 2048, 2048, 0, 3072, 2048, 4096, 2048]),
+          ]),
+        ]),
+      }),
+      { buildings: true, projection: { id: WORLD, project: nearSide } },
+    )
+
+    expect(built.paths.primary).toBe('M-180.0 0.0L-90.0 0.0M90.0 0.0L180.0 0.0')
+  })
+
+  test('leaves a ring the projection cut open', () => {
+    const built = buildTilePaths(
+      tile({
+        water: layer([feature(3, {}, [ring([0, 2048, 2048, 0, 4096, 2048, 2048, 2048, 0, 2048])])]),
+      }),
+      { buildings: true, projection: { id: WORLD, project: nearSide } },
+    )
+
+    expect(built.paths.water).toBe('M180.0 0.0L0.0 0.0L-180.0 0.0')
+  })
+
+  test('builds only the classes it is asked for', () => {
+    const built = buildTilePaths(
+      tile({
+        transportation: layer([
+          feature(2, { class: 'motorway' }, [ring([0, 0, 1, 1])]),
+          feature(2, { class: 'service' }, [ring([2, 2, 3, 3])]),
+        ]),
+      }),
+      { buildings: true, classes: ['motorway'] },
+    )
+
+    expect(built.paths.motorway).toBe('M0 0L1 1')
+    expect(built.paths.service).toBe('')
+    expect(built.features).toBe(1)
   })
 })
 

@@ -1,23 +1,18 @@
 import { Group, Path, Skia, type SkPath } from '@shopify/react-native-skia'
 import { useEffect } from 'react'
-import { mercatorX, mercatorY } from '../engine/projection'
-import {
-  type StyleClass,
-  type TileId,
-  type TilePaths,
-  type TileSource,
-  tileOriginMetres,
-} from '../engine/tiles'
+import type { VertexProjector } from '../engine/projection'
+import type { StyleClass, TileId, TilePaths, TileSource } from '../engine/tiles'
 import { colours, ramp } from '../theme/tokens'
-import type { CameraAnchor } from './camera'
 
 /** Configures {@linkcode TileLayer}. */
 export interface TileLayerProps {
   source: TileSource
   tiles: TileId[]
   classes: StyleClass[]
-  /** The coordinate the scene's metre space is measured from, as the camera holds it. */
-  anchor: CameraAnchor
+  /** Places a tile's vertices in the scene the camera moves. */
+  project: VertexProjector
+  /** The view the paths belong to; a new one rebuilds every tile. */
+  epoch: number
 }
 
 /** Opacity per style class, so a motorway reads above a service road at the same hue. */
@@ -56,13 +51,10 @@ function classPath(entry: TilePaths, style: StyleClass): SkPath | null {
 /**
  * Draws the basemap as hairlines under the geometry, one group per tile.
  *
- * The group places the tile in the scene's metre space, so the basemap and the cells move under
- * one camera and cannot drift apart. A tile that has not arrived yet draws nothing.
+ * Every vertex is projected into the scene at the epoch's settle, so the basemap and the cells sit
+ * on the same sphere and move under one camera. A tile that has not arrived yet draws nothing.
  */
-export function TileLayer({ source, tiles, classes, anchor }: TileLayerProps) {
-  const anchorX = mercatorX(anchor.lng)
-  const anchorY = mercatorY(anchor.lat)
-
+export function TileLayer({ source, tiles, classes, project, epoch }: TileLayerProps) {
   // a pan's leftover tiles are dropped before they cost a decode
   useEffect(() => {
     source.prune(tiles)
@@ -71,16 +63,10 @@ export function TileLayer({ source, tiles, classes, anchor }: TileLayerProps) {
   return (
     <>
       {tiles.map((tile) => {
-        const entry = source.paths(tile, classes)
+        const entry = source.paths(tile, classes, project, epoch)
         if (entry === undefined) return null
-        const origin = tileOriginMetres(tile)
-        const transform = [
-          { translateX: origin.x - anchorX },
-          { translateY: anchorY - origin.y },
-          { scale: origin.span / entry.extent },
-        ]
         return (
-          <Group key={`${tile.z}/${tile.x}/${tile.y}`} transform={transform}>
+          <Group key={`${tile.z}/${tile.x}/${tile.y}`}>
             {classes.map((style) => {
               const path = classPath(entry, style)
               if (path === null) return null

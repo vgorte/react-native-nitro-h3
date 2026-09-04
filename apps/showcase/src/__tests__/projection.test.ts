@@ -15,6 +15,7 @@ import {
   project,
   projectCells,
   projectCellsCity,
+  projectCellsGlobeLocal,
   projectCellsOrthographic,
   radiusForResolution,
   resolutionForZoom,
@@ -376,5 +377,79 @@ describe('radiusForResolution', () => {
       expect(radius).toBeGreaterThan(previous)
       previous = radius
     }
+  })
+})
+
+describe('projectCellsGlobeLocal', () => {
+  const anchor = { lat: 52.52, lng: 13.4 }
+
+  function cityView(radius: number): GlobeView {
+    return {
+      lambda0: anchor.lng * DEG_TO_RAD,
+      phi0: anchor.lat * DEG_TO_RAD,
+      cx: 200,
+      cy: 400,
+      radius,
+    }
+  }
+
+  test('answers the direct projection measured from the anchor', () => {
+    const at = cityView(2_000_000)
+    const cell = [
+      anchor.lat + 0.2,
+      anchor.lng,
+      anchor.lat,
+      anchor.lng + 0.2,
+      anchor.lat - 0.2,
+      anchor.lng,
+    ]
+    const origin = project(anchor.lat, anchor.lng, at)
+    const projected = projectCellsGlobeLocal(boundaries([cell]), at, anchor)
+
+    for (let vertex = 0; vertex < 3; vertex++) {
+      const direct = project(cell[vertex * 2], cell[vertex * 2 + 1], at)
+      expect(projected.points[vertex * 2]).toBeCloseTo(direct.x - origin.x, 2)
+      expect(projected.points[vertex * 2 + 1]).toBeCloseTo(direct.y - origin.y, 2)
+    }
+  })
+
+  test('answers NaN for a vertex on the far side and for the padding', () => {
+    const projected = projectCellsGlobeLocal(
+      boundaries([[anchor.lat, anchor.lng, -anchor.lat, anchor.lng + 180, anchor.lat, anchor.lng]]),
+      cityView(2_000_000),
+      anchor,
+    )
+
+    expect(projected.points[0]).toBeCloseTo(0, 6)
+    expect(projected.points[2]).toBeNaN()
+    expect(projected.points[3]).toBeNaN()
+    expect(projected.points[6]).toBeNaN()
+  })
+
+  test('keeps a metre apart at the resolution 15 scale', () => {
+    const metreInDegrees = (1 / 6378137) * (180 / Math.PI)
+    const projected = projectCellsGlobeLocal(
+      boundaries([
+        [anchor.lat, anchor.lng, anchor.lat + metreInDegrees, anchor.lng, anchor.lat, anchor.lng],
+      ]),
+      cityView(5e7),
+      anchor,
+    )
+
+    expect(Math.abs(projected.points[3] - projected.points[1])).toBeGreaterThanOrEqual(0.5)
+  })
+
+  test('bounds the cells it kept', () => {
+    const at = cityView(2_000_000)
+    const projected = projectCellsGlobeLocal(
+      boundaries([polygon(6, anchor.lat, anchor.lng)]),
+      at,
+      anchor,
+    )
+
+    expect(projected.cellCount).toBe(1)
+    expect(projected.bounds.minX).toBeLessThan(0)
+    expect(projected.bounds.maxX).toBeGreaterThan(0)
+    expect(projected.bounds.maxY).toBeGreaterThan(projected.bounds.minY)
   })
 })
