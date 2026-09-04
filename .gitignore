@@ -37,6 +37,10 @@ project.xcworkspace
 # CocoaPods
 apps/example/ios/Pods
 
+# Expo prebuild output of the showcase; regenerated from app.json
+apps/showcase/ios/
+apps/showcase/android/
+
 # Ruby
 apps/example/vendor/
 

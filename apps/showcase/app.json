@@ -1,0 +1,25 @@
+{
+  "expo": {
+    "name": "H3 Showcase",
+    "slug": "h3-showcase",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "newArchEnabled": true,
+    "ios": {
+      "bundleIdentifier": "com.h3showcase",
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.h3showcase",
+      "adaptiveIcon": {
+        "backgroundColor": "#060911",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "plugins": ["expo-dev-client"]
+  }
+}

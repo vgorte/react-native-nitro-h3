@@ -6,7 +6,7 @@
     "apps/*"
   ],
   "scripts": {
-    "typecheck": "bun run --cwd packages/react-native-nitro-h3 typecheck && bun run --cwd packages/react-native-nitro-h3 typecheck:tests && bun run --cwd apps/example typecheck && tsc --noEmit -p scripts && tsc --noEmit -p website",
+    "typecheck": "bun run --cwd packages/react-native-nitro-h3 typecheck && bun run --cwd packages/react-native-nitro-h3 typecheck:tests && bun run --cwd apps/example typecheck && bun run --cwd apps/showcase typecheck && tsc --noEmit -p scripts && tsc --noEmit -p website",
     "build": "bun run --cwd packages/react-native-nitro-h3 build",
     "specs": "bun run --cwd packages/react-native-nitro-h3 specs",
     "lint": "biome check .",
@@ -19,6 +19,9 @@
     "example": "bun run --cwd apps/example",
     "example:ios": "bun run --cwd apps/example ios",
     "example:android": "bun run --cwd apps/example android",
+    "showcase": "bun run --cwd apps/showcase",
+    "showcase:ios": "bun run --cwd apps/showcase ios",
+    "showcase:android": "bun run --cwd apps/showcase android",
     "release": "./scripts/release.sh"
   },
   "release-it": {
@@ -85,6 +88,9 @@
       }
     }
   },
+  "trustedDependencies": [
+    "@shopify/react-native-skia"
+  ],
   "devDependencies": {
     "@biomejs/biome": "^2.5.11",
     "@release-it/bumper": "^8.0.0",
