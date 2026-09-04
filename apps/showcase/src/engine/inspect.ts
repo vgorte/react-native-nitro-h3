@@ -52,6 +52,21 @@ export interface Neighbourhood {
   neighbours: BigUint64Array
 }
 
+/**
+ * Holds the three layers a highlight is drawn in, in the order they are drawn.
+ *
+ * The two host families draw them with different objects, Skia pictures and paths against GeoJSON
+ * strings, so a layer is typed by whatever the host fills or strokes it with.
+ */
+export interface Highlight<Fill, Line> {
+  /** The ring around the cell. */
+  neighbours: Line
+  /** The children, `null` at resolution `15`. */
+  children: Fill | null
+  /** The parent's ring, `null` at resolution `0`. */
+  parent: Line | null
+}
+
 /** Answers the median duration of a call over `repeats` timed runs, in milliseconds. */
 export function repeatMedianMs(call: () => unknown, repeats: number = REPEATS): number {
   call()
@@ -64,7 +79,7 @@ export function repeatMedianMs(call: () => unknown, repeats: number = REPEATS): 
   return median(samples)
 }
 
-/** Answers the literal shape of a call: what it was handed, what it answered and how wide that is. */
+/** Answers the shape of a call: what it was handed, what it answered and how wide that is. */
 function shapeOf(argument: string, result: BigUint64Array | Float64Array): string {
   return `${argument} -> ${result.constructor.name} of ${result.length}, ${result.byteLength} bytes`
 }
@@ -73,8 +88,8 @@ function shapeOf(argument: string, result: BigUint64Array | Float64Array): strin
  * Answers every reading the sheet lists for one cell, each timed over {@linkcode REPEATS} runs.
  *
  * The two ends of the ladder drop the row that has nothing to answer: resolution `0` has no parent
- * above it and resolution `15` no level below it. The last row is not a reading but the shape of the
- * call above it, so the visitor sees what an array call hands back and how wide that is.
+ * above it and resolution `15` no level below it. The last row is not a reading but the shape of
+ * the call above it, so the visitor sees what an array call hands back and how wide that is.
  *
  * @param cell The cell the sheet stands on.
  * @param h3 The calls to read and time, which the act passes in from the package.
@@ -90,7 +105,7 @@ export function inspectRows(cell: bigint, h3: InspectCalls): InspectorRow[] {
       value: h3.cellToString(cell),
       ms: repeatMedianMs(() => h3.cellToString(cell)),
     },
-    // the cell is a `bigint` on this side of the bridge, and the sheet says so rather than hiding it
+    // the cell is a `bigint` on this side of the bridge, and the sheet says so rather than hide it
     { label: 'decimal', value: cell.toString() },
     {
       label: 'resolution',

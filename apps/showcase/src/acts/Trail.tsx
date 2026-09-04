@@ -390,7 +390,7 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
       const at = sceneToLatLng(point.x, point.y, anchored.current)
       try {
         const cell = latLngToCell(at.lat, at.lng, res)
-        if (held.current.some((step) => step.cell === cell)) onInspect?.(cell)
+        if (held.current.some((step) => step.cell === cell)) onInspect(cell)
       } catch (error) {
         // a tap that inverts to a coordinate off the projection has no cell to inspect
         if (!(error instanceof H3Error)) throw error
@@ -409,7 +409,7 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
     <View style={styles.root}>
       <EngineCanvas camera={camera} onTap={inspect}>
         <CellPictures scene={scene?.scene ?? null} />
-        <InspectHighlight cell={inspected ?? null} anchor={anchor} scale={scale} />
+        <InspectHighlight cell={inspected} anchor={anchor} scale={scale} />
       </EngineCanvas>
       {/* box-none leaves the scene every touch the panel head does not take */}
       <View

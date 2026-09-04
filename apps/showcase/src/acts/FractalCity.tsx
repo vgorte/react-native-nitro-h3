@@ -403,7 +403,7 @@ export function FractalCity({ active, inspected, onInspect }: ActProps) {
                 />
               </Group>
             )}
-            <InspectHighlight cell={inspected ?? null} anchor={anchor} scale={scale} />
+            <InspectHighlight cell={inspected} anchor={anchor} scale={scale} />
           </>
         )}
       </EngineCanvas>
@@ -452,7 +452,7 @@ export function FractalCity({ active, inspected, onInspect }: ActProps) {
           <Pressable
             style={[styles.button, focus === null ? styles.disabled : null]}
             onPress={() => {
-              if (focus !== null) onInspect?.(focus.cell)
+              if (focus !== null) onInspect(focus.cell)
             }}
             disabled={focus === null}
             accessibilityRole="button"

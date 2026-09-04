@@ -3,9 +3,11 @@ import {
   cellsToBoundaries,
   cellsToLatLngs,
   cellToChildren,
+  cellToParent,
   compactCells,
   getBaseCellNumber,
   getRes0Cells,
+  getResolution,
   gridDisk,
   gridDiskDistances,
   gridPathCells,
@@ -13,9 +15,23 @@ import {
   latLngsToCells,
   uncompactCells,
 } from 'react-native-nitro-h3'
+import type { NeighbourhoodCalls } from './inspect'
 
 /** Caps what any control in the app can allocate; passed to `configure` before the first call. */
 export const MAX_CELL_COUNT = 1_500_000
+
+/**
+ * Bundles the calls a highlight walks the grid with, for the rules that take them injected.
+ *
+ * The rules live in `engine/inspect.ts`, which imports no package, so the bundle stands here where
+ * the app's other package calls do.
+ */
+export const NEIGHBOURHOOD_CALLS: NeighbourhoodCalls = {
+  getResolution,
+  cellToParent,
+  cellToChildren,
+  gridDisk,
+}
 
 /** Holds a call's result together with the milliseconds it took and the name it is shown under. */
 export interface Timed<T> {

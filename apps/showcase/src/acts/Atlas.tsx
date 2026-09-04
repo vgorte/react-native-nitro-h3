@@ -17,18 +17,21 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { type NativeSyntheticEvent, StyleSheet, View } from 'react-native'
 import {
   cellToCenterChild,
-  cellToChildren,
   cellToParent,
   cellToString,
   getHexagonEdgeLengthAvgM,
-  getResolution,
-  gridDisk,
   gridDiskDistances,
   latLngToCell,
 } from 'react-native-nitro-h3'
-import { boundariesOf, bucketOfBaseCell, diskAround, timed } from '../engine/cells'
+import {
+  boundariesOf,
+  bucketOfBaseCell,
+  diskAround,
+  NEIGHBOURHOOD_CALLS,
+  timed,
+} from '../engine/cells'
 import { cellsToFeatureCollection } from '../engine/geojson'
-import { neighbourhoodOf } from '../engine/inspect'
+import { type Highlight, neighbourhoodOf } from '../engine/inspect'
 import { bucketForDistance, PATCH_RINGS } from '../engine/mesh'
 import { DEG_TO_RAD, EARTH_RADIUS_M, resolutionForZoom } from '../engine/projection'
 import { formatCount, formatMs } from '../engine/stats'
@@ -39,7 +42,7 @@ import { FinePrint } from '../render/hud/FinePrint'
 import { Metric } from '../render/hud/Metric'
 import { Panel } from '../render/hud/Panel'
 import { Row } from '../render/hud/Row'
-import { CELL_FILL_OPACITY, colours, rampColours } from '../theme/tokens'
+import { CELL_FILL_OPACITY, colours, ramp, rampColours } from '../theme/tokens'
 import { lastPlanetPosition, rememberPlanetPosition } from './planetPosition'
 import type { ActProps } from './types'
 
@@ -69,9 +72,12 @@ const PATCH_BUCKETS = PATCH_RINGS + 1
 
 const CELL_LINE_WIDTH = 0.5
 const PICK_LINE_WIDTH = 1.5
+// the ghost of the parent is lighter than the outline of the tapped cell, so the two read apart
+const GHOST_LINE_WIDTH = 1
+const GHOST_LINE_OPACITY = 0.8
 const NEIGHBOUR_LINE_WIDTH = 1
-const CHILD_FILL_OPACITY = 0.28
-const PARENT_LINE_OPACITY = 0.7
+const NEIGHBOUR_FILL_OPACITY = 0.22
+const CHILD_FILL_OPACITY = 0.45
 const PANEL_TOP = 104
 const PRINT_WIDTH = 268
 
@@ -120,8 +126,14 @@ const PICK_LINE: LinePaint = {
 }
 
 const CHILD_FILL: FillPaint = {
-  'fill-color': colours.text,
+  // the brightest step of the ramp, which is what the Skia hosts fill the children with
+  'fill-color': ramp[ramp.length - 1],
   'fill-opacity': CHILD_FILL_OPACITY,
+}
+
+const NEIGHBOUR_FILL: FillPaint = {
+  'fill-color': colours.contrast,
+  'fill-opacity': NEIGHBOUR_FILL_OPACITY,
 }
 
 const NEIGHBOUR_LINE: LinePaint = {
@@ -129,10 +141,10 @@ const NEIGHBOUR_LINE: LinePaint = {
   'line-width': NEIGHBOUR_LINE_WIDTH,
 }
 
-const PARENT_LINE: LinePaint = {
+const GHOST_LINE: LinePaint = {
   'line-color': colours.text,
-  'line-width': PICK_LINE_WIDTH,
-  'line-opacity': PARENT_LINE_OPACITY,
+  'line-width': GHOST_LINE_WIDTH,
+  'line-opacity': GHOST_LINE_OPACITY,
 }
 
 /** Holds the basemap the act draws on and the line its licence requires. */
@@ -206,11 +218,7 @@ interface Picked {
 }
 
 /** Holds what the map draws around an inspected cell, one collection a layer. */
-interface Highlight {
-  parent: string
-  children: string
-  neighbours: string
-}
+type AtlasHighlight = Highlight<string, string>
 
 /** Builds the collection of a cell set, which one layer of the highlight draws from. */
 function collectionOf(cells: BigUint64Array): string {
@@ -218,13 +226,12 @@ function collectionOf(cells: BigUint64Array): string {
 }
 
 /** Answers the three collections the sheet's highlight is drawn from. */
-function highlightOf(cell: bigint): Highlight {
-  const around = neighbourhoodOf(cell, { getResolution, cellToParent, cellToChildren, gridDisk })
+function highlightOf(cell: bigint): AtlasHighlight {
+  const around = neighbourhoodOf(cell, NEIGHBOURHOOD_CALLS)
   return {
-    parent:
-      around.parent === null ? EMPTY_COLLECTION : collectionOf(BigUint64Array.of(around.parent)),
-    children: around.children.length === 0 ? EMPTY_COLLECTION : collectionOf(around.children),
     neighbours: collectionOf(around.neighbours),
+    children: around.children.length === 0 ? null : collectionOf(around.children),
+    parent: around.parent === null ? null : collectionOf(BigUint64Array.of(around.parent)),
   }
 }
 
@@ -467,7 +474,7 @@ export function Atlas({ active, inspected, onInspect }: ActProps) {
       if (current === null) return
       const [lng, lat] = event.nativeEvent.lngLat
       const cell = latLngToCell(lat, lng, current.res)
-      onInspect?.(cell)
+      onInspect(cell)
 
       // a second tap on the same cell hands the map what it already holds, so it opens no wait
       const index = cellToString(cell)
@@ -482,10 +489,7 @@ export function Atlas({ active, inspected, onInspect }: ActProps) {
     [onInspect],
   )
 
-  const highlight = useMemo(
-    () => (inspected === null || inspected === undefined ? null : highlightOf(inspected)),
-    [inspected],
-  )
+  const highlight = useMemo(() => (inspected === null ? null : highlightOf(inspected)), [inspected])
 
   return (
     <View style={styles.root}>
@@ -513,18 +517,19 @@ export function Atlas({ active, inspected, onInspect }: ActProps) {
           <GeoJSONSource id="atlas-pick" data={picked?.data ?? EMPTY_COLLECTION}>
             <Layer id="atlas-pick-line" type="line" paint={PICK_LINE} />
           </GeoJSONSource>
-          {/* what the inspected cell stands between, in the order the sheet names them */}
-          <GeoJSONSource id="atlas-inspect-children" data={highlight?.children ?? EMPTY_COLLECTION}>
-            <Layer id="atlas-inspect-children-fill" type="fill" paint={CHILD_FILL} />
-          </GeoJSONSource>
+          {/* what the inspected cell stands between, in the order the Skia acts draw them */}
           <GeoJSONSource
             id="atlas-inspect-neighbours"
             data={highlight?.neighbours ?? EMPTY_COLLECTION}
           >
+            <Layer id="atlas-inspect-neighbours-fill" type="fill" paint={NEIGHBOUR_FILL} />
             <Layer id="atlas-inspect-neighbours-line" type="line" paint={NEIGHBOUR_LINE} />
           </GeoJSONSource>
+          <GeoJSONSource id="atlas-inspect-children" data={highlight?.children ?? EMPTY_COLLECTION}>
+            <Layer id="atlas-inspect-children-fill" type="fill" paint={CHILD_FILL} />
+          </GeoJSONSource>
           <GeoJSONSource id="atlas-inspect-parent" data={highlight?.parent ?? EMPTY_COLLECTION}>
-            <Layer id="atlas-inspect-parent-line" type="line" paint={PARENT_LINE} />
+            <Layer id="atlas-inspect-parent-line" type="line" paint={GHOST_LINE} />
           </GeoJSONSource>
         </MapLibreMap>
       )}
