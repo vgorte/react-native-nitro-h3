@@ -6,6 +6,7 @@ import {
   FRAME_PADDING,
   frameExtent,
   frameMatrix,
+  framePixelRatio,
   type ImageFrame,
   imageFrameOf,
   projectPoints,
@@ -75,6 +76,27 @@ describe('imageFrameOf', () => {
 
     expect(padded.width * padded.height).toBeLessThanOrEqual(4_000_000)
     expect(padded.width / padded.height).toBeCloseTo(402 / 874, 2)
+  })
+})
+
+describe('framePixelRatio', () => {
+  test('answers the device pixels a point spans while nothing is padded or capped', () => {
+    const frame = imageFrameOf(BERLIN_BOUNDS, VIEWPORT, 3, 40_000_000, 0)
+
+    expect(framePixelRatio(frame, VIEWPORT.width, 0)).toBeCloseTo(3, 6)
+  })
+
+  test('answers fewer pixels a point where the frame is stretched over the padding', () => {
+    const frame = imageFrameOf(BERLIN_BOUNDS, VIEWPORT, 3, 40_000_000, FRAME_PADDING)
+
+    expect(framePixelRatio(frame, VIEWPORT.width)).toBeCloseTo(3, 2)
+  })
+
+  test('answers what the cap left of the pixels, so a mark keeps the size it is drawn at', () => {
+    const frame = imageFrameOf(BERLIN_BOUNDS, VIEWPORT, 3, 4_000_000, FRAME_PADDING)
+
+    expect(framePixelRatio(frame, VIEWPORT.width)).toBeLessThan(3)
+    expect(frame.width / framePixelRatio(frame, VIEWPORT.width)).toBeCloseTo(VIEWPORT.width * 2, 0)
   })
 })
 

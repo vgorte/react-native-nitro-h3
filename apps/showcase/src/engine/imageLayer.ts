@@ -81,6 +81,24 @@ export function imageFrameOf(
 }
 
 /**
+ * Answers the image pixels one screen point spans, which a mark of a fixed size is drawn at.
+ *
+ * A padded frame covers more ground than the viewport, so its pixels are not the device's: what a
+ * point on screen is worth in the image is the frame's width over the width it is stretched across.
+ *
+ * @param frame The image the mark is drawn into.
+ * @param viewportWidth The map's width in points.
+ * @param padding The padding the frame was cut with.
+ */
+export function framePixelRatio(
+  frame: ImageFrame,
+  viewportWidth: number,
+  padding = FRAME_PADDING,
+): number {
+  return frame.width / (viewportWidth * (1 + 2 * padding))
+}
+
+/**
  * Answers the ground a frame covers as a view extent, which a cell coverage is sized from.
  *
  * The centre is the middle of the frame in Web Mercator rather than in degrees, so it is the

@@ -29,6 +29,7 @@ import { featureCollection, pointFeatures, utf8Length } from '../engine/geojson'
 import {
   frameExtent,
   frameMatrix,
+  framePixelRatio,
   type ImageFrame,
   imageFrameOf,
   MAX_IMAGE_PIXELS,
@@ -136,17 +137,18 @@ const POINT_CIRCLE: NonNullable<CircleLayerSpecification['paint']> = {
 const NATIVE_WAIT_S = 30
 
 const PUSH_NOTE =
-  `push it runs ${formatCount(PUSH_POINTS)} points at resolution ${PUSH_RES}, ` +
-  `about ${formatCount(PUSH_CELLS)} cells`
+  `push it: ${formatCount(PUSH_POINTS)} at resolution ${PUSH_RES}, ` +
+  `${formatCount(PUSH_CELLS)} cells`
 
 /**
  * Points the image draws; above it the pass steps over as many as it has to.
  *
- * Drawing all 915,000 of a million that land in the frame cost 429 ms a settle on the emulator, on
- * top of the 139 ms the projection takes, which is more than a settle can spend before the act
- * stops answering.
+ * A point covers five points on screen, so the pass is bound by the pixels it fills rather than by
+ * the count: 384,000 of them cost 1,955 ms a settle on the emulator, against the 162 ms the cells
+ * of the same frame take. This many holds the pass near the 400 ms a settle can spend before the
+ * act stops answering, and the cloud it thins was saturated at that zoom either way.
  */
-const POINTS_MAX = 500_000
+const POINTS_MAX = 80_000
 
 // the scene stands in the frame of the box's own centre, which is where the run is anchored
 const CENTRE = centreOf(BERLIN)
@@ -166,12 +168,13 @@ const PIXEL_RATIO = PixelRatio.get()
 const NOTES = [
   `${HOTSPOTS} weighted hotspots and ${Math.round(UNIFORM_SHARE * 100)} percent uniform noise`,
   'past 100,000 the run chunks; the sort and count do not',
-  `above ${formatCount(OUTLINE_MAX_CELLS)} cells the empty grid comes off, cells go inset`,
+  `above ${formatCount(OUTLINE_MAX_CELLS)} cells: no empty grid, cells go inset`,
   'the cells and points are one image, redrawn on settle',
   'which reaches half a screen past the map on every side',
-  `${formatCount(POINTS_MAX)} drawn; all 915,000 cost 429 ms`,
+  `${formatCount(POINTS_MAX)} drawn; 384,000 of them cost 1,955 ms`,
   'or the points draw as a circle layer of their own',
   'native at a million: a 115 MB string killed the emulator',
+  PUSH_NOTE,
 ]
 
 /** Holds what one run has measured, a field per stage, filled in as the stages finish. */
@@ -607,8 +610,11 @@ export function Heatmap({ active }: ActProps) {
     }
   }, [frame, imageDrawn, placed])
 
-  // the points are one point wide on screen, whatever the image is drawn at
-  const paint = useMemo(() => pointsPaint(frame === null ? 1 : frame.width / width), [frame, width])
+  // the points keep their size on screen, whatever the frame was cut and capped at
+  const paint = useMemo(
+    () => pointsPaint(frame === null ? 1 : framePixelRatio(frame, width)),
+    [frame, width],
+  )
 
   const draw = useCallback(
     (canvas: SkCanvas): void => {
@@ -677,7 +683,16 @@ export function Heatmap({ active }: ActProps) {
           {/* box-none leaves the map every touch the panel head does not take */}
           <View style={styles.panel} pointerEvents="box-none">
             <Panel collapsible collapsed={collapsed} onToggle={() => setCollapsed((held) => !held)}>
-              <Metric value={formatCount(run?.points ?? 0)} caption="points placed" />
+              {/* the fine print stands where the rows do, so the folded panel is the one that
+                  carries it and neither state reaches the controls */}
+              <View>
+                <Metric value={formatCount(run?.points ?? 0)} caption="points placed" />
+                {!collapsed ? null : (
+                  <View style={styles.print}>
+                    <FinePrint notes={NOTES} />
+                  </View>
+                )}
+              </View>
               <Row label="resolution" value={`${res}`} />
               {/* a cached run drew nothing, so its row says whose measurement it is showing */}
               <Row
@@ -761,9 +776,6 @@ export function Heatmap({ active }: ActProps) {
                   <Row label="points applied" value={applied ?? '-'} />
                 </>
               )}
-              <View style={styles.print}>
-                <FinePrint notes={NOTES} />
-              </View>
             </Panel>
           </View>
           <View style={styles.control}>
@@ -793,7 +805,6 @@ export function Heatmap({ active }: ActProps) {
                 value={path}
                 onChange={(value) => change({ control: 'path', value })}
               />
-              <Text style={styles.hint}>{PUSH_NOTE}</Text>
               <View style={styles.buttons}>
                 <Pressable
                   style={styles.button}
@@ -839,7 +850,6 @@ const styles = StyleSheet.create({
     width: PRINT_WIDTH,
     marginTop: 4,
   },
-  hint: { ...type.label, color: colours.muted },
   buttons: { flexDirection: 'row', gap: 8 },
   button: {
     borderWidth: 1,
