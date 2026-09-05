@@ -36,12 +36,31 @@ function loadH3(): typeof h3js {
   }
 }
 
-const h3 = loadH3()
-
 /** Names the four h3-js calls the act measures, taken directly so no wrapper is timed. */
-export const reference = {
-  latLngToCell: h3.latLngToCell,
-  gridDisk: h3.gridDisk,
-  compactCells: h3.compactCells,
-  cellToBoundary: h3.cellToBoundary,
+export interface Reference {
+  latLngToCell: typeof h3js.latLngToCell
+  gridDisk: typeof h3js.gridDisk
+  compactCells: typeof h3js.compactCells
+  cellToBoundary: typeof h3js.cellToBoundary
+}
+
+let loaded: Reference | undefined
+
+/**
+ * Answers the four calls, loading h3-js on the first ask.
+ *
+ * The load parses half a megabyte of Emscripten output, so it waits until the Engine act asks
+ * rather than happening while the app starts; every ask after the first answers the same object.
+ */
+export function reference(): Reference {
+  if (loaded === undefined) {
+    const h3 = loadH3()
+    loaded = {
+      latLngToCell: h3.latLngToCell,
+      gridDisk: h3.gridDisk,
+      compactCells: h3.compactCells,
+      cellToBoundary: h3.cellToBoundary,
+    }
+  }
+  return loaded
 }

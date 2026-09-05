@@ -11,6 +11,7 @@ import {
 } from 'react-native'
 import {
   FINALE,
+  prepareBench,
   REFERENCE_CHUNK,
   type Result,
   runWorkload,
@@ -18,6 +19,7 @@ import {
   type Workload,
 } from '../engine/bench'
 import { formatMs } from '../engine/stats'
+import { yieldToLoop } from '../engine/yield'
 import { BlockedReadout, resetWorstGap } from '../render/BlockedReadout'
 import { barFraction, MIN_BAR_PX } from '../render/hud/barScale'
 import { FinePrint } from '../render/hud/FinePrint'
@@ -94,6 +96,18 @@ export function Engine({ active }: ActProps) {
     if (!active) signal.current.aborted = true
   }, [active])
 
+  // the inputs and h3-js are built here rather than at start-up, one turn after the act has drawn
+  useEffect(() => {
+    if (!active) return
+    let onScreen = true
+    void yieldToLoop().then(() => {
+      if (onScreen) prepareBench()
+    })
+    return () => {
+      onScreen = false
+    }
+  }, [active])
+
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => {
       if (state !== 'active') signal.current.aborted = true
@@ -119,6 +133,8 @@ export function Engine({ active }: ActProps) {
     setShare(0)
     setArmed(false)
     setReadings((current) => ({ ...current, [workload.id]: NOTHING }))
+    // a tap that beats the preload still pays for the load outside every timed window
+    prepareBench()
     // the gap this run causes is its own, so the readout starts from zero
     resetWorstGap()
     signal.current = { aborted: false }

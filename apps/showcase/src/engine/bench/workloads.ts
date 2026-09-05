@@ -5,7 +5,7 @@ import {
   gridDisk,
   latLngToCell,
 } from 'react-native-nitro-h3'
-import { reference as h3, toStrings } from './h3js'
+import { reference, toStrings } from './h3js'
 
 export { REFERENCE_CHUNK, RUN_CEILING_MS } from './runner'
 
@@ -31,10 +31,40 @@ export interface Workload {
   reference(from: number, to: number): void
 }
 
-const origin = latLngToCell(ORIGIN_LAT, ORIGIN_LNG, ORIGIN_RES)
-const disk = gridDisk(origin, DISK_K)
-const diskStrings = toStrings(disk)
-const originString = cellToString(origin)
+interface DiskInputs {
+  origin: bigint
+  originString: string
+  disk: BigUint64Array
+  diskStrings: string[]
+}
+
+let inputs: DiskInputs | undefined
+
+/**
+ * Builds the disk the first four workloads share, on first use and never inside a timed window.
+ *
+ * The 1,261 cells and their strings cost about as many native calls, which the app used to pay
+ * while it started; the runner's untimed warm-up is what asks for them now.
+ */
+function diskInputs(): DiskInputs {
+  if (inputs === undefined) {
+    const origin = latLngToCell(ORIGIN_LAT, ORIGIN_LNG, ORIGIN_RES)
+    const disk = gridDisk(origin, DISK_K)
+    inputs = { origin, originString: cellToString(origin), disk, diskStrings: toStrings(disk) }
+  }
+  return inputs
+}
+
+/**
+ * Builds the shared disk and loads h3-js, so the Engine act pays for both before it times anything.
+ *
+ * The finale's 99,919 cells are left to its own untimed warm-up, which is the only run that wants
+ * them.
+ */
+export function prepareBench(): void {
+  diskInputs()
+  reference()
+}
 
 /** Holds the four documented workloads, sized as the iPhone XS column of the benchmark report. */
 export const WORKLOADS: Workload[] = [
@@ -50,6 +80,7 @@ export const WORKLOADS: Workload[] = [
       for (let call = 0; call < CALLS; call++) latLngToCell(ORIGIN_LAT, ORIGIN_LNG, ORIGIN_RES)
     },
     reference: (from, to) => {
+      const h3 = reference()
       for (let call = from; call < to; call++) h3.latLngToCell(ORIGIN_LAT, ORIGIN_LNG, ORIGIN_RES)
     },
   },
@@ -62,9 +93,12 @@ export const WORKLOADS: Workload[] = [
     referenceRuns: 1,
     calls: CALLS_PER_RUN,
     own: () => {
+      const { origin } = diskInputs()
       for (let call = 0; call < CALLS_PER_RUN; call++) gridDisk(origin, DISK_K)
     },
     reference: (from, to) => {
+      const h3 = reference()
+      const { originString } = diskInputs()
       for (let call = from; call < to; call++) h3.gridDisk(originString, DISK_K)
     },
   },
@@ -77,10 +111,10 @@ export const WORKLOADS: Workload[] = [
     referenceRuns: 20,
     calls: 1,
     own: () => {
-      compactCells(disk)
+      compactCells(diskInputs().disk)
     },
     reference: () => {
-      h3.compactCells(diskStrings)
+      reference().compactCells(diskInputs().diskStrings)
     },
   },
   {
@@ -92,9 +126,12 @@ export const WORKLOADS: Workload[] = [
     referenceRuns: 1,
     calls: CALLS,
     own: () => {
+      const { disk } = diskInputs()
       for (let call = 0; call < CALLS; call++) cellToBoundary(disk[call % disk.length])
     },
     reference: (from, to) => {
+      const h3 = reference()
+      const { disk, diskStrings } = diskInputs()
       for (let call = from; call < to; call++) h3.cellToBoundary(diskStrings[call % disk.length])
     },
   },
@@ -110,7 +147,7 @@ let finale: FinaleInputs | undefined
 // built on first use, the runner's untimed warm-up, and never inside a timed window
 function finaleInputs(): FinaleInputs {
   if (finale === undefined) {
-    const cells = gridDisk(origin, FINALE_K)
+    const cells = gridDisk(diskInputs().origin, FINALE_K)
     finale = { cells, strings: toStrings(cells) }
   }
   return finale
@@ -129,6 +166,6 @@ export const FINALE: Workload = {
     compactCells(finaleInputs().cells)
   },
   reference: () => {
-    h3.compactCells(finaleInputs().strings)
+    reference().compactCells(finaleInputs().strings)
   },
 }
