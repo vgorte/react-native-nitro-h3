@@ -3,7 +3,6 @@ import {
   BERLIN,
   BLOCK,
   blocksOf,
-  boxBounds,
   centreOf,
   generatePoints,
   type PointCache,
@@ -111,26 +110,6 @@ describe('bucketsOfCounts', () => {
     const buckets = bucketsOfCounts(new Uint32Array([2, 8, 32]), 1_000_000, BUCKETS)
 
     expect(Array.from(buckets)).toEqual([1, 2, 4])
-  })
-})
-
-describe('boxBounds', () => {
-  test('answers a frame centred on the box, with north at the top', () => {
-    const bounds = boxBounds(BERLIN)
-
-    expect(bounds.minX).toBeCloseTo(-bounds.maxX, 6)
-    // Mercator stretches northward, so the north edge stands further from the centre than the south
-    expect(bounds.minY).toBeLessThan(-bounds.maxY)
-    expect(bounds.maxX).toBeGreaterThan(0)
-    expect(bounds.maxY).toBeGreaterThan(0)
-  })
-
-  test('spans the box: about 46 km across and 38 km down at Berlin', () => {
-    const bounds = boxBounds(BERLIN)
-    const scene = Math.cos((centreOf(BERLIN).lat * Math.PI) / 180)
-
-    expect((bounds.maxX - bounds.minX) * scene).toBeCloseTo(45_700, -3)
-    expect((bounds.maxY - bounds.minY) * scene).toBeCloseTo(37_500, -3)
   })
 })
 

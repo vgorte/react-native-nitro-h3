@@ -19,6 +19,14 @@ export interface ImageFrame {
   height: number
 }
 
+/**
+ * Pixels one scene image may hold, which a phone at three times its points stays under.
+ *
+ * The cap is a ceiling on the encode and on what the map has to upload, not a target: a frame that
+ * fits under it is drawn at the device's own pixels and never stretched.
+ */
+export const MAX_IMAGE_PIXELS = 4_000_000
+
 /** Maps Web Mercator metres relative to an anchor onto image pixels, `y` down. */
 export type FrameMatrix = [scaleX: number, scaleY: number, translateX: number, translateY: number]
 

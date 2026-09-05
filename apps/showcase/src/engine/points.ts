@@ -1,5 +1,3 @@
-import { type Bounds, mercatorX, mercatorY } from './projection'
-
 /** Holds a rectangle of coordinates in degrees, the region one run draws its points in. */
 export interface BoundingBox {
   south: number
@@ -128,22 +126,4 @@ export function servesRun(cache: PointCache | null, seed: number, count: number)
 /** Answers the coordinate at the middle of a box, which the act's metre frame is anchored to. */
 export function centreOf(box: BoundingBox): { lat: number; lng: number } {
   return { lat: (box.south + box.north) / 2, lng: (box.west + box.east) / 2 }
-}
-
-/**
- * Answers the extent of a box in the metre frame of its own centre, which the camera opens on.
- *
- * The y axis grows downward like the screen axis, the way the cell projection leaves it, so the
- * north edge is the top of the frame.
- */
-export function boxBounds(box: BoundingBox): Bounds {
-  const centre = centreOf(box)
-  const centreX = mercatorX(centre.lng)
-  const centreY = mercatorY(centre.lat)
-  return {
-    minX: mercatorX(box.west) - centreX,
-    minY: centreY - mercatorY(box.north),
-    maxX: mercatorX(box.east) - centreX,
-    maxY: centreY - mercatorY(box.south),
-  }
 }

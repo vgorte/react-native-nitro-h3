@@ -1,13 +1,36 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
-import { withTiming } from 'react-native-reanimated'
+import {
+  Camera,
+  type InitialViewState,
+  Map as MapLibreMap,
+  type MapRef,
+  type ViewState,
+  type ViewStateChangeEvent,
+} from '@maplibre/maplibre-react-native'
+import type { SkCanvas } from '@shopify/react-native-skia'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  type NativeSyntheticEvent,
+  PixelRatio,
+  Pressable,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native'
 import type { Aggregate } from '../engine/aggregate'
 import { aggregateCells } from '../engine/aggregate'
 import { cellsFromPoints } from '../engine/cells'
 import {
+  frameMatrix,
+  type ImageFrame,
+  imageFrameOf,
+  MAX_IMAGE_PIXELS,
+  projectPoints,
+  sampleStride,
+} from '../engine/imageLayer'
+import {
   BERLIN,
   blocksOf,
-  boxBounds,
   centreOf,
   type PointCache,
   pointStream,
@@ -27,17 +50,19 @@ import {
 } from '../engine/settings'
 import { formatCount, formatMs } from '../engine/stats'
 import { yieldToLoop } from '../engine/yield'
-import { resetWorstGap } from '../render/BlockedReadout'
-import { CellPictures } from '../render/CellPictures'
-import { EngineCanvas } from '../render/EngineCanvas'
+import { BlockedReadout, resetWorstGap } from '../render/BlockedReadout'
+import { type Basemap, loadBasemap, PLAIN_BASEMAP } from '../render/basemap'
+import { drawCellScene } from '../render/CellPictures'
 import { bucketsOfCounts } from '../render/heatColours'
 import { buildHeatScene, type HeatScene } from '../render/heatScene'
+import { Attribution } from '../render/hud/Attribution'
 import { Choice, type ChoiceOption } from '../render/hud/Choice'
 import { FinePrint } from '../render/hud/FinePrint'
 import { Metric } from '../render/hud/Metric'
 import { Panel } from '../render/hud/Panel'
 import { Row } from '../render/hud/Row'
-import { type CameraAnchor, fitTo, useCamera } from '../render/useCamera'
+import { drawPoints, pointsPaint } from '../render/pointsPicture'
+import { SceneImage } from '../render/SceneImage'
 import { BUCKETS, colours, glass, type } from '../theme/tokens'
 import type { ActProps } from './types'
 
@@ -68,28 +93,46 @@ const PUSH_OPTIONS: readonly ChoiceOption<number>[] = [
   { value: PUSH_RES, label: `${PUSH_RES}` },
 ]
 
+const RAW_OPTIONS: readonly ChoiceOption<boolean>[] = [
+  { value: true, label: 'on' },
+  { value: false, label: 'off' },
+]
+
 const PUSH_NOTE =
   `push it runs ${formatCount(PUSH_POINTS)} points at resolution ${PUSH_RES}, ` +
   `about ${formatCount(PUSH_CELLS)} cells`
 
-/** Milliseconds the camera takes to re-frame the box when a run starts. */
-const FIT_MS = 200
+/**
+ * Points the image draws; above it the pass steps over as many as it has to.
+ *
+ * Drawing all 915,000 of a million that land in the frame cost 429 ms a settle on the emulator, on
+ * top of the 139 ms the projection takes, which is more than a settle can spend before the act
+ * stops answering.
+ */
+const POINTS_MAX = 500_000
 
-// the scene stands in the frame of the box's own centre, which is where the camera opens
-const CENTRE: CameraAnchor = centreOf(BERLIN)
+// the scene stands in the frame of the box's own centre, which is where the run is anchored
+const CENTRE = centreOf(BERLIN)
+
+/** The camera the act opens on: the whole sample box, whatever the viewport is shaped like. */
+const OPENING: InitialViewState = {
+  bounds: [BERLIN.west, BERLIN.south, BERLIN.east, BERLIN.north],
+}
 
 const PANEL_TOP = 104
 const PRINT_WIDTH = 268
-// clears the blocked readout, which stands on the same line at the other edge
-const CONTROL_BOTTOM = 118
+// clears the licence line, which stands over the blocked readout at the other edge
+const CONTROL_BOTTOM = 136
 
-// the panel already carries nine rows, so four notes fit a line each and only the last wraps
+const PIXEL_RATIO = PixelRatio.get()
+
 const NOTES = [
   'the points are synthetic: twelve hotspots over Berlin',
   'past 100,000 points the run works in blocks',
   'the sort and the count then run unchunked on purpose',
   'above 20,000 cells the grid comes off, cells go inset',
-  'pans over the push-it scene ran near 40 fps on the emulator, 60 on the simulator',
+  'the cells and points are one image, redrawn on settle',
+  `${formatCount(POINTS_MAX)} points are drawn; drawing all 915,000 costs 429 ms`,
 ]
 
 /** Holds what one run has measured, a field per stage, filled in as the stages finish. */
@@ -131,10 +174,13 @@ interface Signal {
   finished: boolean
 }
 
-/** Names the geometry the cell count picked: the strip up to the ceiling, the inset above it. */
-function gridOf(scene: HeatScene | null): string {
-  if (scene === null) return '-'
-  return scene.outlined ? 'outline strip' : 'inset cells'
+/** Holds the run's points on the image: how many landed on it and what placing them took. */
+interface Projected {
+  xy: Float32Array
+  count: number
+  /** Points stepped over between two drawn ones, `1` while every one of them is drawn. */
+  stride: number
+  ms: number
 }
 
 /**
@@ -146,144 +192,222 @@ function gridOf(scene: HeatScene | null): string {
  * `cellsToBoundaries` and the mesh turn them into what is drawn. Past {@linkcode BLOCK} points the
  * first two stages run block by block with a turn of the loop between them, so the act keeps
  * answering while a million points are placed; the sort that follows is one unchunked pass, and the
- * readout beside it says what that costs.
+ * readout beside it says what that costs. The cells and the raw points are drawn into one image the
+ * basemap carries, which every settle redraws for the ground the map has come to stand over.
  */
 export function Heatmap({ active }: ActProps) {
   const { width, height } = useWindowDimensions()
   const [settings, setSettings] = useState<Settings>(OPEN_SETTINGS)
   const [run, setRun] = useState<Run | null>(null)
   const [scene, setScene] = useState<HeatScene | null>(null)
+  // names the points the cache holds, and `null` while a run is placing new ones
+  const [placed, setPlaced] = useState<string | null>(null)
+  const [raw, setRaw] = useState(true)
   const [collapsed, setCollapsed] = useState(false)
+  const [basemap, setBasemap] = useState<Basemap | null>(null)
+  const [frame, setFrame] = useState<ImageFrame | null>(null)
+  const [imageMs, setImageMs] = useState<number | null>(null)
 
+  const map = useRef<MapRef>(null)
   // the run standing on screen, so paging back to the act does not rebuild what it already holds
   const built = useRef<string | null>(null)
-  const framed = useRef(false)
   // the points the last run drew, which a run of the same seed and count locates again
   const drawn = useRef<PointCache | null>(null)
+  // the ground and the viewport the frame was cut for, so a settle that moved nothing recuts none
+  const framed = useRef('')
+  // the projection buffer, kept across settles because a million points fill eight megabytes of it
+  const xy = useRef(new Float32Array(0))
 
-  // the scene stands in the anchor's own metre frame, so a settle has nothing to rebuild
-  const settle = useCallback(() => {}, [])
-  const camera = useCamera({ anchor: CENTRE, onSettle: settle })
-  const { anchor, scale, translateX, translateY } = camera
+  // the act reaches for the basemap only once it has been opened, and keeps it afterwards
+  useEffect(() => {
+    if (!active || basemap !== null) return
+    loadBasemap()
+      .then(setBasemap)
+      .catch(() => {
+        // a style that will not load leaves the map on the plain URL and the known licence line
+        setBasemap(PLAIN_BASEMAP)
+      })
+  }, [active, basemap])
 
-  /**
-   * Frames the whole box, so a run never builds into a view that has been panned off it.
-   *
-   * The opening frame is written straight, because there is nothing on screen to move away from;
-   * every run after it animates, so the visitor sees where the camera went.
-   */
-  const frameBox = useCallback(
-    (animated: boolean) => {
-      const fitted = fitTo(boxBounds(BERLIN), width, height)
-      if (!animated) {
-        scale.value = fitted.scale
-        translateX.value = fitted.translateX
-        translateY.value = fitted.translateY
-        return
-      }
-      scale.value = withTiming(fitted.scale, { duration: FIT_MS })
-      translateX.value = withTiming(fitted.translateX, { duration: FIT_MS })
-      translateY.value = withTiming(fitted.translateY, { duration: FIT_MS })
+  const reframe = useCallback(
+    (view: ViewState): void => {
+      const [west, south, east, north] = view.bounds
+      const key = `${west},${south},${east},${north}/${width}x${height}`
+      if (key === framed.current) return
+      framed.current = key
+      setFrame(
+        imageFrameOf(
+          { ne: [east, north], sw: [west, south] },
+          { width, height },
+          PIXEL_RATIO,
+          MAX_IMAGE_PIXELS,
+        ),
+      )
     },
-    [width, height, scale, translateX, translateY],
+    [width, height],
   )
+
+  const settle = useCallback(
+    (event: NativeSyntheticEvent<ViewStateChangeEvent>): void => {
+      reframe(event.nativeEvent)
+    },
+    [reframe],
+  )
+
+  const loaded = useCallback((): void => {
+    map.current
+      ?.getViewState()
+      .then(reframe)
+      .catch(() => {
+        // a view state the map will not answer leaves the first frame to the next settle
+      })
+  }, [reframe])
+
+  const rendered = useCallback((ms: number): void => setImageMs(ms), [])
+
+  // an act off screen gives its map back: a third live one costs the Skia acts their canvas on
+  // Android, and the frame it was cut for is stale by the time the act comes round again
+  useEffect(() => {
+    if (active) return
+    framed.current = ''
+    setFrame(null)
+  }, [active])
 
   /** Runs one whole pipeline, reporting the stages as they finish and stopping where cancelled. */
-  const execute = useCallback(
-    async (wanted: Settings, frame: CameraAnchor, signal: Signal): Promise<void> => {
-      // the gaps that follow belong to this run, and the sort is the one it is measured by
-      resetWorstGap()
-      setScene(null)
-      setRun(NOTHING)
+  const execute = useCallback(async (wanted: Settings, signal: Signal): Promise<void> => {
+    // the gaps that follow belong to this run, and the sort is the one it is measured by
+    resetWorstGap()
+    setScene(null)
+    setPlaced(null)
+    setRun(NOTHING)
 
-      // the points depend on the seed and the count alone, so a change of resolution reuses them
-      const held = servesRun(drawn.current, wanted.seed, wanted.points) ? drawn.current : null
-      const draw = pointStream(wanted.seed, BERLIN)
-      const blocks = blocksOf(wanted.points)
-      let cells: BigUint64Array | null = new BigUint64Array(wanted.points)
-      const kept: Float64Array[] = []
-      let generateMs = held === null ? 0 : held.ms
-      let cellsMs = 0
+    // the points depend on the seed and the count alone, so a change of resolution reuses them
+    const held = servesRun(drawn.current, wanted.seed, wanted.points) ? drawn.current : null
+    const draw = pointStream(wanted.seed, BERLIN)
+    const blocks = blocksOf(wanted.points)
+    let cells: BigUint64Array | null = new BigUint64Array(wanted.points)
+    const kept: Float64Array[] = []
+    let generateMs = held === null ? 0 : held.ms
+    let cellsMs = 0
 
-      for (const [index, block] of blocks.entries()) {
-        if (signal.aborted) return
-        let coords: Float64Array
-        if (held === null) {
-          const started = performance.now()
-          coords = draw(block.count)
-          generateMs += performance.now() - started
-          kept.push(coords)
-        } else {
-          coords = held.blocks[index]
-        }
-
-        const located = cellsFromPoints(coords, wanted.res)
-        cellsMs += located.ms
-        cells.set(located.value, block.from)
-        const placed = block.from + block.count
-        setRun({ ...NOTHING, points: placed, generateMs, cellsMs, cached: held !== null })
-
-        // a chunked run leaves the loop a turn between blocks, so the act answers while it runs
-        if (blocks.length > 1) await yieldToLoop()
-      }
+    for (const [index, block] of blocks.entries()) {
       if (signal.aborted) return
+      let coords: Float64Array
       if (held === null) {
-        drawn.current = { seed: wanted.seed, count: wanted.points, blocks: kept, ms: generateMs }
+        const started = performance.now()
+        coords = draw(block.count)
+        generateMs += performance.now() - started
+        kept.push(coords)
+      } else {
+        coords = held.blocks[index]
       }
 
-      const sorted = performance.now()
-      let aggregate: Aggregate | null = aggregateCells(cells)
-      const aggregateMs = performance.now() - sorted
-      const distinct = aggregate.cells.length
-      const busiest = aggregate.max
-      // the sorted buffer is dead once the runs are counted, eight megabytes at a million points
-      cells = null
+      const located = cellsFromPoints(coords, wanted.res)
+      cellsMs += located.ms
+      cells.set(located.value, block.from)
+      const at = block.from + block.count
+      setRun({ ...NOTHING, points: at, generateMs, cellsMs, cached: held !== null })
 
-      const coloured = performance.now()
-      let buckets: Uint8Array | null = bucketsOfCounts(aggregate.counts, busiest, BUCKETS)
-      const coloursMs = performance.now() - coloured
+      // a chunked run leaves the loop a turn between blocks, so the act answers while it runs
+      if (blocks.length > 1) await yieldToLoop()
+    }
+    if (signal.aborted) return
+    if (held === null) {
+      drawn.current = { seed: wanted.seed, count: wanted.points, blocks: kept, ms: generateMs }
+    }
 
-      const heat = buildHeatScene(aggregate.cells, buckets, frame)
+    const sorted = performance.now()
+    let aggregate: Aggregate | null = aggregateCells(cells)
+    const aggregateMs = performance.now() - sorted
+    const distinct = aggregate.cells.length
+    const busiest = aggregate.max
+    // the sorted buffer is dead once the runs are counted, eight megabytes at a million points
+    cells = null
 
-      // the distinct cells, their counts and their colours are dead once the mesh is recorded: the
-      // scene holds its own copies, and only the drawn points are kept for the next resolution
-      aggregate = null
-      buckets = null
+    const coloured = performance.now()
+    let buckets: Uint8Array | null = bucketsOfCounts(aggregate.counts, busiest, BUCKETS)
+    const coloursMs = performance.now() - coloured
 
-      setScene(heat)
-      setRun({
-        points: wanted.points,
-        generateMs,
-        cached: held !== null,
-        cellsMs,
-        distinct,
-        aggregateMs,
-        coloursMs,
-        boundariesMs: heat.boundariesMs,
-        meshMs: heat.meshMs,
-        busiest,
-        done: true,
-      })
-      signal.finished = true
-    },
-    [],
-  )
+    const heat = buildHeatScene(aggregate.cells, buckets, CENTRE)
+
+    // the distinct cells, their counts and their colours are dead once the mesh is recorded: the
+    // scene holds its own copies, and only the drawn points are kept for the next resolution
+    aggregate = null
+    buckets = null
+
+    setScene(heat)
+    setPlaced(`${wanted.seed}/${wanted.points}`)
+    setRun({
+      points: wanted.points,
+      generateMs,
+      cached: held !== null,
+      cellsMs,
+      distinct,
+      aggregateMs,
+      coloursMs,
+      boundariesMs: heat.boundariesMs,
+      meshMs: heat.meshMs,
+      busiest,
+      done: true,
+    })
+    signal.finished = true
+  }, [])
 
   const { seed, points, res } = settings
-  const key = `${seed}/${points}/${res}/${anchor.lat},${anchor.lng}`
+  const key = `${seed}/${points}/${res}`
 
   useEffect(() => {
     if (!active || built.current === key) return
-    frameBox(framed.current)
-    framed.current = true
     const signal: Signal = { aborted: false, finished: false }
-    void execute({ seed, points, res }, anchor, signal).then(() => {
+    void execute({ seed, points, res }, signal).then(() => {
       if (signal.finished) built.current = key
     })
     return () => {
       signal.aborted = true
     }
-  }, [active, key, seed, points, res, anchor, execute, frameBox])
+  }, [active, key, seed, points, res, execute])
+
+  // the projection stands in the frame's own pixels, so every settle places the points again
+  const projected = useMemo<Projected | null>(() => {
+    const cache = drawn.current
+    if (frame === null || !raw || placed === null || cache === null) return null
+    let total = 0
+    for (const block of cache.blocks) total += block.length / 2
+    if (xy.current.length < total * 2) xy.current = new Float32Array(total * 2)
+
+    const out = xy.current
+    const started = performance.now()
+    let count = 0
+    for (const block of cache.blocks) count += projectPoints(block, frame, out.subarray(count * 2))
+    return {
+      xy: out,
+      count,
+      stride: sampleStride(count, POINTS_MAX),
+      ms: performance.now() - started,
+    }
+  }, [frame, raw, placed])
+
+  // the points are one point wide on screen, whatever the image is drawn at
+  const paint = useMemo(() => pointsPaint(frame === null ? 1 : frame.width / width), [frame, width])
+
+  const draw = useCallback(
+    (canvas: SkCanvas): void => {
+      if (frame === null) return
+      if (scene !== null) {
+        const [scaleX, scaleY, translateX, translateY] = frameMatrix(frame, CENTRE)
+        canvas.save()
+        canvas.translate(translateX, translateY)
+        canvas.scale(scaleX, scaleY)
+        drawCellScene(canvas, scene.scene)
+        canvas.restore()
+      }
+      // the points are projected into the image already, so they draw outside the scene's matrix
+      if (projected !== null) {
+        drawPoints(canvas, projected.xy, projected.count, projected.stride, paint)
+      }
+    },
+    [frame, scene, projected, paint],
+  )
 
   // every control answers through the one rule, so no control can leave a state the row cannot show
   const change = useCallback((made: Change) => setSettings((held) => nextSettings(held, made)), [])
@@ -292,82 +416,119 @@ export function Heatmap({ active }: ActProps) {
   /** Reads a stage off the run, which only a finished run has measured. */
   const stage = (of: (run: Run) => string): string => (run?.done === true ? of(run) : '-')
 
-  // an act off screen keeps its scene and draws nothing
-  if (!active) return <View style={styles.root} />
-
   return (
     <View style={styles.root}>
-      <EngineCanvas camera={camera}>
-        <CellPictures scene={scene?.scene ?? null} />
-      </EngineCanvas>
-      {/* box-none leaves the scene every touch the panel head does not take */}
-      <View style={styles.panel} pointerEvents="box-none">
-        <Panel collapsible collapsed={collapsed} onToggle={() => setCollapsed((held) => !held)}>
-          <Metric value={formatCount(run?.points ?? 0)} caption="points placed" />
-          <Row label="resolution" value={`${res}`} />
-          {/* a cached run drew nothing, so its row says whose measurement it is showing */}
-          <Row
-            label={run?.cached === true ? 'generate, from the cache' : 'generate'}
-            value={run === null ? '-' : formatMs(run.generateMs)}
-            tone={run?.cached === true ? 'muted' : 'text'}
-          />
-          <Row
-            label="locate"
-            value={run === null ? '-' : formatMs(run.cellsMs)}
-            call="latLngsToCells"
-          />
-          <Row
-            label="distinct cells, sort plus count"
-            value={stage((of) => `${formatCount(of.distinct)} / ${formatMs(of.aggregateMs)}`)}
-          />
-          <Row label="colours" value={stage((of) => formatMs(of.coloursMs))} />
-          <Row
-            label="boundaries"
-            value={stage((of) => formatMs(of.boundariesMs))}
-            call="cellsToBoundaries"
-          />
-          <Row label="mesh" value={stage((of) => formatMs(of.meshMs))} />
-          <Row label="busiest cell" value={stage((of) => `${formatCount(of.busiest)} points`)} />
-          <Row label="grid" value={gridOf(scene)} tone="muted" />
-          <View style={styles.print}>
-            <FinePrint notes={NOTES} />
+      {basemap === null || !active ? null : (
+        <MapLibreMap
+          ref={map}
+          style={StyleSheet.absoluteFill}
+          mapStyle={basemap.style}
+          attribution={false}
+          logo={false}
+          compass={false}
+          touchRotate={false}
+          touchPitch={false}
+          onRegionDidChange={settle}
+          onDidFinishLoadingMap={loaded}
+        >
+          <Camera initialViewState={OPENING} />
+          {frame === null ? null : (
+            <SceneImage id="heat-scene" frame={frame} draw={draw} onRendered={rendered} />
+          )}
+        </MapLibreMap>
+      )}
+      {!active ? null : (
+        <>
+          {/* box-none leaves the map every touch the panel head does not take */}
+          <View style={styles.panel} pointerEvents="box-none">
+            <Panel collapsible collapsed={collapsed} onToggle={() => setCollapsed((held) => !held)}>
+              <Metric value={formatCount(run?.points ?? 0)} caption="points placed" />
+              <Row label="resolution" value={`${res}`} />
+              {/* a cached run drew nothing, so its row says whose measurement it is showing */}
+              <Row
+                label={run?.cached === true ? 'generate, from the cache' : 'generate'}
+                value={run === null ? '-' : formatMs(run.generateMs)}
+                tone={run?.cached === true ? 'muted' : 'text'}
+              />
+              <Row
+                label="locate"
+                value={run === null ? '-' : formatMs(run.cellsMs)}
+                call="latLngsToCells"
+              />
+              <Row
+                label="distinct cells, sort plus count"
+                value={stage((of) => `${formatCount(of.distinct)} / ${formatMs(of.aggregateMs)}`)}
+              />
+              <Row label="colours" value={stage((of) => formatMs(of.coloursMs))} />
+              <Row
+                label="boundaries"
+                value={stage((of) => formatMs(of.boundariesMs))}
+                call="cellsToBoundaries"
+              />
+              <Row label="mesh" value={stage((of) => formatMs(of.meshMs))} />
+              <Row
+                label="busiest cell"
+                value={stage((of) => `${formatCount(of.busiest)} points`)}
+              />
+              <Row
+                label="points"
+                call="projectPoints"
+                value={
+                  projected === null
+                    ? '-'
+                    : `${formatCount(projected.count)} / ${formatMs(projected.ms)}`
+                }
+                tone={raw ? 'text' : 'muted'}
+              />
+              <Row
+                label="image"
+                call="Skia offscreen + encode"
+                value={imageMs === null ? '-' : formatMs(imageMs)}
+              />
+              <View style={styles.print}>
+                <FinePrint notes={NOTES} />
+              </View>
+            </Panel>
           </View>
-        </Panel>
-      </View>
-      <View style={styles.control}>
-        <Panel align="right">
-          <Choice
-            label="points"
-            options={POINT_OPTIONS}
-            value={points}
-            onChange={(value) => change({ control: 'points', value })}
-          />
-          {/* the push-it resolution joins the row while its step stands, and leaves with it */}
-          <Choice
-            label="resolution"
-            options={pushed ? PUSH_OPTIONS : RES_OPTIONS}
-            value={res}
-            onChange={(value) => change({ control: 'res', value })}
-          />
-          <Text style={styles.hint}>{PUSH_NOTE}</Text>
-          <View style={styles.buttons}>
-            <Pressable
-              style={styles.button}
-              onPress={() => change({ control: 'seed' })}
-              accessibilityRole="button"
-            >
-              <Text style={styles.buttonLabel}>reseed</Text>
-            </Pressable>
-            <Pressable
-              style={[styles.button, pushed ? styles.pushed : null]}
-              onPress={() => change({ control: 'push' })}
-              accessibilityRole="button"
-            >
-              <Text style={pushed ? styles.pushedLabel : styles.buttonLabel}>push it</Text>
-            </Pressable>
+          <View style={styles.control}>
+            <Panel align="right">
+              <Choice
+                label="points"
+                options={POINT_OPTIONS}
+                value={points}
+                onChange={(value) => change({ control: 'points', value })}
+              />
+              {/* the push-it resolution joins the row while its step stands, and leaves with it */}
+              <Choice
+                label="resolution"
+                options={pushed ? PUSH_OPTIONS : RES_OPTIONS}
+                value={res}
+                onChange={(value) => change({ control: 'res', value })}
+              />
+              <Choice label="raw points" options={RAW_OPTIONS} value={raw} onChange={setRaw} />
+              <Text style={styles.hint}>{PUSH_NOTE}</Text>
+              <View style={styles.buttons}>
+                <Pressable
+                  style={styles.button}
+                  onPress={() => change({ control: 'seed' })}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.buttonLabel}>reseed</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.button, pushed ? styles.pushed : null]}
+                  onPress={() => change({ control: 'push' })}
+                  accessibilityRole="button"
+                >
+                  <Text style={pushed ? styles.pushedLabel : styles.buttonLabel}>push it</Text>
+                </Pressable>
+              </View>
+            </Panel>
           </View>
-        </Panel>
-      </View>
+          <BlockedReadout />
+          {basemap === null ? null : <Attribution text={basemap.attribution} />}
+        </>
+      )}
     </View>
   )
 }
