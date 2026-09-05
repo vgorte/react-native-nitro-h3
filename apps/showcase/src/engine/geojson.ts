@@ -5,10 +5,42 @@ const FEATURE_HEAD = '{"type":"Feature","properties":{"bucket":'
 const FEATURE_GEOMETRY = '},"geometry":{"type":"Polygon","coordinates":[['
 const FEATURE_TAIL = ']]}}'
 
+// the two pieces a point feature is assembled from, which carries no properties of its own
+const POINT_HEAD = '{"type":"Feature","properties":{},"geometry":{"type":"Point","coordinates":['
+const POINT_TAIL = ']}}'
+
 // a ring wider than this holds both ends of the longitude range rather than a wide cell
 const HALF_TURN = 180
 const FULL_TURN = 360
 const POLE = 90
+
+/**
+ * Wraps features that are already written as JSON into one `FeatureCollection` string.
+ *
+ * A set too large to write in one pass is written in parts and joined here, so the collection is
+ * assembled once rather than grown a feature at a time.
+ *
+ * @param features The features, each a finished JSON object, in the order they are drawn.
+ */
+export function featureCollection(features: readonly string[]): string {
+  return `{"type":"FeatureCollection","features":[${features.join(',')}]}`
+}
+
+/**
+ * Writes a block of coordinates as the point features of a collection, comma separated.
+ *
+ * The block is written in one pass, without an object per point, because a million features is the
+ * cost this path is there to show; {@linkcode featureCollection} closes the blocks into one string.
+ *
+ * @param coords Latitude and longitude pairs, as the point stream answers them.
+ */
+export function pointFeatures(coords: Float64Array): string {
+  const features: string[] = []
+  for (let at = 0; at < coords.length; at += 2) {
+    features.push(`${POINT_HEAD}${coords[at + 1]},${coords[at]}${POINT_TAIL}`)
+  }
+  return features.join(',')
+}
 
 /**
  * Builds the `FeatureCollection` of a cell set as one JSON string, ready for a `GeoJSONSource`.
@@ -88,5 +120,5 @@ export function cellsToFeatureCollection(boundaries: CellBoundaries, buckets: Ui
     features.push(`${head}${ring},${first}${FEATURE_TAIL}`)
   }
 
-  return `{"type":"FeatureCollection","features":[${features.join(',')}]}`
+  return featureCollection(features)
 }

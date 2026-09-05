@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
-import type { FeatureCollection, Polygon, Position } from 'geojson'
+import type { FeatureCollection, Point, Polygon, Position } from 'geojson'
 import type { CellBoundaries } from 'react-native-nitro-h3'
-import { cellsToFeatureCollection } from '../engine/geojson'
+import { cellsToFeatureCollection, featureCollection, pointFeatures } from '../engine/geojson'
 
 const STRIDE = 20
 
@@ -189,5 +189,34 @@ describe('cellsToFeatureCollection across the world edge', () => {
     const collection = parse(cellsToFeatureCollection(boundaries([HEXAGON]), new Uint8Array([0])))
 
     expect(collection.features[0].geometry.coordinates[0]).toHaveLength(7)
+  })
+})
+
+describe('pointFeatures and featureCollection', () => {
+  test('writes one point feature a coordinate pair, longitude first', () => {
+    const collection = JSON.parse(
+      featureCollection([pointFeatures(Float64Array.from([52.52, 13.405, 52.5, 13.4]))]),
+    ) as FeatureCollection<Point>
+
+    expect(collection.features).toHaveLength(2)
+    expect(collection.features[0].geometry.coordinates).toEqual([13.405, 52.52])
+    expect(collection.features[1].geometry.coordinates).toEqual([13.4, 52.5])
+  })
+
+  test('joins blocks into the collection the whole run would have written in one pass', () => {
+    const whole = Float64Array.from([1, 2, 3, 4, 5, 6, 7, 8])
+
+    expect(
+      featureCollection([pointFeatures(whole.subarray(0, 4)), pointFeatures(whole.subarray(4))]),
+    ).toBe(featureCollection([pointFeatures(whole)]))
+  })
+
+  test('answers an empty collection where a block holds no points', () => {
+    const collection = JSON.parse(
+      featureCollection([pointFeatures(new Float64Array(0))]),
+    ) as FeatureCollection<Point>
+
+    expect(collection.type).toBe('FeatureCollection')
+    expect(collection.features).toHaveLength(0)
   })
 })

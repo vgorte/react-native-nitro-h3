@@ -1,6 +1,9 @@
 import {
   Camera,
+  type CircleLayerSpecification,
+  GeoJSONSource,
   type InitialViewState,
+  Layer,
   Map as MapLibreMap,
   type MapRef,
   type ViewState,
@@ -19,7 +22,9 @@ import {
 } from 'react-native'
 import type { Aggregate } from '../engine/aggregate'
 import { aggregateCells } from '../engine/aggregate'
+import { closeWait, noteFrame, noWait, openWait, type Wait } from '../engine/atlas'
 import { cellsFromPoints } from '../engine/cells'
+import { featureCollection, pointFeatures } from '../engine/geojson'
 import {
   frameMatrix,
   type ImageFrame,
@@ -61,6 +66,7 @@ import { FinePrint } from '../render/hud/FinePrint'
 import { Metric } from '../render/hud/Metric'
 import { Panel } from '../render/hud/Panel'
 import { Row } from '../render/hud/Row'
+import { EMPTY_COLLECTION } from '../render/inspectSources'
 import { drawPoints, pointsPaint } from '../render/pointsPicture'
 import { SceneImage } from '../render/SceneImage'
 import { BUCKETS, colours, glass, type } from '../theme/tokens'
@@ -93,10 +99,26 @@ const PUSH_OPTIONS: readonly ChoiceOption<number>[] = [
   { value: PUSH_RES, label: `${PUSH_RES}` },
 ]
 
-const RAW_OPTIONS: readonly ChoiceOption<boolean>[] = [
-  { value: true, label: 'on' },
-  { value: false, label: 'off' },
+/** Names how the raw points are drawn: not at all, into the scene image, or as map circles. */
+type PointsMode = 'off' | 'image' | 'native'
+
+const RAW_OPTIONS: readonly ChoiceOption<PointsMode>[] = [
+  { value: 'off', label: 'off' },
+  { value: 'image', label: 'image' },
+  { value: 'native', label: 'native' },
 ]
+
+const POINT_RADIUS = 1.5
+const POINT_OPACITY = 0.35
+
+const POINT_CIRCLE: NonNullable<CircleLayerSpecification['paint']> = {
+  'circle-radius': POINT_RADIUS,
+  'circle-color': colours.contrast,
+  'circle-opacity': POINT_OPACITY,
+}
+
+/** Seconds the native path is given to draw its points before the run counts as not finished. */
+const NATIVE_WAIT_S = 30
 
 const PUSH_NOTE =
   `push it runs ${formatCount(PUSH_POINTS)} points at resolution ${PUSH_RES}, ` +
@@ -133,6 +155,7 @@ const NOTES = [
   'above 20,000 cells the grid comes off, cells go inset',
   'the cells and points are one image, redrawn on settle',
   `${formatCount(POINTS_MAX)} points are drawn; drawing all 915,000 costs 429 ms`,
+  'the points go into that image, or the classic way as a circle layer of their own',
 ]
 
 /** Holds what one run has measured, a field per stage, filled in as the stages finish. */
@@ -174,6 +197,14 @@ interface Signal {
   finished: boolean
 }
 
+/** Holds the run's points as the classic path writes them: the collection and what it cost. */
+interface Native {
+  data: string
+  /** What writing the string took, the turns of the loop between the blocks left out. */
+  ms: number
+  bytes: number
+}
+
 /** Holds the run's points on the image: how many landed on it and what placing them took. */
 interface Projected {
   xy: Float32Array
@@ -202,7 +233,10 @@ export function Heatmap({ active }: ActProps) {
   const [scene, setScene] = useState<HeatScene | null>(null)
   // names the points the cache holds, and `null` while a run is placing new ones
   const [placed, setPlaced] = useState<string | null>(null)
-  const [raw, setRaw] = useState(true)
+  const [raw, setRaw] = useState<PointsMode>('image')
+  const [native, setNative] = useState<Native | null>(null)
+  // what the native path answered: the time the map took, or why it has no time to answer
+  const [applied, setApplied] = useState<string | null>(null)
   const [collapsed, setCollapsed] = useState(false)
   const [basemap, setBasemap] = useState<Basemap | null>(null)
   const [frame, setFrame] = useState<ImageFrame | null>(null)
@@ -217,6 +251,9 @@ export function Heatmap({ active }: ActProps) {
   const framed = useRef('')
   // the projection buffer, kept across settles because a million points fill eight megabytes of it
   const xy = useRef(new Float32Array(0))
+  // the wait on the map drawing the native points, which ends where its frames stop
+  const nativeWait = useRef<Wait>(noWait())
+  const nativeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // the act reaches for the basemap only once it has been opened, and keeps it afterwards
   useEffect(() => {
@@ -265,6 +302,78 @@ export function Heatmap({ active }: ActProps) {
 
   const rendered = useCallback((ms: number): void => setImageMs(ms), [])
 
+  /** Stops the guard that watches for a map which never draws what the native path handed it. */
+  const stopGuard = useCallback((): void => {
+    if (nativeTimer.current !== null) clearTimeout(nativeTimer.current)
+    nativeTimer.current = null
+  }, [])
+
+  const drew = useCallback((): void => {
+    noteFrame(nativeWait.current, performance.now(), (ms) => {
+      stopGuard()
+      setApplied(formatMs(ms))
+    })
+  }, [stopGuard])
+
+  // the classic path writes every point as a feature the map parses, which is what this mode is
+  // here to show; a million of them is sixty megabytes of string, so the blocks leave the loop a
+  // turn between them and a map that never draws them falls back to the image
+  useEffect(() => {
+    const cache = drawn.current
+    if (!active || raw !== 'native' || placed === null || cache === null) return
+    let cancelled = false
+
+    const write = async (): Promise<void> => {
+      const parts: string[] = []
+      let ms = 0
+      for (const block of cache.blocks) {
+        if (cancelled) return
+        const started = performance.now()
+        parts.push(pointFeatures(block))
+        ms += performance.now() - started
+        if (cache.blocks.length > 1) await yieldToLoop()
+      }
+      if (cancelled) return
+      const closed = performance.now()
+      const data = featureCollection(parts)
+      ms += performance.now() - closed
+
+      setNative({ data, ms, bytes: data.length })
+      setApplied(null)
+      openWait(nativeWait.current, performance.now())
+      stopGuard()
+      nativeTimer.current = setTimeout(() => {
+        nativeTimer.current = null
+        closeWait(nativeWait.current)
+        setApplied(`nothing drawn in ${NATIVE_WAIT_S} s`)
+        setRaw('image')
+      }, NATIVE_WAIT_S * 1000)
+    }
+
+    void write().catch((error: unknown) => {
+      if (cancelled) return
+      // a string the device cannot hold is the measurement this mode was asked for, so it is said
+      setApplied(error instanceof Error ? error.message : 'the string could not be written')
+      setRaw('image')
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [active, raw, placed, stopGuard])
+
+  // the act leaves no guard and no open wait behind for its return to report
+  useEffect(() => {
+    if (!active) {
+      stopGuard()
+      closeWait(nativeWait.current)
+    }
+    return () => {
+      stopGuard()
+      closeWait(nativeWait.current)
+    }
+  }, [active, stopGuard])
+
   // an act off screen gives its map back: a third live one costs the Skia acts their canvas on
   // Android, and the frame it was cut for is stale by the time the act comes round again
   useEffect(() => {
@@ -279,6 +388,8 @@ export function Heatmap({ active }: ActProps) {
     resetWorstGap()
     setScene(null)
     setPlaced(null)
+    setNative(null)
+    setApplied(null)
     setRun(NOTHING)
 
     // the points depend on the seed and the count alone, so a change of resolution reuses them
@@ -370,7 +481,7 @@ export function Heatmap({ active }: ActProps) {
   // the projection stands in the frame's own pixels, so every settle places the points again
   const projected = useMemo<Projected | null>(() => {
     const cache = drawn.current
-    if (frame === null || !raw || placed === null || cache === null) return null
+    if (frame === null || raw !== 'image' || placed === null || cache === null) return null
     let total = 0
     for (const block of cache.blocks) total += block.length / 2
     if (xy.current.length < total * 2) xy.current = new Float32Array(total * 2)
@@ -430,11 +541,20 @@ export function Heatmap({ active }: ActProps) {
           touchPitch={false}
           onRegionDidChange={settle}
           onDidFinishLoadingMap={loaded}
+          // the map stays mounted off screen, where a frame it draws has no wait to report
+          onDidFinishRenderingFrameFully={active ? drew : undefined}
         >
           <Camera initialViewState={OPENING} />
           {frame === null ? null : (
             <SceneImage id="heat-scene" frame={frame} draw={draw} onRendered={rendered} />
           )}
+          {/* the same points the classic way: one feature each, drawn by the map itself */}
+          <GeoJSONSource
+            id="heat-points"
+            data={raw === 'native' ? (native?.data ?? EMPTY_COLLECTION) : EMPTY_COLLECTION}
+          >
+            <Layer id="heat-points-circle" type="circle" paint={POINT_CIRCLE} />
+          </GeoJSONSource>
         </MapLibreMap>
       )}
       {!active ? null : (
@@ -478,12 +598,24 @@ export function Heatmap({ active }: ActProps) {
                     ? '-'
                     : `${formatCount(projected.count)} / ${formatMs(projected.ms)}`
                 }
-                tone={raw ? 'text' : 'muted'}
+                tone={raw === 'image' ? 'text' : 'muted'}
               />
               <Row
                 label="image"
                 call="Skia offscreen + encode"
                 value={imageMs === null ? '-' : formatMs(imageMs)}
+              />
+              <Row
+                label="points, GeoJSON string"
+                value={
+                  native === null ? '-' : `${formatMs(native.ms)} / ${formatCount(native.bytes)}`
+                }
+                tone={raw === 'native' ? 'text' : 'muted'}
+              />
+              <Row
+                label="points applied"
+                value={applied ?? '-'}
+                tone={raw === 'native' ? 'text' : 'muted'}
               />
               <View style={styles.print}>
                 <FinePrint notes={NOTES} />
