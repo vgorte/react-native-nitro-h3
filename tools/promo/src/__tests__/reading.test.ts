@@ -20,14 +20,21 @@ function walk(scene: Scene): Reading[] {
   return readings
 }
 
-/** Answers the largest step between two consecutive frames of a scene. */
+/**
+ * Answers the largest step between two consecutive frames of a scene.
+ *
+ * A frame that renames what is counted is left out: its key snaps rather than eases, so the step
+ * across it is a change of subject rather than a jump in one.
+ */
 function largestStep(scene: Scene): number {
   let worst = 0
-  let before: number | null = null
-  for (const { value } of walk(scene)) {
-    if (value === null) continue
-    if (before !== null) worst = Math.max(worst, Math.abs(value - before))
-    before = value
+  let before: Reading | null = null
+  for (const reading of walk(scene)) {
+    const { value, unit } = reading
+    if (value !== null && before?.value != null && unit === before.unit) {
+      worst = Math.max(worst, Math.abs(value - before.value))
+    }
+    before = reading
   }
   return worst
 }
@@ -96,6 +103,20 @@ describe('readingAt', () => {
       const opening = readingAt(scene, 0)
       expect(readingAt(scene, scene.seconds).value).toBe(opening.value)
       expect(readingAt(scene, scene.seconds).unit).toBe(opening.unit)
+    }
+  })
+
+  test('a key that renames what is counted lands on its value at once', () => {
+    const heatmap = sceneOf('heatmap')
+    const key = heatmap.keys[0]
+    const snap = Math.round(key.at * FPS)
+    const before = readingAt(heatmap, (snap - 1) / FPS)
+    expect(before.value).toBe(heatmap.value)
+    expect(before.unit).toBe('points placed')
+    for (let frame = snap; frame <= Math.round(heatmap.seconds * FPS); frame += 1) {
+      const reading = readingAt(heatmap, frame / FPS)
+      expect(reading.value).toBe(547)
+      expect(reading.unit).toBe('cells from 1M points')
     }
   })
 

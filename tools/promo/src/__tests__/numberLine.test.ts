@@ -22,9 +22,15 @@ describe('numberLine', () => {
     const engine = sceneOf('engine')
     const line = numberLine(engine, readingAt(engine, 1))
     expect(line.lead).toBe('up to ')
-    expect(line.number).toBe('862')
+    expect(line.number).toBe('755.2')
     expect(line.suffix).toBe('×')
     expect(line.unit).toBe('faster')
+  })
+
+  test('a factor is written the way the panel writes it, ungrouped', () => {
+    const engine = sceneOf('engine')
+    const key = engine.keys[0]
+    expect(numberLine(engine, readingAt(engine, key.at + 1)).number).toBe('1104.9')
   })
 
   test('a disk names the ring count it was walked at', () => {

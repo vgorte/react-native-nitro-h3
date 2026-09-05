@@ -16,7 +16,7 @@ export function Closing() {
       <div style={{ ...styles.column, transform: `translateY(${rise}px)`, opacity: growth }}>
         <Img src={staticFile('logo.svg')} style={styles.mark} />
         <div style={styles.name}>react-native-nitro-h3</div>
-        <div style={styles.line}>H3 for React Native, native speed</div>
+        <div style={styles.line}>H3 for React Native</div>
       </div>
     </div>
   )

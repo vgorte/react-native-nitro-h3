@@ -118,17 +118,17 @@ export const SCENES: readonly Scene[] = [
     portrait: { skip: 1.4, seconds: 3.6 },
   },
   {
-    // the number is the documented iPhone XS factor, not this take's live one, which the phone shows
+    // both factors are the phone's own: the compactCells row's, then the finale's as it lands
     id: 'engine',
     headline: 'Milliseconds, not seconds',
     seconds: 4.3,
-    value: 862,
-    decimals: 0,
+    value: 755.2,
+    decimals: 1,
     suffix: '\u00d7',
     lead: 'up to ',
     unit: 'faster',
     call: 'compactCells',
-    keys: [],
+    keys: [{ at: 2.05, value: 1104.9 }],
     heroSkip: 0,
     portrait: { skip: 0, seconds: 3.5 },
   },
