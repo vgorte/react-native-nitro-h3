@@ -14,6 +14,8 @@ export interface AttributionProps {
 const LINE_BOTTOM = Platform.select({ ios: 42, default: 34 })
 // the line has no leading of its own, and the band below has to be a number
 const LINE_HEIGHT = 14
+// the readout starts on this same margin and runs 208 pt wide, so the note reads clear of it
+const NOTE_INSET = 208 + 8
 
 /** Points the licence line takes along the bottom edge, which the rest of the stack sits above. */
 export const ATTRIBUTION_BAND = LINE_BOTTOM + LINE_HEIGHT
@@ -28,7 +30,7 @@ export const ATTRIBUTION_BAND = LINE_BOTTOM + LINE_HEIGHT
 export function Attribution({ text, loaded = true }: AttributionProps) {
   return (
     <View style={styles.lines} pointerEvents="none">
-      {loaded ? null : <Text style={styles.line}>basemap unavailable</Text>}
+      {loaded ? null : <Text style={styles.note}>basemap unavailable</Text>}
       <Text style={styles.line}>{text}</Text>
     </View>
   )
@@ -46,5 +48,12 @@ const styles = StyleSheet.create({
     ...type.label,
     lineHeight: LINE_HEIGHT,
     color: colours.muted,
+  },
+  note: {
+    ...type.label,
+    lineHeight: LINE_HEIGHT,
+    color: colours.muted,
+    marginLeft: NOTE_INSET,
+    textAlign: 'right',
   },
 })
