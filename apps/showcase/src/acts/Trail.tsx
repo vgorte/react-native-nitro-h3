@@ -675,7 +675,13 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
       drawn.current = { at: performance.now(), anchor, trail, ground: landed }
       // the frame and the scene reach React in one commit, so the image is encoded once and into
       // the ground it is georeferenced by rather than once into each
-      const asked = map.current?.getViewState()
+      let asked: Promise<ViewState> | undefined
+      try {
+        asked = map.current?.getViewState()
+      } catch {
+        // a map that has not finished mounting has no view state to give, and the scene is drawn
+        // into the frame the last settle cut
+      }
       if (asked === undefined) {
         record()
         return
