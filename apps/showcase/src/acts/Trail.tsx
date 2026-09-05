@@ -476,7 +476,7 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
   }, [trail, following, res, width, height, centreOn])
 
   // the offscreen draw, the PNG encode and the write are one block of the JS thread, so a walk
-  // that crosses a cell a second gets one image every REDRAW_MS carrying the trail it ended on; a
+  // that crosses a cell a second gets one image every `REDRAW_MS` carrying the trail it ended on; a
   // re-anchor moves the metre frame under the image and is drawn at once
   useEffect(() => {
     if (trail.length === 0) {
@@ -646,7 +646,9 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
             </Panel>
           </View>
           <BlockedReadout />
-          {basemap === null ? null : <Attribution text={basemap.attribution} />}
+          {basemap === null ? null : (
+            <Attribution text={basemap.attribution} loaded={basemap.loaded} />
+          )}
         </>
       )}
     </View>

@@ -99,9 +99,9 @@ export function recordCellScene(
 /**
  * Frees the native memory of a scene that is about to be replaced or dropped.
  *
- * A picture and a path are JSI host objects, so without this their native buffers live until
- * Hermes collects the wrappers, which makes the peak over a session of settles a question of GC
- * timing rather than a bound. A disposed scene must not be drawn again.
+ * A picture and a path are native buffers behind JSI objects, so dropping the last reference
+ * leaves them standing until the collector reaches the wrapper. A disposed scene is never drawn
+ * again.
  */
 export function disposeCellScene(scene: CellScene | null): void {
   if (scene === null) return

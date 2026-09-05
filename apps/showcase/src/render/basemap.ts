@@ -10,10 +10,16 @@ export interface Basemap {
   /** The recoloured style, or the plain URL where the style could not be read. */
   style: string | StyleSpecification
   attribution: string
+  /** `false` where the style could not be read, which offline is a map that draws nothing. */
+  loaded: boolean
 }
 
 /** The basemap an act falls back on where the style itself will not load. */
-export const PLAIN_BASEMAP: Basemap = { style: STYLE_URL, attribution: DEFAULT_ATTRIBUTION }
+export const PLAIN_BASEMAP: Basemap = {
+  style: STYLE_URL,
+  attribution: DEFAULT_ATTRIBUTION,
+  loaded: false,
+}
 
 /** Pulls the style's ground and water toward the theme, which is all the spec lets an app set. */
 function recolour(style: StyleSpecification): StyleSpecification {
@@ -54,9 +60,9 @@ async function attributionOf(style: StyleSpecification): Promise<string> {
 export async function loadBasemap(): Promise<Basemap> {
   const style = recolour((await (await fetch(STYLE_URL)).json()) as StyleSpecification)
   try {
-    return { style, attribution: await attributionOf(style) }
+    return { style, attribution: await attributionOf(style), loaded: true }
   } catch {
     // a source whose TileJSON will not answer costs the licence line, not the recoloured style
-    return { style, attribution: DEFAULT_ATTRIBUTION }
+    return { style, attribution: DEFAULT_ATTRIBUTION, loaded: true }
   }
 }

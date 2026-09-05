@@ -2,7 +2,7 @@
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "strict": true,
-    // the spike tests run under `bun test` and import `bun:test`
+    // the engine tests run under `bun test` and import `bun:test`
     "types": ["bun"],
     // typecheck against the package sources, lib/ is build output and absent on CI
     "paths": {

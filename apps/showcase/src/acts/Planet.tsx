@@ -454,7 +454,8 @@ function wrapLng(lng: number): number {
  *
  * Up to {@linkcode GLOBE_LOOP_MAX_RES} a worklet rebuilds the globe every frame on the UI thread;
  * above it the same view is rebuilt on settle in a pixel frame anchored at the view centre, and
- * the camera carries the pan and the pinch in between.
+ * the camera carries the pan and the pinch in between. The pager does not mount this act, which
+ * stands as the reference for the globe and the tile pipeline behind it.
  */
 export function Planet({ active }: ActProps) {
   const { width, height } = useWindowDimensions()

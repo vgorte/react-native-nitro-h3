@@ -1,5 +1,5 @@
-// The Observatory theme of the showcase, copied from apps/showcase/src/theme/tokens.ts so the video
-// stands on the same ground as the app it shows.
+// Carries the Observatory theme of the showcase, copied from apps/showcase/src/theme/tokens.ts so
+// the video stands on the same ground as the app it shows.
 
 /** Names the Observatory colours outside the intensity ramp. */
 export const colours = {

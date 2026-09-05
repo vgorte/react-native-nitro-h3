@@ -25,7 +25,7 @@ import {
   type Wait,
 } from '../engine/atlas'
 import { boundariesOf, diskAround, PATCH_CALLS } from '../engine/cells'
-import { cellsToFeatureCollection } from '../engine/geojson'
+import { cellsToFeatureCollection, utf8Length } from '../engine/geojson'
 import { PATCH_BUCKETS, patchBuckets } from '../engine/patches'
 import { resolutionForZoom } from '../engine/projection'
 import { formatCount, formatMs } from '../engine/stats'
@@ -193,7 +193,7 @@ export function Atlas({ active, inspected, onInspect }: ActProps) {
       ringsMs: patched.ringsMs,
       boundariesMs: boundaries.ms,
       jsonMs: json.ms,
-      bytes: json.value.length,
+      bytes: utf8Length(json.value),
     }
     // a settle that lands on the same cells hands the map nothing, so it opens no wait
     const changed = scene.current === null || scene.current.data !== json.value
@@ -357,7 +357,9 @@ export function Atlas({ active, inspected, onInspect }: ActProps) {
             </Panel>
           </View>
           <BlockedReadout />
-          {basemap === null ? null : <Attribution text={basemap.attribution} />}
+          {basemap === null ? null : (
+            <Attribution text={basemap.attribution} loaded={basemap.loaded} />
+          )}
         </>
       )}
     </View>

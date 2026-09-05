@@ -117,7 +117,6 @@ const styles: Record<string, CSSProperties> = {
     fontFamily: fontFamily.regular,
     color: colours.muted,
     letterSpacing: 2,
-    textTransform: 'uppercase',
     marginBottom: 26,
   },
   number: {

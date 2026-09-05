@@ -840,7 +840,9 @@ export function Heatmap({ active }: ActProps) {
             </Panel>
           </View>
           <BlockedReadout />
-          {basemap === null ? null : <Attribution text={basemap.attribution} />}
+          {basemap === null ? null : (
+            <Attribution text={basemap.attribution} loaded={basemap.loaded} />
+          )}
         </>
       )}
     </View>
