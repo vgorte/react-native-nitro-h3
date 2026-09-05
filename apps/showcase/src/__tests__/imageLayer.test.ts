@@ -6,9 +6,15 @@ import {
   FRAME_PADDING,
   frameExtent,
   frameMatrix,
+  frameMetresPerPoint,
   framePixelRatio,
   type ImageFrame,
   imageFrameOf,
+  POINT_BOX_M,
+  POINT_CITY_M,
+  POINT_RADIUS_BOX_PT,
+  POINT_RADIUS_CITY_PT,
+  pointRadiusPx,
   projectPoints,
   sampleStride,
 } from '../engine/imageLayer'
@@ -83,13 +89,14 @@ describe('framePixelRatio', () => {
   test('answers the device pixels a point spans while nothing is padded or capped', () => {
     const frame = imageFrameOf(BERLIN_BOUNDS, VIEWPORT, 3, 40_000_000, 0)
 
-    expect(framePixelRatio(frame, VIEWPORT.width, 0)).toBeCloseTo(3, 6)
+    expect(framePixelRatio(frame, VIEWPORT.width)).toBeCloseTo(3, 6)
   })
 
-  test('answers fewer pixels a point where the frame is stretched over the padding', () => {
-    const frame = imageFrameOf(BERLIN_BOUNDS, VIEWPORT, 3, 40_000_000, FRAME_PADDING)
+  test('takes the padding off the frame it is given rather than assuming the usual one', () => {
+    const quarter = imageFrameOf(BERLIN_BOUNDS, VIEWPORT, 3, 40_000_000, 0.25)
 
-    expect(framePixelRatio(frame, VIEWPORT.width)).toBeCloseTo(3, 2)
+    expect(quarter.padding).toBe(0.25)
+    expect(framePixelRatio(quarter, VIEWPORT.width)).toBeCloseTo(3, 2)
   })
 
   test('answers what the cap left of the pixels, so a mark keeps the size it is drawn at', () => {
@@ -97,6 +104,59 @@ describe('framePixelRatio', () => {
 
     expect(framePixelRatio(frame, VIEWPORT.width)).toBeLessThan(3)
     expect(frame.width / framePixelRatio(frame, VIEWPORT.width)).toBeCloseTo(VIEWPORT.width * 2, 0)
+  })
+})
+
+describe('frameMetresPerPoint', () => {
+  test('answers the ground a point of the screen spans, which the cap cannot change', () => {
+    const capped = imageFrameOf(BERLIN_BOUNDS, VIEWPORT, 3, 4_000_000, FRAME_PADDING)
+    const whole = imageFrameOf(BERLIN_BOUNDS, VIEWPORT, 3, 40_000_000, FRAME_PADDING)
+    const box = mercatorX(BERLIN_BOUNDS.ne[0]) - mercatorX(BERLIN_BOUNDS.sw[0])
+
+    expect(frameMetresPerPoint(capped, VIEWPORT.width)).toBeCloseTo(box / VIEWPORT.width, 6)
+    expect(frameMetresPerPoint(whole, VIEWPORT.width)).toBeCloseTo(box / VIEWPORT.width, 6)
+  })
+
+  test('halves as the map moves one zoom step closer', () => {
+    const closer = imageFrameOf(
+      { ne: [13.4248, 52.6755], sw: [13.0884, 52.5069] },
+      VIEWPORT,
+      3,
+      4_000_000,
+      FRAME_PADDING,
+    )
+    const box = imageFrameOf(BERLIN_BOUNDS, VIEWPORT, 3, 4_000_000, FRAME_PADDING)
+
+    expect(frameMetresPerPoint(closer, VIEWPORT.width) * 2).toBeCloseTo(
+      frameMetresPerPoint(box, VIEWPORT.width),
+      6,
+    )
+  })
+})
+
+describe('pointRadiusPx', () => {
+  test('draws a point at its widest at a city scale and no wider closer in', () => {
+    expect(pointRadiusPx(POINT_CITY_M)).toBeCloseTo(POINT_RADIUS_CITY_PT, 6)
+    expect(pointRadiusPx(POINT_CITY_M / 8)).toBe(POINT_RADIUS_CITY_PT)
+  })
+
+  test('draws a point at its narrowest at the scale the sample box stands at', () => {
+    expect(pointRadiusPx(POINT_BOX_M)).toBeCloseTo(POINT_RADIUS_BOX_PT, 6)
+    expect(pointRadiusPx(POINT_BOX_M * 8)).toBe(POINT_RADIUS_BOX_PT)
+  })
+
+  test('shrinks as the map pulls out, one step of the ramp a zoom step', () => {
+    const radii = [POINT_CITY_M, POINT_CITY_M * 2, POINT_CITY_M * 4, POINT_BOX_M].map(pointRadiusPx)
+
+    for (let step = 1; step < radii.length; step++) {
+      expect(radii[step]).toBeLessThan(radii[step - 1])
+    }
+  })
+
+  test('answers about a point of radius over the frame the act opens on', () => {
+    const opening = imageFrameOf(BERLIN_BOUNDS, VIEWPORT, 3, 4_000_000, FRAME_PADDING)
+
+    expect(pointRadiusPx(frameMetresPerPoint(opening, VIEWPORT.width))).toBeLessThan(1.2)
   })
 })
 

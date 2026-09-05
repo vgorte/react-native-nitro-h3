@@ -29,10 +29,16 @@ import { featureCollection, pointFeatures, utf8Length } from '../engine/geojson'
 import {
   frameExtent,
   frameMatrix,
+  frameMetresPerPoint,
   framePixelRatio,
   type ImageFrame,
   imageFrameOf,
   MAX_IMAGE_PIXELS,
+  POINT_BOX_M,
+  POINT_CITY_M,
+  POINT_RADIUS_BOX_PT,
+  POINT_RADIUS_CITY_PT,
+  pointRadiusPx,
   projectPoints,
   sampleStride,
 } from '../engine/imageLayer'
@@ -47,6 +53,7 @@ import {
   servesRun,
   UNIFORM_SHARE,
 } from '../engine/points'
+import { zoomForMetresPerPixel } from '../engine/projection'
 import {
   type Change,
   isPushed,
@@ -75,13 +82,7 @@ import { Metric } from '../render/hud/Metric'
 import { Panel } from '../render/hud/Panel'
 import { Row } from '../render/hud/Row'
 import { EMPTY_COLLECTION } from '../render/inspectSources'
-import {
-  drawPoints,
-  POINT_ALPHA,
-  POINT_COLOUR,
-  POINT_RADIUS_PT,
-  pointsPaint,
-} from '../render/pointsPicture'
+import { drawPoints, POINT_ALPHA, POINT_COLOUR, pointsPaint } from '../render/pointsPicture'
 import { SceneImage } from '../render/SceneImage'
 import { BUCKETS, colours, glass, type } from '../theme/tokens'
 import type { ActProps } from './types'
@@ -126,9 +127,18 @@ const PATH_OPTIONS: readonly ChoiceOption<PointsPath>[] = [
   { value: 'native', label: 'native' },
 ]
 
-// the two paths draw the same speck, so the circle layer takes the size and alpha of the image
+// the two paths draw the same speck, so the circle layer follows the same two scales the image
+// points do, as the zooms a Web Mercator metre stands at
 const POINT_CIRCLE: NonNullable<CircleLayerSpecification['paint']> = {
-  'circle-radius': POINT_RADIUS_PT,
+  'circle-radius': [
+    'interpolate',
+    ['linear'],
+    ['zoom'],
+    zoomForMetresPerPixel(POINT_BOX_M, 0),
+    POINT_RADIUS_BOX_PT,
+    zoomForMetresPerPixel(POINT_CITY_M, 0),
+    POINT_RADIUS_CITY_PT,
+  ],
   'circle-color': POINT_COLOUR,
   'circle-opacity': POINT_ALPHA,
 }
@@ -159,7 +169,6 @@ const OPENING: InitialViewState = {
 }
 
 const PANEL_TOP = 104
-const PRINT_WIDTH = 268
 // clears the licence line, which stands over the blocked readout at the other edge
 const CONTROL_BOTTOM = 136
 
@@ -170,7 +179,7 @@ const NOTES = [
   'past 100,000 the run chunks; the sort and count do not',
   `above ${formatCount(OUTLINE_MAX_CELLS)} cells: no empty grid, cells go inset`,
   'the cells and points are one image, redrawn on settle',
-  'which reaches half a screen past the map on every side',
+  'the image reaches half a screen past the map',
   `${formatCount(POINTS_MAX)} drawn; 384,000 of them cost 1,955 ms`,
   'or the points draw as a circle layer of their own',
   'native at a million: a 115 MB string killed the emulator',
@@ -227,7 +236,8 @@ interface Signal {
 
 /** Holds the run's points as the classic path writes them: the collection and what it cost. */
 interface Native {
-  data: string
+  /** The collection the map is handed, dropped where the path fell back to the image. */
+  data: string | null
   /** What writing the string took, the turns of the loop between the blocks left out. */
   ms: number
   bytes: number
@@ -286,7 +296,6 @@ export function Heatmap({ active }: ActProps) {
   const [frame, setFrame] = useState<ImageFrame | null>(null)
   // the distinct cells of the run, kept so a settle can tell a covered cell of points from an empty
   const [busy, setBusy] = useState<BigUint64Array | null>(null)
-  const [covered, setCovered] = useState<Covered | null>(null)
   const [imageMs, setImageMs] = useState<number | null>(null)
   // what a render that answered no image said, which stands in the row the time would have taken
   const [imageFailed, setImageFailed] = useState<string | null>(null)
@@ -318,10 +327,11 @@ export function Heatmap({ active }: ActProps) {
   // show, and the two that only decide what is drawn leave the run they are read against alone
   const change = useCallback((made: Change) => setSettings((held) => nextSettings(held, made)), [])
   // a path the device cannot carry hands the points back to the image, through the same rule
-  const fallBack = useCallback(
-    () => setSettings((held) => nextSettings(held, { control: 'path', value: 'image' })),
-    [],
-  )
+  const fallBack = useCallback(() => {
+    // the string is what the device could not carry, so it goes; its two numbers stay on the rows
+    setNative((held) => (held === null ? null : { ...held, data: null }))
+    setSettings((held) => nextSettings(held, { control: 'path', value: 'image' }))
+  }, [])
 
   // the act reaches for the basemap only once it has been opened, and keeps it afterwards
   useEffect(() => {
@@ -394,8 +404,8 @@ export function Heatmap({ active }: ActProps) {
   }, [stopGuard])
 
   // the classic path writes every point as a feature the map parses, which is what this mode is
-  // here to show; a million of them is sixty megabytes of string, so the blocks leave the loop a
-  // turn between them and a map that never draws them falls back to the image
+  // here to show; a million of them is a hundred and fifteen megabytes of string, so the blocks
+  // leave the loop a turn between them and a map that never draws them falls back to the image
   useEffect(() => {
     const cache = drawn.current
     if (!active || !nativeDrawn || placed === null || cache === null) return
@@ -561,17 +571,14 @@ export function Heatmap({ active }: ActProps) {
     }
   }, [active, key, seed, points, res, execute])
 
-  // the hexagons stand over the whole padded frame, so every settle walks the ground it moved onto
-  useEffect(() => {
+  // the hexagons stand over the whole padded frame, so every settle walks the ground it moved onto;
+  // it answers where the projection does, so one settle commits one scene and renders one image
+  const covered = useMemo<Covered | null>(() => {
     if (!active || view === 'points' || frame === null || busy === null || scene === null) {
-      setCovered(null)
-      return
+      return null
     }
     // above the ceiling the strip is off and the busy cells are inset, which leaves no empty step
-    if (!scene.outlined) {
-      setCovered(null)
-      return
-    }
+    if (!scene.outlined) return null
     const extent = frameExtent(frame)
     const [lng, lat] = extent.center
     const disk = diskAround(
@@ -580,14 +587,14 @@ export function Heatmap({ active }: ActProps) {
     )
     const blank = emptyCells(disk.value, busy)
     const built = blank.length === 0 ? null : buildEmptyScene(blank, CENTRE)
-    setCovered({
+    return {
       cells: disk.value.length,
       busy: disk.value.length - blank.length,
       diskMs: disk.ms,
       empty: blank.length,
       emptyMs: built?.ms ?? 0,
       scene: built?.scene ?? null,
-    })
+    }
   }, [active, view, frame, busy, scene, res])
 
   // the projection stands in the frame's own pixels, so every settle places the points again
@@ -610,9 +617,15 @@ export function Heatmap({ active }: ActProps) {
     }
   }, [frame, imageDrawn, placed])
 
-  // the points keep their size on screen, whatever the frame was cut and capped at
+  // a point keeps the size the scale asks for, whatever the frame was cut and capped at
   const paint = useMemo(
-    () => pointsPaint(frame === null ? 1 : framePixelRatio(frame, width)),
+    () =>
+      frame === null
+        ? pointsPaint(1, POINT_RADIUS_BOX_PT)
+        : pointsPaint(
+            framePixelRatio(frame, width),
+            pointRadiusPx(frameMetresPerPoint(frame, width)),
+          ),
     [frame, width],
   )
 
@@ -777,6 +790,15 @@ export function Heatmap({ active }: ActProps) {
                 </>
               )}
             </Panel>
+            {/* the fine print stands where the rows do, so the folded panel is the one that carries
+                it; on a surface of its own it takes no touch beyond its own lines */}
+            {!collapsed ? null : (
+              <View style={styles.print}>
+                <Panel align="right">
+                  <FinePrint notes={NOTES} />
+                </Panel>
+              </View>
+            )}
           </View>
           <View style={styles.control}>
             <Panel align="right">
@@ -846,10 +868,7 @@ const styles = StyleSheet.create({
     right: 16,
     bottom: CONTROL_BOTTOM,
   },
-  print: {
-    width: PRINT_WIDTH,
-    marginTop: 4,
-  },
+  print: { marginTop: 8 },
   buttons: { flexDirection: 'row', gap: 8 },
   button: {
     borderWidth: 1,

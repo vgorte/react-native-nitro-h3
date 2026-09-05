@@ -18,15 +18,31 @@ export interface ImageFrame {
   north: number
   width: number
   height: number
+  /** The fraction of the viewport it reaches past it, which its pixels are stretched over. */
+  padding: number
 }
 
 /**
- * Pixels one scene image may hold, which a phone at three times its points stays under.
+ * Pixels one scene image may hold, a ceiling on the encode and on what the map has to upload.
  *
- * The cap is a ceiling on the encode and on what the map has to upload, not a target: a frame that
- * fits under it is drawn at the device's own pixels and never stretched.
+ * A padded frame asks for four times the pixels its viewport does, so every phone at three times
+ * its points is over this: a 402 by 874 point screen asks for 12.6 million and is drawn at 1.69
+ * image pixels a point instead of three, which the map then stretches back over the screen. That
+ * softness is the price of the padding, and it is what keeps a pan inside the standing raster.
  */
 export const MAX_IMAGE_PIXELS = 4_000_000
+
+/** Web Mercator metres a screen point spans where a drawn point is at its widest. */
+export const POINT_CITY_M = 20
+
+/** Web Mercator metres a screen point spans with the whole sample box in the viewport. */
+export const POINT_BOX_M = 200
+
+/** Radius a drawn point covers at {@linkcode POINT_CITY_M}, in points. */
+export const POINT_RADIUS_CITY_PT = 2.5
+
+/** Radius a drawn point covers at {@linkcode POINT_BOX_M}, in points. */
+export const POINT_RADIUS_BOX_PT = 1
 
 /**
  * Fraction of the viewport the image reaches past it on every side.
@@ -77,7 +93,13 @@ export function imageFrameOf(
     north: mercatorToLatLng(0, northY + padY).lat,
     width: Math.max(1, Math.floor(wide * shrink)),
     height: Math.max(1, Math.floor(tall * shrink)),
+    padding,
   }
+}
+
+/** Answers the screen points a frame is stretched across, which is more than the viewport. */
+function stretchedOver(frame: ImageFrame, viewportWidth: number): number {
+  return viewportWidth * (1 + 2 * frame.padding)
 }
 
 /**
@@ -86,16 +108,42 @@ export function imageFrameOf(
  * A padded frame covers more ground than the viewport, so its pixels are not the device's: what a
  * point on screen is worth in the image is the frame's width over the width it is stretched across.
  *
- * @param frame The image the mark is drawn into.
+ * @param frame The image the mark is drawn into, which carries the padding it was cut with.
  * @param viewportWidth The map's width in points.
- * @param padding The padding the frame was cut with.
  */
-export function framePixelRatio(
-  frame: ImageFrame,
-  viewportWidth: number,
-  padding = FRAME_PADDING,
-): number {
-  return frame.width / (viewportWidth * (1 + 2 * padding))
+export function framePixelRatio(frame: ImageFrame, viewportWidth: number): number {
+  return frame.width / stretchedOver(frame, viewportWidth)
+}
+
+/**
+ * Answers the Web Mercator metres one screen point spans, which is the camera's own scale.
+ *
+ * It is what the frame covers over the screen points it is stretched across, so the pixel cap
+ * cannot change it: two frames of the same ground answer the same metres however they were sized.
+ *
+ * @param frame The image the map carries.
+ * @param viewportWidth The map's width in points.
+ */
+export function frameMetresPerPoint(frame: ImageFrame, viewportWidth: number): number {
+  return (mercatorX(frame.east) - mercatorX(frame.west)) / stretchedOver(frame, viewportWidth)
+}
+
+/**
+ * Answers the radius a raw point is drawn at, from the scale the map stands at.
+ *
+ * A speck of a fixed size reads as one point close in and paints the box solid pulled out, where a
+ * screen point covers a city block; the radius therefore follows the zoom, a step of the ramp per
+ * zoom step between the two scales, and holds at either end past them.
+ *
+ * @param metresPerPoint The camera's scale, from {@linkcode frameMetresPerPoint}.
+ * @returns The radius in points, {@linkcode POINT_RADIUS_BOX_PT} to
+ *   {@linkcode POINT_RADIUS_CITY_PT}.
+ */
+export function pointRadiusPx(metresPerPoint: number): number {
+  const steps = Math.log2(POINT_BOX_M / POINT_CITY_M)
+  const at = Math.log2(metresPerPoint / POINT_CITY_M) / steps
+  const held = Math.min(1, Math.max(0, at))
+  return POINT_RADIUS_CITY_PT + held * (POINT_RADIUS_BOX_PT - POINT_RADIUS_CITY_PT)
 }
 
 /**
