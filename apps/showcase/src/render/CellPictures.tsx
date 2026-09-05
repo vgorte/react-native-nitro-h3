@@ -1,7 +1,9 @@
 import {
   BlendMode,
+  PaintStyle,
   Path,
   Picture,
+  type SkCanvas,
   Skia,
   type SkPath,
   type SkPicture,
@@ -89,6 +91,26 @@ export function recordCellScene(
   }
   const outline = outlinePath === null ? null : Skia.Path.MakeFromSVGString(outlinePath)
   return { pictures, outline, bounds }
+}
+
+// the grid strip holds one device pixel at any zoom, which is what a stroke width of zero means
+const hairline = Skia.Paint()
+hairline.setColor(Skia.Color(colours.hairline))
+hairline.setStyle(PaintStyle.Stroke)
+hairline.setStrokeWidth(0)
+hairline.setAntiAlias(true)
+
+/**
+ * Draws a recorded scene onto a canvas of its own, for a host that keeps no Skia tree.
+ *
+ * The canvas carries the transform, so the scene draws in the metre space it was recorded in.
+ *
+ * @param canvas The canvas to draw into, already under the transform the scene stands in.
+ * @param scene The recorded pictures and outline, from {@linkcode recordCellScene}.
+ */
+export function drawCellScene(canvas: SkCanvas, scene: CellScene): void {
+  for (const picture of scene.pictures) canvas.drawPicture(picture)
+  if (scene.outline !== null) canvas.drawPath(scene.outline, hairline)
 }
 
 /** Draws a recorded scene; it carries no camera, because it renders inside the camera group. */
