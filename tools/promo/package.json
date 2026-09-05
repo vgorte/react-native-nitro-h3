@@ -1,0 +1,23 @@
+{
+  "name": "promo",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Cuts the showcase takes into the landing video of the README",
+  "scripts": {
+    "clips": "scripts/clips.sh",
+    "studio": "remotion studio",
+    "render": "remotion render Showcase out/showcase.mp4 --codec h264 --crf 18 && remotion render ShowcaseHero out/hero.mp4 --codec h264 --crf 18 && scripts/gif.sh",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.520",
+    "@remotion/media": "4.0.520",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "remotion": "4.0.520"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.18",
+    "typescript": "6.0.3"
+  }
+}

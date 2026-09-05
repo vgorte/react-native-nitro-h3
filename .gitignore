@@ -69,6 +69,12 @@ coverage
 # React Native Harness
 apps/example/.harness/
 
+# Promo video project: its own install, the raw takes, the clips cut from them and the renders
+tools/promo/node_modules/
+tools/promo/takes/
+tools/promo/public/clips/
+tools/promo/out/
+
 # Local planning record (design decisions, plans and research)
 # Kept outside the repo; upstream React Native packages use `docs/` for the user manual, not a design archive.
 docs/superpowers/

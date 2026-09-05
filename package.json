@@ -23,6 +23,7 @@
     "showcase": "bun run --cwd apps/showcase",
     "showcase:ios": "bun run --cwd apps/showcase ios",
     "showcase:android": "bun run --cwd apps/showcase android",
+    "promo": "cd tools/promo && bun run render",
     "release": "./scripts/release.sh"
   },
   "release-it": {
