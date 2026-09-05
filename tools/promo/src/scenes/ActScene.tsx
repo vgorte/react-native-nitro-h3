@@ -1,8 +1,9 @@
 import { Video } from '@remotion/media'
 import type { CSSProperties } from 'react'
-import { interpolate, spring, staticFile, useCurrentFrame, useVideoConfig } from 'remotion'
+import { interpolate, staticFile, useCurrentFrame, useVideoConfig } from 'remotion'
 import { colours, fontFamily } from '../theme'
-import type { Scene } from './scenes'
+import { Cursor, phoneScale, Ripples } from './Overlays'
+import { EASE_SECONDS, type Scene } from './scenes'
 
 /** Sizes one variant of the scene: the wide cut, or the short hero loop. */
 interface Measures {
@@ -20,69 +21,115 @@ const HERO: Measures = { phone: 620, caption: 420, gap: 80, number: 76, act: 22,
 /** The aspect of a take, which is the iPhone 17 Pro screen. */
 const PHONE_ASPECT = 402 / 874
 
+/** What the phone is scaled to by the end of a scene that pushes in. */
+const PUSH_IN = 1.04
+
 interface ActSceneProps {
   scene: Scene
-  /** Whether the scene runs in the hero loop, which drops the act name and the note. */
+  /** Whether the scene runs in the hero loop, which drops the act name and the two lines. */
   hero?: boolean
 }
 
+/** Holds what the caption says at one moment: the reading, and what it counts. */
+interface Reading {
+  value: number | null
+  label: string
+}
+
 /**
- * Plays one act: the take on the left of its number, which counts up as the scene opens.
+ * Plays one act: the take on the left of the reading its panel carried while the take ran.
  *
- * The take is drawn at its own pace, never sped up, so the frame rate the phone held is the frame
- * rate the video shows.
+ * The take is drawn at its own pace, never sped up, and the reading steps with the take's own
+ * events rather than counting up on its own, so the caption always says what the phone beside it
+ * shows. Touches the simulator does not record are drawn back over the phone at the coordinates
+ * they landed on.
  */
 export function ActScene({ scene, hero = false }: ActSceneProps) {
   const frame = useCurrentFrame()
   const { fps } = useVideoConfig()
   const measures = hero ? HERO : WIDE
+  const skip = hero ? scene.heroSkip : 0
+  const seconds = frame / fps + skip
 
-  const growth = spring({ frame, fps, durationInFrames: fps, config: { damping: 200 } })
-  const counted = interpolate(growth, [0, 1], [0, scene.value])
-  const rise = interpolate(growth, [0, 1], [18, 0])
+  const reading = readingAt(scene, seconds)
+  const height = measures.phone
+  const width = Math.round(height * PHONE_ASPECT)
+  const push =
+    scene.pushIn === true ? interpolate(seconds, [skip, skip + scene.seconds], [1, PUSH_IN]) : 1
 
   return (
     <div style={styles.stage}>
       <div style={styles.vignette} />
       <div style={{ ...styles.row, gap: measures.gap }}>
-        <div
-          style={{
-            ...styles.caption,
-            width: measures.caption,
-            transform: `translateY(${rise}px)`,
-          }}
-        >
+        <div style={{ ...styles.caption, width: measures.caption }}>
           {hero ? null : <div style={{ ...styles.act, fontSize: measures.act }}>{scene.act}</div>}
           <div style={{ ...styles.number, fontSize: measures.number }}>
-            {format(counted, scene.decimals)}
-            <span style={styles.suffix}>{scene.suffix}</span>
+            {reading.value === null ? '' : format(reading.value, scene.decimals)}
+            <span style={styles.suffix}>{reading.value === null ? '' : scene.suffix}</span>
           </div>
-          <div style={{ ...styles.label, fontSize: measures.label }}>{scene.label}</div>
-          {hero ? null : <div style={styles.note}>{scene.note}</div>}
+          <div style={{ ...styles.label, fontSize: measures.label }}>
+            {reading.value === null ? '' : reading.label}
+          </div>
+          {hero ? null : <div style={styles.call}>{scene.call}</div>}
+          {/* the line keeps its room before the run has measured it, so nothing above it moves */}
+          {hero || scene.note === undefined ? null : (
+            <div style={{ ...styles.note, opacity: reading.value === null ? 0 : 1 }}>
+              {scene.note}
+            </div>
+          )}
         </div>
-        <div
-          style={{
-            ...styles.phone,
-            height: measures.phone,
-            width: Math.round(measures.phone * PHONE_ASPECT),
-          }}
-        >
+        {/* the overlays ride the phone, so the push-in carries them with the control they name */}
+        <div style={{ ...styles.phone, height, width, transform: `scale(${push})` }}>
           <Video
             src={staticFile(`clips/${scene.id}.mp4`)}
-            trimBefore={hero && scene.heroSkip > 0 ? scene.heroSkip : undefined}
+            trimBefore={skip > 0 ? Math.round(skip * fps) : undefined}
             muted
             style={styles.take}
           />
+          {scene.taps === undefined ? null : (
+            <Ripples taps={scene.taps} seconds={seconds} scale={phoneScale(height)} />
+          )}
+          {scene.drag === undefined ? null : (
+            <Cursor drag={scene.drag} seconds={seconds} scale={phoneScale(height)} />
+          )}
         </div>
       </div>
     </div>
   )
 }
 
+/**
+ * Answers the reading the caption stands on, easing from the one before it.
+ *
+ * A key whose predecessor measured nothing eases from zero, so the first number of an act rises
+ * into place the way the bar behind it does.
+ */
+function readingAt(scene: Scene, seconds: number): Reading {
+  let held: Reading = { value: scene.value, label: scene.label }
+  for (const key of scene.keys) {
+    if (seconds < key.at) break
+    const next: Reading = { value: key.value, label: key.label ?? held.label }
+    if (next.value !== null && seconds < key.at + EASE_SECONDS) {
+      const from = held.value ?? 0
+      const eased = interpolate(seconds, [key.at, key.at + EASE_SECONDS], [from, next.value])
+      return { value: eased, label: next.label }
+    }
+    held = next
+  }
+  return held
+}
+
+/**
+ * Writes a number the way the act's own panel writes it.
+ *
+ * Counts are grouped, as `formatCount` groups them; a factor is not, because the app's own factor
+ * row writes it with `toFixed` and the caption must not disagree with the phone beside it.
+ */
 function format(value: number, decimals: number): string {
   return value.toLocaleString('en-US', {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
+    useGrouping: decimals === 0,
   })
 }
 
@@ -124,6 +171,8 @@ const styles: Record<string, CSSProperties> = {
     color: colours.text,
     lineHeight: 1,
     fontVariantNumeric: 'tabular-nums',
+    // the line keeps its height while an act has measured nothing, so nothing under it moves
+    minHeight: '1em',
   },
   suffix: {
     color: colours.contrast,
@@ -132,8 +181,9 @@ const styles: Record<string, CSSProperties> = {
     fontFamily: fontFamily.regular,
     color: colours.muted,
     marginTop: 18,
+    minHeight: '1.2em',
   },
-  note: {
+  call: {
     fontFamily: fontFamily.regular,
     color: colours.muted,
     opacity: 0.7,
@@ -141,7 +191,15 @@ const styles: Record<string, CSSProperties> = {
     marginTop: 40,
     lineHeight: 1.5,
   },
+  note: {
+    fontFamily: fontFamily.regular,
+    color: colours.contrast,
+    fontSize: 20,
+    marginTop: 10,
+    lineHeight: 1.5,
+  },
   phone: {
+    position: 'relative',
     borderRadius: 28,
     overflow: 'hidden',
     border: `1px solid ${colours.hairline}`,

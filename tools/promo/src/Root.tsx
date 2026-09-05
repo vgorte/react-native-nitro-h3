@@ -1,6 +1,13 @@
 import { Composition } from 'remotion'
 import './fonts'
-import { HERO_FRAMES, SHOWCASE_FRAMES, Showcase, ShowcaseHero } from './Showcase'
+import {
+  HERO_FPS,
+  HERO_FRAMES,
+  SHOWCASE_FPS,
+  SHOWCASE_FRAMES,
+  Showcase,
+  ShowcaseHero,
+} from './Showcase'
 
 /** Registers the two cuts: the full video and the short loop the README autoplays. */
 export function Root() {
@@ -10,7 +17,7 @@ export function Root() {
         id="Showcase"
         component={Showcase}
         durationInFrames={SHOWCASE_FRAMES}
-        fps={60}
+        fps={SHOWCASE_FPS}
         width={1920}
         height={1080}
       />
@@ -18,7 +25,7 @@ export function Root() {
         id="ShowcaseHero"
         component={ShowcaseHero}
         durationInFrames={HERO_FRAMES}
-        fps={30}
+        fps={HERO_FPS}
         width={1280}
         height={720}
       />
