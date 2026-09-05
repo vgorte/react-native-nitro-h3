@@ -14,8 +14,8 @@ import { colours, glass, type } from '../theme/tokens'
 /** The gap at which the JS thread has missed a frame and the readout says so. */
 export const BLOCKED_THRESHOLD_MS = 16
 
-/** Milliseconds between two beats of the JS-side interval. */
-const BEAT_MS = 16
+/** Milliseconds of one frame, which is how old a beat is at rest. */
+const FRAME_MS = 16
 
 const PANEL_WIDTH = 208
 const PANEL_HEIGHT = 58
@@ -42,8 +42,8 @@ export function resetWorstGap(): void {
 /**
  * Reports how far the JS thread is behind the wall clock, drawn entirely on the UI thread.
  *
- * A JS-side interval writes the clock into a shared value; the UI thread compares it with its own
- * clock every frame, so both the sweep and the numbers keep moving while the JS thread is blocked.
+ * A JS-side frame callback writes the clock into a shared value; the UI thread compares it with
+ * its own clock every frame, so both the sweep and the numbers keep moving while the JS thread is blocked.
  * The panel owns its own small surface, because Skia replays a whole canvas whenever one shared
  * value in it changes and these two change every frame.
  */
@@ -55,11 +55,15 @@ export function BlockedReadout() {
   const gap = useSharedValue(0)
   const sweep = useSharedValue(0)
 
+  // a repeating timer under a frame skips frames on Android, a frame callback never does
   useEffect(() => {
-    const timer = setInterval(() => {
+    let handle = 0
+    const tick = () => {
       beat.value = Date.now()
-    }, BEAT_MS)
-    return () => clearInterval(timer)
+      handle = requestAnimationFrame(tick)
+    }
+    handle = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(handle)
   }, [beat])
 
   useFrameCallback(() => {
@@ -71,8 +75,8 @@ export function BlockedReadout() {
   })
 
   const label = useDerivedValue(() =>
-    // the beat is one period old at rest, so a beat of slack keeps jitter quiet
-    gap.value - BEAT_MS > BLOCKED_THRESHOLD_MS
+    // the beat is one frame old at rest, so a frame of slack keeps jitter quiet
+    gap.value - FRAME_MS > BLOCKED_THRESHOLD_MS
       ? `JS thread blocked ${gap.value.toFixed(0)} ms`
       : 'JS thread free',
   )
