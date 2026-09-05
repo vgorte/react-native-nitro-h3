@@ -150,8 +150,8 @@ const PRINT_WIDTH = 268
 const SLIDER_WIDTH = 168
 // the coarsest resolution whose cell still reads as a fraction of a square kilometre
 const KM2_FLOOR_RES = 9
-// clears the licence line, which stands over the blocked readout at the other edge
-const CONTROL_BOTTOM = 136
+// clears the blocked readout, which stands over the licence line at the bottom edge
+const CONTROL_BOTTOM = BLOCKED_READOUT_BAND + 12
 // the head is a dot the size of a fingertip's centre, in points
 const HEAD_RADIUS_PT = 5
 

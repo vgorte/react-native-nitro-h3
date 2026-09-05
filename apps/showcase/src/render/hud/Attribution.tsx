@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View } from 'react-native'
+import { Platform, StyleSheet, Text, View } from 'react-native'
 import { colours, type } from '../../theme/tokens'
 
 /** Configures {@linkcode Attribution}. */
@@ -9,11 +9,17 @@ export interface AttributionProps {
   loaded?: boolean
 }
 
-// clears the blocked readout, which stands 58 pt tall 48 pt off the bottom, and the bar under it
-const LINE_BOTTOM = 114
+// there is no safe-area provider, so the bottom inset is per platform: the home indicator on
+// iPhone, the gesture bar on Android
+const LINE_BOTTOM = Platform.select({ ios: 42, default: 34 })
+// the line has no leading of its own, and the band below has to be a number
+const LINE_HEIGHT = 14
+
+/** Points the licence line takes along the bottom edge, which the rest of the stack sits above. */
+export const ATTRIBUTION_BAND = LINE_BOTTOM + LINE_HEIGHT
 
 /**
- * Draws the basemap's licence line along the bottom edge, above the blocked readout.
+ * Draws the basemap's licence line along the very bottom edge, under the blocked readout.
  *
  * The credit stands whatever `loaded` says: the style is fetched twice, once here and once by the
  * map itself, and the map's own fetch can be served from its cache after this one has failed, so a
@@ -38,6 +44,7 @@ const styles = StyleSheet.create({
   },
   line: {
     ...type.label,
+    lineHeight: LINE_HEIGHT,
     color: colours.muted,
   },
 })

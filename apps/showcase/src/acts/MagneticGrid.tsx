@@ -50,8 +50,8 @@ const BERLIN: CameraAnchor = { lat: 52.52, lng: 13.405 }
 const PANEL_TOP = 104
 const PRINT_WIDTH = 268
 const SLIDER_WIDTH = 200
-// clears the blocked readout, which stands on the same line at the other edge
-const CONTROL_BOTTOM = 118
+// clears the blocked readout, which stands over the licence line at the bottom edge
+const CONTROL_BOTTOM = BLOCKED_READOUT_BAND + 12
 // a scale this far from the one the act wrote can only have come from the visitor's own pinch
 const PINCH_TOLERANCE = 0.002
 

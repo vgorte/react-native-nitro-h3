@@ -40,7 +40,7 @@ import {
   withoutBranch,
 } from '../engine/fractal'
 import { formatAreaKm2, formatCount, formatMs } from '../engine/stats'
-import { resetWorstGap } from '../render/BlockedReadout'
+import { BLOCKED_READOUT_BAND, resetWorstGap } from '../render/BlockedReadout'
 import { CellPictures, type CellScene, disposeCellScene } from '../render/CellPictures'
 import { EngineCanvas } from '../render/EngineCanvas'
 import {
@@ -99,8 +99,8 @@ const BERLIN: CameraAnchor = { lat: 52.52, lng: 13.405 }
 const LONG_PRESS_MS = 400
 const PANEL_TOP = 104
 const PRINT_WIDTH = 268
-// clears the blocked readout, which stands on the same line at the other edge
-const CONTROL_BOTTOM = 118
+// clears the blocked readout, which stands over the licence line at the bottom edge
+const CONTROL_BOTTOM = BLOCKED_READOUT_BAND + 12
 // the control has nothing to open on until a cell is in focus
 const DISABLED_OPACITY = 0.4
 

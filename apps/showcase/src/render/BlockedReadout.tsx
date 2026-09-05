@@ -10,6 +10,7 @@ import {
 } from 'react-native-reanimated'
 import { fontAssets, fontFamily } from '../theme/fonts'
 import { colours, glass, type } from '../theme/tokens'
+import { ATTRIBUTION_BAND } from './hud/Attribution'
 
 /** The gap at which the JS thread has missed a frame and the readout says so. */
 export const BLOCKED_THRESHOLD_MS = 16
@@ -20,9 +21,10 @@ const FRAME_MS = 16
 const PANEL_WIDTH = 208
 const PANEL_HEIGHT = 58
 const PANEL_MARGIN = 16
-const PANEL_BOTTOM = 48
+// the licence line owns the bottom edge, so the readout stands one gap above its band
+const PANEL_BOTTOM = ATTRIBUTION_BAND + 8
 
-/** Points the readout takes along the bottom edge, which an act framing above it has to clear. */
+/** Points the licence line and the readout take together, which an act framing above them clears. */
 export const BLOCKED_READOUT_BAND = PANEL_BOTTOM + PANEL_HEIGHT
 const TEXT_INSET = 14
 const SWEEP_WIDTH = 32

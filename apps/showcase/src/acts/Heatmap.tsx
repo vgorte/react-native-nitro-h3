@@ -67,7 +67,7 @@ import {
 } from '../engine/settings'
 import { formatCount, formatMs } from '../engine/stats'
 import { yieldToLoop } from '../engine/yield'
-import { BlockedReadout, resetWorstGap } from '../render/BlockedReadout'
+import { BLOCKED_READOUT_BAND, BlockedReadout, resetWorstGap } from '../render/BlockedReadout'
 import { type Basemap, loadBasemap, PLAIN_BASEMAP } from '../render/basemap'
 import { type CellScene, disposeCellScene, drawCellScene } from '../render/CellPictures'
 import { bucketsOfCounts } from '../render/heatColours'
@@ -169,8 +169,8 @@ const OPENING: InitialViewState = {
 }
 
 const PANEL_TOP = 104
-// clears the licence line, which stands over the blocked readout at the other edge
-const CONTROL_BOTTOM = 136
+// clears the blocked readout, which stands over the licence line at the bottom edge
+const CONTROL_BOTTOM = BLOCKED_READOUT_BAND + 12
 
 const PIXEL_RATIO = PixelRatio.get()
 
