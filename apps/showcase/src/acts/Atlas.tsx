@@ -22,6 +22,7 @@ import {
   coverage,
   LIVE_REBUILD_MS,
   liveRebuildDue,
+  type MovingView,
   noteFrame,
   noWait,
   openWait,
@@ -72,7 +73,7 @@ const PRINT_WIDTH = 268
 const NOTES = [
   'the classic path: cells become a GeoJSON string the renderer parses; the Skia acts skip this step',
   'the applied rows run to the last frame the map drew for it, basemap tiles it fetched included',
-  `the grid follows the gesture: a rebuild at most every ${LIVE_REBUILD_MS} ms while the map moves, and one more where it settles`,
+  `the grid follows the gesture: a rebuild at most every ${LIVE_REBUILD_MS} ms while the map moves, one more where it settles, and the applied row times that last one`,
   'a tap hands the map one cell of its own, which it draws sooner than a filter over the whole set',
 ]
 
@@ -138,13 +139,18 @@ function openingView(): InitialViewState {
   return { center: [last.centre.lng, last.centre.lat], zoom: Math.min(MAX_START_ZOOM, zoom) }
 }
 
+/** Answers what the moving rule reads off a map view: its centre, and the act's own zoom. */
+function movingView(view: ViewState): MovingView {
+  return { center: view.center, zoom: view.zoom + ZOOM_OFFSET }
+}
+
 /**
  * Draws the same cells as the Skia acts on a MapLibre basemap, the way a map stack takes them.
  *
  * A rebuild walks the grid around the view centre, turns the boundaries into one GeoJSON string
- * and hands that to a `GeoJSONSource`: a map still under the finger asks for one at most every
- * {@linkcode LIVE_REBUILD_MS}, and the settle asks for the last. The HUD keeps the H3 calls and
- * the two costs the classic path adds apart, because the second pair is what this act shows.
+ * and hands that to a `GeoJSONSource`: a map that is still moving asks for one at most every
+ * {@linkcode LIVE_REBUILD_MS}, and the settle asks for the last, which is the one the applied row
+ * times. The HUD keeps the H3 calls and the two costs the classic path adds apart.
  */
 export function Atlas({ active, inspected, onInspect }: ActProps) {
   const map = useRef<MapRef>(null)
@@ -174,17 +180,19 @@ export function Atlas({ active, inspected, onInspect }: ActProps) {
       })
   }, [active, opening])
 
-  const rebuild = useCallback((view: ViewState): void => {
+  const rebuild = useCallback((view: ViewState, live = false): void => {
     const [lng, lat] = view.center
     // the store keeps the app's own zoom, so a later act reads it the way the projection does
-    rememberMapPosition({ centre: { lat, lng }, zoom: view.zoom + ZOOM_OFFSET })
-    const res = resolutionForZoom(view.zoom + ZOOM_OFFSET, lat, getHexagonEdgeLengthAvgM)
+    const zoom = view.zoom + ZOOM_OFFSET
+    rememberMapPosition({ centre: { lat, lng }, zoom })
+    const res = resolutionForZoom(zoom, lat, getHexagonEdgeLengthAvgM)
     const k = coverage(view, res, getHexagonEdgeLengthAvgM)
     const centre = latLngToCell(lat, lng, res)
-    // a view the cap turns away is one the next moving view is measured against all the same
+    // a disk the cap turns away is still what the next moving view is measured against
     walked.current = { res, centre, at: performance.now() }
     const disk = diskAround(centre, k)
     const cells = disk.value
+    // coverage holds k under the cap, so this turns away only a disk sized somewhere else
     if (cells.length > ATLAS_CELL_CAP) return
 
     const patched = patchBuckets(cells, res, PATCH_CALLS)
@@ -206,31 +214,36 @@ export function Atlas({ active, inspected, onInspect }: ActProps) {
     // a settle that lands on the same cells hands the map nothing, so it opens no wait
     const changed = scene.current === null || scene.current.data !== json.value
     scene.current = next
-    if (changed) openWait(mapWait.current, performance.now())
+    if (changed && !live) openWait(mapWait.current, performance.now())
     setBuilt(next)
+    // the throttle is the JS thread's breather, so it runs from the end of a walk and not its start
+    walked.current.at = performance.now()
   }, [])
 
   const settle = useCallback(
     (event: NativeSyntheticEvent<ViewStateChangeEvent>): void => {
+      // a map that settles off screen has no frame to close the wait it would open
+      if (!active) return
       rebuild(event.nativeEvent)
     },
-    [rebuild],
+    [active, rebuild],
   )
 
   const moving = useCallback(
     (event: NativeSyntheticEvent<ViewStateChangeEvent>): void => {
+      // the first scene is the loaded path's, which opens the wait the applied row reports
+      if (!active || scene.current === null) return
       const view = event.nativeEvent
-      const reading = { center: view.center, zoom: view.zoom + ZOOM_OFFSET }
       const due = liveRebuildDue(
         walked.current,
-        reading,
+        movingView(view),
         performance.now(),
         getHexagonEdgeLengthAvgM,
         latLngToCell,
       )
-      if (due) rebuild(view)
+      if (due) rebuild(view, true)
     },
-    [rebuild],
+    [active, rebuild],
   )
 
   const loaded = useCallback((): void => {

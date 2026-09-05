@@ -1,19 +1,19 @@
 import type { LatLng } from 'react-native-nitro-h3'
 
-/** Holds the centre and the zoom an act's map last came to rest at. */
+/** Holds the centre and the zoom an act's map camera last stood at. */
 export interface MapPosition {
   centre: LatLng
   zoom: number
 }
 
-let settled: MapPosition | null = null
+let stood: MapPosition | null = null
 
-/** Records where a map settled, so a later act can open on the same ground. */
+/** Records where a map's camera stands, so a later act can open on the same ground. */
 export function rememberMapPosition(position: MapPosition): void {
-  settled = position
+  stood = position
 }
 
-/** Answers where a map last settled, or `null` before any act has settled once. */
+/** Answers where a map's camera last stood, or `null` before any act has shown one. */
 export function lastMapPosition(): MapPosition | null {
-  return settled
+  return stood
 }

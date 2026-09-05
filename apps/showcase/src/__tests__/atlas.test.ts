@@ -11,6 +11,7 @@ import {
   QUIET_MS,
   type ViewExtent,
 } from '../engine/atlas'
+import { resolutionForZoom } from '../engine/projection'
 
 // the average edge of a resolution, an aperture of seven below the resolution 0 average
 const EDGE_M = (res: number) => 1_107_712.591 / 7 ** (res / 2)
@@ -86,8 +87,19 @@ describe('liveRebuildDue', () => {
   const standing = () => CENTRE
   const built = { res: 9, centre: CENTRE, at: NOW }
 
-  test('asks for a scene while the map holds none', () => {
-    const due = liveRebuildDue(null, { center: BERLIN, zoom: RES_9_ZOOM }, NOW, EDGE_M, standing)
+  test('stands on the resolutions the zooms beside it answer', () => {
+    expect(resolutionForZoom(RES_9_ZOOM, BERLIN[1], EDGE_M)).toBe(9)
+    expect(resolutionForZoom(RES_10_ZOOM, BERLIN[1], EDGE_M)).toBe(10)
+  })
+
+  test('asks for a scene while the map holds none, however young the clock is', () => {
+    const due = liveRebuildDue(
+      null,
+      { center: BERLIN, zoom: RES_9_ZOOM },
+      LIVE_REBUILD_MS - 1,
+      EDGE_M,
+      standing,
+    )
 
     expect(due).toBe(true)
   })
