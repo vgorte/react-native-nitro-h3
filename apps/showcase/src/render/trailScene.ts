@@ -14,6 +14,8 @@ const INSET = 0.08
 export interface TrailScene {
   scene: CellScene
   cells: number
+  /** The cell the trail ended in, which is where the head reads on this recording. */
+  head: bigint | null
   /** What `cellsToBoundaries` took. */
   boundariesMs: number
   /** What the projection, the mesh and the recording took. */
@@ -44,6 +46,7 @@ export function buildTrailScene(trail: readonly TrailStep[], anchor: CameraAncho
   return {
     scene: recordCellScene(mesh, projected.bounds, null),
     cells: trail.length,
+    head: trail[trail.length - 1]?.cell ?? null,
     boundariesMs: boundaries.ms,
     meshMs: performance.now() - started,
   }

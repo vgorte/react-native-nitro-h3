@@ -15,6 +15,41 @@ export const AGE_SPAN = 600
 /** Cells the opening frame fits across the narrow side of the viewport. */
 export const TRAIL_CELLS_ACROSS = 20
 
+/** How much faster than the recording the time lapse plays the route. */
+export const TIME_LAPSE_PACE = 60
+
+/** The pace a replay keeps when it plays the route the way it was ridden. */
+export const RECORDED_PACE = 1
+
+/**
+ * Cells the time lapse fits across the narrow side, wide enough to hold the tail behind the head.
+ *
+ * At {@linkcode TIME_LAPSE_PACE} a ride recorded at 8 m/s covers about 480 m a second, so a frame
+ * this wide takes the head about three seconds to cross at {@linkcode MAX_TRAIL_RES}.
+ */
+export const TIME_LAPSE_CELLS_ACROSS = 60
+
+/**
+ * Milliseconds a replay lets pass between two renders, which is what one timer tick is worth.
+ *
+ * At the recorded pace a fix arrives every second and a tick holds one of them. A time lapse packs
+ * a tick full instead, and the whole batch reaches the trail in a single pass. The camera is put on
+ * the new head once a tick, and the map draws about a frame for each, so a longer tick reads as a
+ * coarser follow and a shorter one only crowds the thread.
+ */
+export const REPLAY_TICK_MS = 100
+
+/** Milliseconds one step of the time-lapse follow runs for, and how far ahead of the head it aims. */
+export const CAMERA_STEP_MS = 500
+
+/**
+ * The share of a step after which the next one is issued, so the camera is never left standing.
+ *
+ * A step that is allowed to land waits for the timer that follows it, and an image render can hold
+ * that timer for most of a frame budget; the overlap keeps one glide running into the next.
+ */
+export const CAMERA_STEP_LEAD = 0.8
+
 // the fraction of the ramp a filled cell may reach, so a grid-path cell reads under a measured one
 const FILLED_BAND = 0.5
 
@@ -109,6 +144,74 @@ export const FIX_HISTORY = 4_000
  */
 export function capFixes(fixes: TrailFix[], span: number): void {
   if (fixes.length > span) fixes.splice(0, fixes.length - span)
+}
+
+/**
+ * Answers the milliseconds a replay waits between two fixes, the recorded gap divided by the pace.
+ *
+ * @param from The fix the replay last delivered.
+ * @param to The fix that comes after it.
+ * @param pace How much faster than the recording the replay runs, {@linkcode RECORDED_PACE} for
+ *   the pace it was ridden at.
+ */
+export function replayDelayMs(from: TrailFix, to: TrailFix, pace: number): number {
+  return Math.max(0, (to.t - from.t) / pace)
+}
+
+/**
+ * Counts the fixes from `index` that fall due inside one tick, never fewer than the one at `index`.
+ *
+ * A time lapse makes fixes arrive faster than a frame, and a render each would leave the JS thread
+ * no time for anything else. The whole tick's worth is taken in one pass instead, so the trail
+ * grows by a batch and React renders once; at the recorded pace a tick holds a single fix and this
+ * answers `1`.
+ *
+ * @param route The recorded route, oldest fix first.
+ * @param index The fix the replay stands on.
+ * @param pace How much faster than the recording the replay runs.
+ * @param tickMs The tick the replay renders on, {@linkcode REPLAY_TICK_MS} in the act.
+ */
+export function fixesInTick(
+  route: readonly TrailFix[],
+  index: number,
+  pace: number,
+  tickMs: number,
+): number {
+  const first = route[index]
+  if (first === undefined) return 0
+  let count = 1
+  while (
+    index + count < route.length &&
+    replayDelayMs(first, route[index + count], pace) < tickMs
+  ) {
+    count += 1
+  }
+  return count
+}
+
+/**
+ * Answers the fix a replay will stand on `aheadMs` after the one at `index`, the last one at the end.
+ *
+ * A camera that is put on the head every time the trail grows starts a new glide before the last
+ * one has run, which reads as a stutter. A time lapse aims a step at where the head will be when
+ * the step ends instead, and this is the fix the replay will have reached by then.
+ *
+ * @param route The recorded route, oldest fix first.
+ * @param index The fix the head stands in.
+ * @param pace How much faster than the recording the replay runs.
+ * @param aheadMs Wall-clock milliseconds to look ahead, {@linkcode CAMERA_STEP_MS} in the act.
+ */
+export function fixAhead(
+  route: readonly TrailFix[],
+  index: number,
+  pace: number,
+  aheadMs: number,
+): TrailFix | undefined {
+  const from = route[index]
+  if (from === undefined) return undefined
+  let at = index
+  while (at + 1 < route.length && replayDelayMs(from, route[at + 1], pace) <= aheadMs) at += 1
+  return route[at]
 }
 
 /**

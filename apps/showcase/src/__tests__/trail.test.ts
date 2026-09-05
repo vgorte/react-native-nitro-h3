@@ -4,16 +4,27 @@ import {
   AGE_SPAN,
   bucketOfAge,
   bucketsOfTrail,
+  CAMERA_STEP_LEAD,
+  CAMERA_STEP_MS,
   capFixes,
   capTrail,
   cellsOfTrail,
   extendTrail,
   FIX_HISTORY,
   filledCells,
+  fixAhead,
+  fixesInTick,
   MAX_TRAIL_RES,
   MIN_TRAIL_RES,
   pathOrJump,
+  RECORDED_PACE,
+  REPLAY_TICK_MS,
+  replayDelayMs,
+  TIME_LAPSE_CELLS_ACROSS,
+  TIME_LAPSE_PACE,
+  TRAIL_CELLS_ACROSS,
   TRAIL_RES,
+  type TrailFix,
   type TrailStep,
   zoomForTrail,
 } from '../engine/trail'
@@ -242,6 +253,118 @@ describe('bucketsOfTrail', () => {
   })
 })
 
+/** Answers a route of `count` fixes a second apart, which is the cadence the route was recorded at. */
+const ridden = (count: number): TrailFix[] =>
+  Array.from({ length: count }, (_, index) => ({ lat: 0, lng: 0, t: index * 1_000 }))
+
+describe('replayDelayMs', () => {
+  test('answers the recorded gap at the recorded pace', () => {
+    const route = ridden(2)
+
+    expect(replayDelayMs(route[0], route[1], RECORDED_PACE)).toBe(1_000)
+  })
+
+  test('divides the recorded gap by the pace', () => {
+    const route = ridden(2)
+
+    expect(replayDelayMs(route[0], route[1], TIME_LAPSE_PACE)).toBeCloseTo(1_000 / 60, 9)
+  })
+
+  test('holds at zero where the recording stood still or stepped back', () => {
+    const fix = { lat: 0, lng: 0, t: 5_000 }
+
+    expect(replayDelayMs(fix, fix, RECORDED_PACE)).toBe(0)
+    expect(replayDelayMs(fix, { lat: 0, lng: 0, t: 4_000 }, TIME_LAPSE_PACE)).toBe(0)
+  })
+})
+
+describe('fixesInTick', () => {
+  test('holds one fix a tick at the recorded pace', () => {
+    const route = ridden(10)
+
+    for (let index = 0; index < route.length; index++) {
+      expect(fixesInTick(route, index, RECORDED_PACE, REPLAY_TICK_MS)).toBe(1)
+    }
+  })
+
+  test('packs the tick full in a time lapse', () => {
+    const route = ridden(100)
+
+    // a fix a second at sixty times the pace is one every 16.7 ms, so six of them fit in 100
+    expect(fixesInTick(route, 0, TIME_LAPSE_PACE, REPLAY_TICK_MS)).toBe(6)
+    expect(fixesInTick(route, 0, TIME_LAPSE_PACE, 300)).toBe(18)
+  })
+
+  test('stops at the end of the route', () => {
+    const route = ridden(4)
+
+    expect(fixesInTick(route, 1, TIME_LAPSE_PACE, REPLAY_TICK_MS)).toBe(3)
+    expect(fixesInTick(route, 3, TIME_LAPSE_PACE, REPLAY_TICK_MS)).toBe(1)
+  })
+
+  test('answers nothing past the end of the route', () => {
+    expect(fixesInTick(ridden(2), 2, RECORDED_PACE, REPLAY_TICK_MS)).toBe(0)
+  })
+
+  test('takes the fix it stands on however long the gap after it is', () => {
+    const route = [
+      { lat: 0, lng: 0, t: 0 },
+      { lat: 0, lng: 0, t: 600_000 },
+    ]
+
+    expect(fixesInTick(route, 0, TIME_LAPSE_PACE, REPLAY_TICK_MS)).toBe(1)
+  })
+
+  test('walks a route the way the act does, fix for fix', () => {
+    const route = ridden(50)
+    let index = 0
+    let taken = 0
+    while (index < route.length) {
+      const batch = fixesInTick(route, index, TIME_LAPSE_PACE, REPLAY_TICK_MS)
+      taken += batch
+      index += batch
+    }
+
+    expect(taken).toBe(route.length)
+  })
+})
+
+describe('fixAhead', () => {
+  test('stands still at the recorded pace, where a step is shorter than a fix', () => {
+    const route = ridden(10)
+
+    expect(fixAhead(route, 3, RECORDED_PACE, CAMERA_STEP_MS)).toBe(route[3])
+  })
+
+  test('leads the head by the route time a step covers in a time lapse', () => {
+    const route = ridden(100)
+
+    // half a second at sixty times the pace is thirty seconds of the ride, so thirty fixes on
+    expect(fixAhead(route, 10, TIME_LAPSE_PACE, CAMERA_STEP_MS)).toBe(route[40])
+  })
+
+  test('stops on the last fix rather than running off the route', () => {
+    const route = ridden(20)
+
+    expect(fixAhead(route, 10, TIME_LAPSE_PACE, CAMERA_STEP_MS)).toBe(route[19])
+  })
+
+  test('answers nothing where the head stands past the end', () => {
+    expect(fixAhead(ridden(3), 3, TIME_LAPSE_PACE, CAMERA_STEP_MS)).toBeUndefined()
+  })
+
+  test('leads far enough that a step is issued before the one before it lands', () => {
+    const route = ridden(200)
+    const first = fixAhead(route, 0, TIME_LAPSE_PACE, CAMERA_STEP_MS)
+    // the next step goes out after the lead share of the one standing, from the head of that moment
+    const reissued = Math.round((CAMERA_STEP_MS * CAMERA_STEP_LEAD * TIME_LAPSE_PACE) / 1_000)
+    const second = fixAhead(route, reissued, TIME_LAPSE_PACE, CAMERA_STEP_MS)
+
+    expect(CAMERA_STEP_LEAD).toBeLessThan(1)
+    expect(second?.t).toBeGreaterThan(first?.t ?? 0)
+  })
+})
+
 describe('zoomForTrail', () => {
   test('fits the asked-for cells across the narrow side, less the margin', () => {
     const across = 20 * Math.sqrt(3) * EDGE_M(TRAIL_RES)
@@ -263,6 +386,20 @@ describe('zoomForTrail', () => {
     expect(zoomForTrail(HEIGHT, WIDTH, LAT, EDGE_M, TRAIL_RES)).toBe(
       zoomForTrail(WIDTH, HEIGHT, LAT, EDGE_M, TRAIL_RES),
     )
+  })
+
+  test('opens on the stretch the act frames when no cells are asked for', () => {
+    expect(zoomForTrail(WIDTH, HEIGHT, LAT, EDGE_M, TRAIL_RES)).toBe(
+      zoomForTrail(WIDTH, HEIGHT, LAT, EDGE_M, TRAIL_RES, TRAIL_CELLS_ACROSS),
+    )
+  })
+
+  test('pulls back for the time lapse, by the ratio of the two stretches', () => {
+    const opened = zoomForTrail(WIDTH, HEIGHT, LAT, EDGE_M, MAX_TRAIL_RES, TRAIL_CELLS_ACROSS)
+    const lapsed = zoomForTrail(WIDTH, HEIGHT, LAT, EDGE_M, MAX_TRAIL_RES, TIME_LAPSE_CELLS_ACROSS)
+
+    expect(lapsed).toBeLessThan(opened)
+    expect(opened - lapsed).toBeCloseTo(Math.log2(TIME_LAPSE_CELLS_ACROSS / TRAIL_CELLS_ACROSS), 6)
   })
 })
 

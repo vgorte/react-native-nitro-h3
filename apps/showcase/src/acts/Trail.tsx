@@ -44,14 +44,24 @@ import { formatCount, formatMs, formatUs } from '../engine/stats'
 import { timed } from '../engine/timed'
 import {
   AGE_SPAN,
+  CAMERA_STEP_LEAD,
+  CAMERA_STEP_MS,
   capFixes,
   capTrail,
   extendTrail,
   FIX_HISTORY,
   filledCells,
+  fixAhead,
+  fixesInTick,
   MAX_TRAIL_RES,
   MIN_TRAIL_RES,
   pathOrJump,
+  RECORDED_PACE,
+  REPLAY_TICK_MS,
+  replayDelayMs,
+  TIME_LAPSE_CELLS_ACROSS,
+  TIME_LAPSE_PACE,
+  TRAIL_CELLS_ACROSS,
   TRAIL_RES,
   type TrailFix,
   type TrailStep,
@@ -108,6 +118,16 @@ const FOLLOW_MS = 400
 /** Least time between two images of the trail, so a fast route cannot flood the JS thread. */
 const REDRAW_MS = 300
 
+/**
+ * Least time between two images while the time lapse runs.
+ *
+ * The head marks the trail that was last drawn, so this is how far behind the ride the whole scene
+ * stands, and a shorter one grows the trail in smaller steps. An image costs about 70 ms of it on
+ * the simulator, which is time the replay's own timer does not get: at 150 ms the run plays at
+ * about 41 times the recorded pace against the 60 it asks for, and at 200 ms about 48.
+ */
+const TIME_LAPSE_REDRAW_MS = 200
+
 // MapLibre counts zoom against a 512 point tile, the projection helpers against a 256 point one
 const ZOOM_OFFSET = 1
 
@@ -115,6 +135,11 @@ const RES_OPTIONS: readonly ChoiceOption<number>[] = [
   { value: MIN_TRAIL_RES, label: `${MIN_TRAIL_RES}` },
   { value: TRAIL_RES, label: `${TRAIL_RES}` },
   { value: MAX_TRAIL_RES, label: `${MAX_TRAIL_RES}` },
+]
+
+const PACE_OPTIONS: readonly ChoiceOption<number>[] = [
+  { value: RECORDED_PACE, label: 'recorded' },
+  { value: TIME_LAPSE_PACE, label: `${TIME_LAPSE_PACE}x` },
 ]
 
 const PANEL_TOP = 104
@@ -130,7 +155,7 @@ const NOTES = [
   'a fix that is not a neighbour of the head is joined with gridPathCells',
   'a fix a second lands in the same cell or a neighbour, so only a gap asks',
   'those filled cells take the lower half of the ramp, measured ones all of it',
-  'without a live location, a recorded route plays at the pace it was walked',
+  `without a live location, a recorded bicycle ride plays at its own pace or at ${TIME_LAPSE_PACE}x`,
   'the trail is one image, redrawn when the trail gains a cell',
 ]
 
@@ -185,9 +210,9 @@ function walkFix(trail: TrailStep[], fix: TrailFix, res: number): Walk {
   return { trail: capTrail(walked, AGE_SPAN), locateMs: located.ms, gap: closed.gap }
 }
 
-/** Answers the trail a whole run of fixes builds at one resolution, which a new one rebuilds. */
-function walkRoute(fixes: readonly TrailFix[], res: number): Walk {
-  let walk: Walk = { trail: [], locateMs: 0, gap: null }
+/** Walks a run of fixes onto a trail, answering what the last of them measured. */
+function walkFixes(trail: TrailStep[], fixes: readonly TrailFix[], res: number): Walk {
+  let walk: Walk = { trail, locateMs: 0, gap: null }
   for (const fix of fixes) {
     const walked = walkFix(walk.trail, fix, res)
     walk = { trail: walked.trail, locateMs: walked.locateMs, gap: walked.gap ?? walk.gap }
@@ -204,12 +229,14 @@ function walkRoute(fixes: readonly TrailFix[], res: number): Walk {
  * {@linkcode AGE_SPAN} cells and fades over them, it rides the basemap as one image the map warps
  * under a pinch and every settle redraws, the camera follows the head until the visitor takes it
  * over and the recentre control gives it back, and refusing the location plays
- * {@linkcode REPLAY_ROUTE} at the pace it was recorded.
+ * {@linkcode REPLAY_ROUTE} at the pace it was ridden or at {@linkcode TIME_LAPSE_PACE}, which
+ * pulls the camera back to {@linkcode TIME_LAPSE_CELLS_ACROSS} cells.
  */
 export function Trail({ active, inspected, onInspect }: ActProps) {
   const { width, height } = useWindowDimensions()
   const [source, setSource] = useState<Source | null>(null)
   const [res, setRes] = useState(TRAIL_RES)
+  const [pace, setPace] = useState(RECORDED_PACE)
   const [trail, setTrail] = useState<TrailStep[]>([])
   const [reading, setReading] = useState<Reading>(NOTHING)
   const [scene, setScene] = useState<TrailScene | null>(null)
@@ -240,8 +267,8 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
   // the standing trail, so a fix extends what is drawn without waiting for a render
   const held = useRef<TrailStep[]>([])
   const anchored = useRef<LatLng>(BERLIN)
-  // the resolution the act last framed for, and `null` until it has framed anything
-  const framed = useRef<number | null>(null)
+  // the resolution and the stretch the act last framed for, and `null` until it framed anything
+  const framed = useRef<string | null>(null)
   const started = useRef<number | null>(null)
   const played = useRef(0)
   // when the next replay fix is due, so a return to the act waits out the rest of that interval
@@ -288,12 +315,14 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
     [reframe],
   )
 
-  const loaded = useCallback((): void => {
+  // a glide the map is still running has not settled, so it reports no region change and the frame
+  // the image was cut for would stand where the camera left it: every redraw asks where the map is
+  const refit = useCallback((): void => {
     map.current
       ?.getViewState()
       .then(reframe)
       .catch(() => {
-        // a view state the map will not answer leaves the first frame to the next settle
+        // a view state the map will not answer leaves the frame to the next settle
       })
   }, [reframe])
 
@@ -345,19 +374,25 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
     resolution.current = res
   }, [res])
 
-  const take = useCallback((fix: TrailFix) => {
-    fixes.current.push(fix)
+  // a whole batch reaches the trail in one pass, so a time lapse costs one render rather than one
+  // a fix; a live feed hands over a batch of one
+  const take = useCallback((batch: readonly TrailFix[]) => {
+    const first = batch[0]
+    if (first === undefined) return
+    for (const fix of batch) {
+      fixes.current.push(fix)
+      counted.current += 1
+      if (RECORDING) console.log('trail fix', JSON.stringify(fix))
+    }
     capFixes(fixes.current, FIX_HISTORY)
-    counted.current += 1
-    if (RECORDING) console.log('trail fix', JSON.stringify(fix))
     // the first fix says where the act stands, and the metre frame is measured from there
-    if (counted.current === 1) {
-      anchored.current = { lat: fix.lat, lng: fix.lng }
+    if (counted.current === batch.length) {
+      anchored.current = { lat: first.lat, lng: first.lng }
       setAnchor(anchored.current)
       // the permission dialog and the first fix both hold the app, and neither gap is the act's
       resetWorstGap()
     }
-    const walked = walkFix(held.current, fix, resolution.current)
+    const walked = walkFixes(held.current, batch, resolution.current)
     held.current = walked.trail
     setTrail(walked.trail)
     setReading((before) => ({
@@ -369,7 +404,7 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
 
   // a resolution is a tiling of its own, so the whole route is walked again at the new one
   useEffect(() => {
-    const walked = walkRoute(fixes.current, res)
+    const walked = walkFixes([], fixes.current, res)
     held.current = walked.trail
     setTrail(walked.trail)
     setReading((before) => ({ ...before, locateMs: walked.locateMs, gap: walked.gap }))
@@ -403,11 +438,13 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
       (position) => {
         if (cancelled) return
         started.current ??= position.timestamp
-        take({
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-          t: position.timestamp - started.current,
-        })
+        take([
+          {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+            t: position.timestamp - started.current,
+          },
+        ])
       },
     )
       .then((opened) => {
@@ -423,7 +460,8 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
     }
   }, [active, source, take])
 
-  // the replay keeps the pace it was recorded at, and holds where it stands while the act is away
+  // the replay runs the recorded gaps divided by the pace, and holds where it stands while the act
+  // is away; a tick carries every fix due inside it, which is one at the recorded pace
   useEffect(() => {
     if (!active || source !== 'replay') return
     let timer: ReturnType<typeof setTimeout> | null = null
@@ -433,19 +471,26 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
     }
     const play = () => {
       const index = played.current
-      const fix = REPLAY_ROUTE[index]
-      if (fix === undefined) return
-      played.current = index + 1
-      take(fix)
-      const next = REPLAY_ROUTE[index + 1]
-      if (next !== undefined) schedule(Math.max(0, next.t - fix.t))
+      const first = REPLAY_ROUTE[index]
+      if (first === undefined) return
+      const batch = fixesInTick(REPLAY_ROUTE, index, pace, REPLAY_TICK_MS)
+      played.current = index + batch
+      take(REPLAY_ROUTE.slice(index, index + batch))
+      const next = REPLAY_ROUTE[index + batch]
+      // the batch is delivered at the first fix's own moment, so the next tick is measured from it
+      if (next !== undefined) schedule(replayDelayMs(first, next, pace))
     }
-    // an act that comes back mid-interval waits out the rest of it rather than jumping a fix ahead
-    schedule(Math.max(0, due.current - Date.now()))
+    const standing = REPLAY_ROUTE[played.current]
+    const before = REPLAY_ROUTE[played.current - 1]
+    // an act that comes back mid-interval waits out the rest of it rather than jumping a fix ahead,
+    // and a pace changed mid-interval cuts that wait to what the new pace holds
+    const whole =
+      standing === undefined || before === undefined ? 0 : replayDelayMs(before, standing, pace)
+    schedule(Math.min(Math.max(0, due.current - Date.now()), whole))
     return () => {
       if (timer !== null) clearTimeout(timer)
     }
-  }, [active, source, take])
+  }, [active, source, pace, take])
 
   useEffect(() => {
     if (!active) return
@@ -458,43 +503,80 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
     if (event.nativeEvent.userInteraction) setFollowing(false)
   }, [])
 
-  // the opening fix and a change of resolution both re-frame, so a cell keeps reading at the size
-  // the act opened on, unless the visitor is holding the camera
+  // a time lapse outruns a frame that holds twenty cells, so it pulls the camera back far enough
+  // for the head to take about three seconds across it and the fading tail to stand behind it
+  const across = pace === RECORDED_PACE ? TRAIL_CELLS_ACROSS : TIME_LAPSE_CELLS_ACROSS
+  // a time lapse leads the head on its own steps rather than being put on it fix by fix
+  const leading = source === 'replay' && pace !== RECORDED_PACE
+
+  // the opening fix and a change of resolution or pace all re-frame, so a cell keeps reading at the
+  // size the act opened on, unless the visitor is holding the camera
   useEffect(() => {
     const head = trail[trail.length - 1]
     if (head === undefined) return
+    const frame = `${res}/${across}`
     const opening = framed.current === null
-    if (opening || (following && framed.current !== res)) {
-      framed.current = res
+    if (opening || (following && framed.current !== frame)) {
+      framed.current = frame
       const zoom =
-        zoomForTrail(width, height, anchored.current.lat, getHexagonEdgeLengthAvgM, res) -
+        zoomForTrail(width, height, anchored.current.lat, getHexagonEdgeLengthAvgM, res, across) -
         ZOOM_OFFSET
       centreOn(head.cell, zoom, opening ? 0 : FOLLOW_MS)
       return
     }
-    if (following) centreOn(head.cell, undefined, FOLLOW_MS)
-  }, [trail, following, res, width, height, centreOn])
+    if (following && !leading) centreOn(head.cell, undefined, FOLLOW_MS)
+  }, [trail, following, leading, res, across, width, height, centreOn])
+
+  // at sixty times the pace the trail grows ten times a second, and a camera put on each new head
+  // cuts the glide it was running short: the map lands on the stop and stands there until the next
+  // one, which reads as a stutter. The time lapse runs one glide at a time instead, linear over
+  // `CAMERA_STEP_MS` onto the fix the replay will have reached by the end of it, and the step after
+  // it is issued before it lands so the camera holds its velocity across an image render
+  useEffect(() => {
+    if (!active || !leading || !following) return
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const step = () => {
+      const ahead = fixAhead(REPLAY_ROUTE, Math.max(0, played.current - 1), pace, CAMERA_STEP_MS)
+      if (ahead !== undefined) {
+        move({
+          center: [ahead.lng, ahead.lat],
+          duration: CAMERA_STEP_MS,
+          easing: 'linear',
+          padding,
+        })
+      }
+      timer = setTimeout(step, CAMERA_STEP_MS * CAMERA_STEP_LEAD)
+    }
+    // the pace change re-frames first, and the steps take the camera over once that glide is done
+    timer = setTimeout(step, FOLLOW_MS)
+    return () => {
+      if (timer !== null) clearTimeout(timer)
+    }
+  }, [active, leading, following, pace, move, padding])
 
   // the offscreen draw, the PNG encode and the write are one block of the JS thread, so a walk
-  // that crosses a cell a second gets one image every `REDRAW_MS` carrying the trail it ended on; a
-  // re-anchor moves the metre frame under the image and is drawn at once
+  // that crosses a cell a second gets one image every `REDRAW_MS` carrying the trail it ended on,
+  // and a time lapse one every `TIME_LAPSE_REDRAW_MS`; a re-anchor moves the metre frame under the
+  // image and is drawn at once
   useEffect(() => {
     if (trail.length === 0) {
       setScene(null)
       return
     }
+    const every = leading ? TIME_LAPSE_REDRAW_MS : REDRAW_MS
     const build = (): void => {
+      refit()
       drawn.current = { at: performance.now(), anchor }
       setScene(buildTrailScene(trail, anchor))
     }
     const waited = performance.now() - drawn.current.at
-    if (drawn.current.anchor !== anchor || waited >= REDRAW_MS) {
+    if (drawn.current.anchor !== anchor || waited >= every) {
       build()
       return
     }
-    const timer = setTimeout(build, REDRAW_MS - waited)
+    const timer = setTimeout(build, every - waited)
     return () => clearTimeout(timer)
-  }, [trail, anchor])
+  }, [trail, anchor, leading, refit])
 
   // a tap opens the sheet on the cell under it, and lands on the ground where the trail is not
   const press = useCallback(
@@ -513,10 +595,13 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
 
   useDisposed(scene, disposeTrailScene)
 
-  const head = useMemo<LatLng | null>(() => {
-    const last = trail[trail.length - 1]
-    return last === undefined ? null : cellToLatLng(last.cell)
-  }, [trail])
+  // the dot marks the head of the trail that is on screen, not the fix the act has since taken: a
+  // time lapse walks several cells between two images, and a dot on the newest fix would run ahead
+  // of the cells behind it
+  const head = useMemo<LatLng | null>(
+    () => (scene?.head == null ? null : cellToLatLng(scene.head)),
+    [scene],
+  )
 
   const draw = useCallback(
     (canvas: SkCanvas): void => {
@@ -557,7 +642,7 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
           onPress={press}
           onRegionWillChange={grabbed}
           onRegionDidChange={settle}
-          onDidFinishLoadingMap={loaded}
+          onDidFinishLoadingMap={refit}
         >
           <Camera ref={camera} initialViewState={opening} />
           {frame === null ? null : (
@@ -636,6 +721,10 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
           <View style={styles.control}>
             <Panel align="right">
               <Choice label="resolution" options={RES_OPTIONS} value={res} onChange={setRes} />
+              {/* a live feed arrives at the pace the visitor moves, so only a replay has one to set */}
+              {source !== 'replay' ? null : (
+                <Choice label="pace" options={PACE_OPTIONS} value={pace} onChange={setPace} />
+              )}
               <Pressable
                 style={[styles.button, following ? null : styles.away]}
                 onPress={() => setFollowing(true)}
