@@ -23,19 +23,31 @@ describe('tokens', () => {
     expect(bucketOfCount(32, 1, 1000, 16)).toBeGreaterThan(bucketOfCount(4, 1, 1000, 16))
   })
 
-  test('anchors the darkest step at the quietest count and the brightest at the busiest', () => {
+  test('anchors the first step at the low count and the top step at the high one', () => {
     expect(bucketOfCount(400, 400, 10_000, 16)).toBe(0)
     expect(bucketOfCount(10_000, 400, 10_000, 16)).toBe(15)
     expect(bucketOfCount(2_000, 400, 10_000, 16)).toBe(8)
   })
 
-  test('takes a count of nothing to the empty step, whatever the range is', () => {
+  test('clamps the counts outside the anchors onto the two end steps', () => {
+    expect(bucketOfCount(50, 400, 10_000, 16)).toBe(0)
+    expect(bucketOfCount(40_000, 400, 10_000, 16)).toBe(15)
+  })
+
+  test('takes a count of nothing to the empty step, whatever the anchors are', () => {
     expect(bucketOfCount(0, 400, 10_000, 16)).toBe(0)
     expect(bucketOfCount(0, 1, 1, 16)).toBe(0)
   })
 
-  test('takes every counted cell to the top step where the range is one count wide', () => {
+  test('takes every counted cell to the top step where the anchors meet', () => {
     expect(bucketOfCount(550, 550, 550, 16)).toBe(15)
     expect(bucketOfCount(1, 1, 1, 16)).toBe(15)
+  })
+
+  test('places a run measured at resolution 7 between its own quantiles', () => {
+    // a million points at resolution 7 on the simulator: 547 cells, p25 410, p99 10,457
+    expect(bucketOfCount(410, 410, 10_457, 16)).toBe(0)
+    expect(bucketOfCount(1_074, 410, 10_457, 16)).toBe(4)
+    expect(bucketOfCount(11_887, 410, 10_457, 16)).toBe(15)
   })
 })

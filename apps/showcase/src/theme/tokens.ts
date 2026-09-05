@@ -41,22 +41,22 @@ export const BUCKETS = 16
 export const CELL_FILL_OPACITY = 0.12
 
 /**
- * Answers the ramp bucket of a count on a logarithmic scale over the range `low` to `max`.
+ * Answers the ramp bucket of a count on a logarithmic scale between the anchors `low` and `high`.
  *
- * Counts are heavy at the low end, so a linear ramp leaves every cell at the darkest stop; a set
- * with a floor under it fills the bright end instead, which is why the scale is anchored at `low`.
+ * Counts are heavy at the low end, so a linear ramp leaves every cell at the darkest stop. The two
+ * anchors are quantiles of the run rather than its extremes, so a thin tail cannot pull them apart.
  *
  * @param count Points in the cell, `0` where none landed in it.
- * @param low The quietest counted cell, which the ramp's darkest step stands for.
- * @param max The busiest counted cell, which the ramp's brightest step stands for.
+ * @param low The lower anchor; every cell at or below it takes the first step.
+ * @param high The upper anchor; every cell at or above it takes the last step.
  * @param buckets Steps the ramp is cut into, which the caller takes from the theme.
  */
-export function bucketOfCount(count: number, low: number, max: number, buckets: number): number {
+export function bucketOfCount(count: number, low: number, high: number, buckets: number): number {
   if (count <= 0) return 0
   const anchor = Math.max(1, low)
-  // a set whose counted cells all hold the same number has no range to spread, so it is all hot
-  if (max <= anchor) return buckets - 1
-  const position = Math.log(count / anchor) / Math.log(max / anchor)
+  // anchors a single count apart have nothing to spread, so every counted cell is hot
+  if (high <= anchor) return buckets - 1
+  const position = Math.log(count / anchor) / Math.log(high / anchor)
   return Math.min(buckets - 1, Math.max(0, Math.round(position * (buckets - 1))))
 }
 

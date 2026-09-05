@@ -13,7 +13,7 @@ import {
   UNIFORM_SHARE,
 } from '../engine/points'
 import { bucketsOfCounts, heatPalette } from '../render/heatColours'
-import { colours, ramp } from '../theme/tokens'
+import { bucketOfCount, colours, ramp } from '../theme/tokens'
 
 const BUCKETS = 16
 
@@ -148,9 +148,21 @@ describe('servesRun', () => {
   })
 })
 
+/** Builds counts of the shape a million points reach at resolution 7: a thin tail under a bulk. */
+function resolution7Shape(): Uint32Array {
+  const counts: number[] = []
+  // the fringe of the sample box, where a cell catches a sliver of the uniform share
+  for (let cell = 0; cell < 30; cell++) counts.push(1 + (cell % 3))
+  // the bulk, which is what has to spread instead of crowding the bright end
+  for (let cell = 0; cell < 450; cell++) counts.push(200 + Math.round(cell * 6.4))
+  // the hotspots, up to the busiest cell the device measured
+  for (let cell = 0; cell < 67; cell++) counts.push(3_200 + Math.round(cell * 130))
+  return Uint32Array.from(counts)
+}
+
 describe('bucketsOfCounts', () => {
-  test('takes the busiest cell to the brightest step and a single point to the darkest', () => {
-    const buckets = bucketsOfCounts(new Uint32Array([1, 200]), 1, 200, BUCKETS)
+  test('takes the busiest cells to the brightest step and the quiet quarter to the first', () => {
+    const buckets = bucketsOfCounts(new Uint32Array([1, 200]), 200, BUCKETS)
 
     expect(buckets[0]).toBe(0)
     expect(buckets[1]).toBe(BUCKETS - 1)
@@ -158,7 +170,7 @@ describe('bucketsOfCounts', () => {
 
   test('never falls as the count rises, and answers one bucket per cell', () => {
     const counts = new Uint32Array([1, 2, 5, 17, 60, 240, 1_000])
-    const buckets = bucketsOfCounts(counts, 1, 1_000, BUCKETS)
+    const buckets = bucketsOfCounts(counts, 1_000, BUCKETS)
 
     expect(buckets).toHaveLength(counts.length)
     for (let cell = 1; cell < buckets.length; cell++) {
@@ -166,36 +178,45 @@ describe('bucketsOfCounts', () => {
     }
   })
 
-  test('spreads the low counts a linear ramp would leave at the darkest step', () => {
-    const buckets = bucketsOfCounts(new Uint32Array([2, 8, 32]), 1, 1_000_000, BUCKETS)
+  test('takes every cell to the top step where the two anchors meet', () => {
+    const buckets = bucketsOfCounts(new Uint32Array([550, 550, 550, 550]), 550, BUCKETS)
 
-    expect(Array.from(buckets)).toEqual([1, 2, 4])
+    expect(Array.from(buckets)).toEqual(new Array(4).fill(BUCKETS - 1))
   })
 
-  test('keeps the look of a run whose quietest cell holds one point', () => {
-    const counts = new Uint32Array([1, 3, 11, 47, 260])
-    const anchored = bucketsOfCounts(counts, 1, 260, BUCKETS)
+  test('reproduces the mapping from one point where the anchors are one and the maximum', () => {
+    const counts = new Uint32Array(100)
+    for (let cell = 0; cell < 30; cell++) counts[cell] = 1
+    for (let cell = 30; cell < 98; cell++) counts[cell] = Math.round((cell - 29) * 14.5)
+    counts[98] = 1_000
+    counts[99] = 1_000
 
-    expect(Array.from(anchored)).toEqual([0, 3, 6, 10, 15])
-  })
+    const buckets = bucketsOfCounts(counts, 1_000, BUCKETS)
 
-  test('spreads a run with a floor over the whole ramp', () => {
-    // the resolution 7 case: a uniform floor of hundreds and hotspots an order above it
-    const counts = new Uint32Array([420, 900, 2_100, 4_800, 10_400])
-    const buckets = bucketsOfCounts(counts, 420, 10_400, BUCKETS)
-
-    expect(buckets[0]).toBe(0)
-    expect(buckets[buckets.length - 1]).toBe(BUCKETS - 1)
-    // the same counts anchored at one point crowd into the top six steps, which is the old look
-    for (const bucket of bucketsOfCounts(counts, 1, 10_400, BUCKETS)) {
-      expect(bucket).toBeGreaterThanOrEqual(10)
+    for (let cell = 0; cell < counts.length; cell++) {
+      expect(
+        Math.abs(buckets[cell] - bucketOfCount(counts[cell], 1, 1_000, BUCKETS)),
+      ).toBeLessThanOrEqual(1)
     }
   })
 
-  test('takes every cell to the top step where one count is the whole range', () => {
-    const buckets = bucketsOfCounts(new Uint32Array([550, 550]), 550, 550, BUCKETS)
+  test('spreads the bulk of a resolution 7 shape the old anchors crowded at the bright end', () => {
+    const counts = resolution7Shape()
+    const max = counts.reduce((busiest, count) => Math.max(busiest, count), 0)
 
-    expect(Array.from(buckets)).toEqual([BUCKETS - 1, BUCKETS - 1])
+    const buckets = bucketsOfCounts(counts, max, BUCKETS)
+
+    // the tail sits on the first step and the busiest percent on the last, as the anchors say
+    expect(buckets[0]).toBe(0)
+    expect(buckets[buckets.length - 1]).toBe(BUCKETS - 1)
+    // every step of the ramp carries cells, where anchoring at one point left eleven of them used
+    expect(new Set(buckets).size).toBe(BUCKETS)
+    const anchoredAtOne = Array.from(counts, (count) => bucketOfCount(count, 1, max, BUCKETS))
+    expect(new Set(anchoredAtOne).size).toBeLessThan(12)
+    // and it left the whole bulk above the middle of the ramp, which is the flat look
+    for (let cell = 30; cell < counts.length; cell++) {
+      expect(anchoredAtOne[cell]).toBeGreaterThanOrEqual(8)
+    }
   })
 })
 

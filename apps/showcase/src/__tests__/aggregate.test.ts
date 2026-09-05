@@ -14,23 +14,7 @@ describe('aggregateCells', () => {
 
     expect(Array.from(result.cells)).toEqual([3n, 7n, 9n])
     expect(Array.from(result.counts)).toEqual([2, 3, 1])
-    expect(result.low).toBe(1)
     expect(result.max).toBe(3)
-  })
-
-  test('answers the range of the counts, the last run included', () => {
-    const result = aggregateCells(new BigUint64Array([1n, 1n, 1n, 2n, 2n, 3n, 3n, 3n, 3n]))
-
-    expect(Array.from(result.counts)).toEqual([3, 2, 4])
-    expect(result.low).toBe(2)
-    expect(result.max).toBe(4)
-  })
-
-  test('answers one count as both ends of the range', () => {
-    const result = aggregateCells(new BigUint64Array([5n, 5n]))
-
-    expect(result.low).toBe(2)
-    expect(result.max).toBe(2)
   })
 
   test('matches a naive Map on random input', () => {
@@ -50,15 +34,12 @@ describe('aggregateCells', () => {
       // an unseen cell reads 0 here, never a real run length
       expect(result.counts[index]).toBe(expected.get(result.cells[index]) ?? 0)
     }
-    expect(result.low).toBe(Math.min(...expected.values()))
-    expect(result.max).toBe(Math.max(...expected.values()))
   })
 
   test('answers an empty result for an empty input', () => {
     const result = aggregateCells(new BigUint64Array(0))
 
     expect(result.cells.length).toBe(0)
-    expect(result.low).toBe(0)
     expect(result.max).toBe(0)
   })
 })

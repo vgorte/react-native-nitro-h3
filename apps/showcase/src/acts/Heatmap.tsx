@@ -202,7 +202,7 @@ interface Run {
   coloursMs: number
   boundariesMs: number
   meshMs: number
-  /** Points in the busiest cell, which the ramp's brightest step stands for. */
+  /** Points in the busiest cell of the run, whatever quantile the ramp is anchored at. */
   busiest: number
   done: boolean
 }
@@ -532,14 +532,9 @@ export function Heatmap({ active }: ActProps) {
     cells = null
 
     const coloured = performance.now()
-    // the ramp spans the run's own range, so a resolution whose cells all hold hundreds of points
-    // still reads as a pattern rather than as one flat step near the bright end
-    let buckets: Uint8Array | null = bucketsOfCounts(
-      aggregate.counts,
-      aggregate.low,
-      busiest,
-      BUCKETS,
-    )
+    // the anchors are quantiles of this run's own counts, so the window holds the histogram that
+    // finds them as well as the ramp it spreads between them
+    let buckets: Uint8Array | null = bucketsOfCounts(aggregate.counts, busiest, BUCKETS)
     const coloursMs = performance.now() - coloured
 
     const heat = buildHeatScene(aggregate.cells, buckets, CENTRE)

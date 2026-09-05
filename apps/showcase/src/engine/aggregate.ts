@@ -1,12 +1,7 @@
-/**
- * Holds the distinct cells of a set in ascending order with the number of times each occurred.
- *
- * `low` and `max` are the quietest and the busiest of those counts, the range a ramp is spread over.
- */
+/** Holds the distinct cells of a set in ascending order with the number of times each occurred. */
 export interface Aggregate {
   cells: BigUint64Array
   counts: Uint32Array
-  low: number
   max: number
 }
 
@@ -18,7 +13,7 @@ export interface Aggregate {
  */
 export function aggregateCells(cells: BigUint64Array): Aggregate {
   if (cells.length === 0) {
-    return { cells: new BigUint64Array(0), counts: new Uint32Array(0), low: 0, max: 0 }
+    return { cells: new BigUint64Array(0), counts: new Uint32Array(0), max: 0 }
   }
 
   cells.sort()
@@ -29,33 +24,28 @@ export function aggregateCells(cells: BigUint64Array): Aggregate {
 
   let distinct = 0
   let run = 0
-  // no run is longer than the set, so the first one that ends already lowers this
-  let low = cells.length
   let max = 0
   for (let index = 0; index < cells.length; index++) {
-    const lowWord = words[index * 2]
-    const highWord = words[index * 2 + 1]
+    const low = words[index * 2]
+    const high = words[index * 2 + 1]
     const first = index === 0
     const same =
       !first &&
-      lowWord === uniqueWords[(distinct - 1) * 2] &&
-      highWord === uniqueWords[(distinct - 1) * 2 + 1]
+      low === uniqueWords[(distinct - 1) * 2] &&
+      high === uniqueWords[(distinct - 1) * 2 + 1]
     if (same) {
       run += 1
     } else {
-      // only a run that has ended is counted in full, which is what the range is measured on
-      if (!first && run < low) low = run
-      uniqueWords[distinct * 2] = lowWord
-      uniqueWords[distinct * 2 + 1] = highWord
+      uniqueWords[distinct * 2] = low
+      uniqueWords[distinct * 2 + 1] = high
       distinct += 1
       run = 1
     }
     counts[distinct - 1] = run
     if (run > max) max = run
   }
-  if (run < low) low = run
 
-  return { cells: unique.subarray(0, distinct), counts: counts.subarray(0, distinct), low, max }
+  return { cells: unique.subarray(0, distinct), counts: counts.subarray(0, distinct), max }
 }
 
 /** Answers whether a cell stands in an ascending set, by halving the range it could be in. */
