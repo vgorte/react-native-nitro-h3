@@ -27,6 +27,30 @@ export function featureCollection(features: readonly string[]): string {
 }
 
 /**
+ * Answers the bytes a string takes as UTF-8, which is what a payload is measured in.
+ *
+ * A JavaScript string is counted in UTF-16 units, so its length is the byte count only while every
+ * character is ASCII; this walks it instead, which costs a pass but allocates nothing beside the
+ * string it is already holding.
+ *
+ * @param text The string to measure.
+ */
+export function utf8Length(text: string): number {
+  let bytes = 0
+  for (let at = 0; at < text.length; at++) {
+    const code = text.charCodeAt(at)
+    if (code < 0x80) bytes += 1
+    else if (code < 0x800) bytes += 2
+    else if (code >= 0xd800 && code <= 0xdbff && at + 1 < text.length) {
+      // a surrogate pair is one character of four bytes, and its low half is stepped over
+      bytes += 4
+      at += 1
+    } else bytes += 3
+  }
+  return bytes
+}
+
+/**
  * Writes a block of coordinates as the point features of a collection, comma separated.
  *
  * The block is written in one pass, without an object per point, because a million features is the

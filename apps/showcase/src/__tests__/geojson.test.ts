@@ -1,7 +1,12 @@
 import { describe, expect, test } from 'bun:test'
 import type { FeatureCollection, Point, Polygon, Position } from 'geojson'
 import type { CellBoundaries } from 'react-native-nitro-h3'
-import { cellsToFeatureCollection, featureCollection, pointFeatures } from '../engine/geojson'
+import {
+  cellsToFeatureCollection,
+  featureCollection,
+  pointFeatures,
+  utf8Length,
+} from '../engine/geojson'
 
 const STRIDE = 20
 
@@ -218,5 +223,24 @@ describe('pointFeatures and featureCollection', () => {
 
     expect(collection.type).toBe('FeatureCollection')
     expect(collection.features).toHaveLength(0)
+  })
+})
+
+describe('utf8Length', () => {
+  test('counts one byte a character for the ASCII a point collection is written in', () => {
+    const written = featureCollection([pointFeatures(Float64Array.from([52.5, 13.4]))])
+
+    expect(utf8Length(written)).toBe(written.length)
+  })
+
+  test('counts what a character takes in UTF-8 rather than what it takes in the string', () => {
+    expect(utf8Length('é')).toBe(2)
+    expect(utf8Length('€')).toBe(3)
+    expect(utf8Length('𝄞')).toBe(4)
+    expect(utf8Length('a€𝄞')).toBe(8)
+  })
+
+  test('answers nothing for a string of nothing', () => {
+    expect(utf8Length('')).toBe(0)
   })
 })

@@ -6,6 +6,7 @@ import {
   cellsInRings,
   gridReads,
   MAX_K,
+  MIN_BAND,
   MIN_K,
   OPEN_K,
   RING_PERIOD,
@@ -135,8 +136,9 @@ describe('bandHeight', () => {
     expect(bandHeight(1000, 600, 106)).toBeGreaterThan(bandHeight(874, 600, 106))
   })
 
-  test('answers nothing where the panel reaches the readout', () => {
-    expect(bandHeight(874, 800, 106)).toBe(0)
+  test('answers the floor where the panel reaches the readout, so a disk still has a frame', () => {
+    expect(bandHeight(874, 800, 106)).toBe(MIN_BAND)
+    expect(bandHeight(200, 800, 106)).toBe(MIN_BAND)
   })
 })
 

@@ -15,8 +15,8 @@ export const POINT_ALPHA = 0.35
 // a point is one point wide on screen, whatever the image is drawn at
 const POINT_WIDTH_PT = 1
 
-/** Points one `drawPoints` call takes, the widest batch the call indexes in one draw. */
-export const POINT_BATCH = 65_535
+// points one `drawPoints` call takes, the widest batch the call indexes in one draw
+const POINT_BATCH = 65_535
 
 /**
  * Answers the paint the raw points are drawn with, in the image's own pixels.

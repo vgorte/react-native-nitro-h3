@@ -210,6 +210,8 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
   const [basemap, setBasemap] = useState<Basemap | null>(null)
   const [frame, setFrame] = useState<ImageFrame | null>(null)
   const [imageMs, setImageMs] = useState<number | null>(null)
+  // what a render that answered no image said, which stands in the row the time would have taken
+  const [imageFailed, setImageFailed] = useState<string | null>(null)
   // the coordinate the scene's metre space is measured from, which the first fix sets
   const [anchor, setAnchor] = useState<LatLng>(BERLIN)
   // the opening frame is written once; every frame after it comes from a camera stop
@@ -283,7 +285,12 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
       })
   }, [reframe])
 
-  const rendered = useCallback((ms: number): void => setImageMs(ms), [])
+  const rendered = useCallback((ms: number): void => {
+    setImageFailed(null)
+    setImageMs(ms)
+  }, [])
+
+  const failed = useCallback((reason: string): void => setImageFailed(reason), [])
 
   // an act off screen gives its map back: a third live one costs the Skia acts their canvas on
   // Android, and the fix that comes while the act is away frames the camera again on its return
@@ -527,7 +534,13 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
         >
           <Camera ref={camera} initialViewState={opening} />
           {frame === null ? null : (
-            <SceneImage id="trail-scene" frame={frame} draw={draw} onRendered={rendered} />
+            <SceneImage
+              id="trail-scene"
+              frame={frame}
+              draw={draw}
+              onRendered={rendered}
+              onFailed={failed}
+            />
           )}
           {/* what the inspected cell stands between, in the order the Skia acts draw them */}
           <GeoJSONSource id="trail-neighbours" data={highlight?.neighbours ?? EMPTY_COLLECTION}>
@@ -583,8 +596,9 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
               <Row label="mesh" value={scene === null ? '-' : formatMs(scene.meshMs)} />
               <Row
                 label="image"
-                call="Skia offscreen + encode"
-                value={imageMs === null ? '-' : formatMs(imageMs)}
+                call="Skia offscreen + encode + write"
+                value={imageFailed ?? (imageMs === null ? '-' : formatMs(imageMs))}
+                tone={imageFailed === null ? 'text' : 'contrast'}
               />
               <Row label="camera" value={following ? 'on the head' : 'yours'} tone="muted" />
               <View style={styles.print}>

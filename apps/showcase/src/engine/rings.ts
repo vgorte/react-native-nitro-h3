@@ -75,18 +75,26 @@ function diskSpanM(rings: number, lat: number, edgeLengthM: EdgeLengthM): number
 }
 
 /**
+ * The narrowest band a disk is framed in, so a panel that covers the screen still leaves a scene.
+ *
+ * A band of nothing scales a disk to nothing, which would leave the act blank rather than crowded;
+ * at the floor the disk is drawn small and runs under the panel, which is the lesser of the two.
+ */
+export const MIN_BAND = 120
+
+/**
  * Answers the open band a disk is framed in, between the panel's lower edge and the readout's top.
  *
  * The expanded panel's height is set by what it says rather than by the viewport, so the band is
  * measured rather than taken as a fraction of the screen; a panel that reaches the readout leaves
- * no band at all.
+ * the floor {@linkcode MIN_BAND} names.
  *
  * @param height The viewport height in points.
  * @param panelBottom The lower edge of the HUD panel, in points from the top.
  * @param readoutBand Points the blocked readout takes along the bottom edge.
  */
 export function bandHeight(height: number, panelBottom: number, readoutBand: number): number {
-  return Math.max(0, height - readoutBand - panelBottom)
+  return Math.max(MIN_BAND, height - readoutBand - panelBottom)
 }
 
 /**

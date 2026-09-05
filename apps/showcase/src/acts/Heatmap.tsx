@@ -24,7 +24,7 @@ import type { Aggregate } from '../engine/aggregate'
 import { aggregateCells } from '../engine/aggregate'
 import { closeWait, noteFrame, noWait, openWait, type Wait } from '../engine/atlas'
 import { cellsFromPoints } from '../engine/cells'
-import { featureCollection, pointFeatures } from '../engine/geojson'
+import { featureCollection, pointFeatures, utf8Length } from '../engine/geojson'
 import {
   frameMatrix,
   type ImageFrame,
@@ -67,7 +67,7 @@ import { Metric } from '../render/hud/Metric'
 import { Panel } from '../render/hud/Panel'
 import { Row } from '../render/hud/Row'
 import { EMPTY_COLLECTION } from '../render/inspectSources'
-import { drawPoints, pointsPaint } from '../render/pointsPicture'
+import { drawPoints, POINT_ALPHA, pointsPaint } from '../render/pointsPicture'
 import { SceneImage } from '../render/SceneImage'
 import { BUCKETS, colours, glass, type } from '../theme/tokens'
 import type { ActProps } from './types'
@@ -109,12 +109,12 @@ const RAW_OPTIONS: readonly ChoiceOption<PointsMode>[] = [
 ]
 
 const POINT_RADIUS = 1.5
-const POINT_OPACITY = 0.35
 
+// the two paths draw the same speck, so the circle layer takes the alpha the image points carry
 const POINT_CIRCLE: NonNullable<CircleLayerSpecification['paint']> = {
   'circle-radius': POINT_RADIUS,
   'circle-color': colours.contrast,
-  'circle-opacity': POINT_OPACITY,
+  'circle-opacity': POINT_ALPHA,
 }
 
 /** Seconds the native path is given to draw its points before the run counts as not finished. */
@@ -155,6 +155,7 @@ const NOTES = [
   'the cells and points are one image, redrawn on settle',
   `${formatCount(POINTS_MAX)} drawn; all 915,000 cost 429 ms`,
   'or the points draw as a circle layer of their own',
+  'native at a million: a 115 MB string killed the emulator',
 ]
 
 /** Holds what one run has measured, a field per stage, filled in as the stages finish. */
@@ -188,6 +189,12 @@ const NOTHING: Run = {
   meshMs: 0,
   busiest: 0,
   done: false,
+}
+
+/** Names the geometry the cell count picked: the strip up to the ceiling, the inset above it. */
+function gridOf(scene: HeatScene | null): string {
+  if (scene === null) return '-'
+  return scene.outlined ? 'outline strip' : 'inset cells'
 }
 
 /** Carries a run's cancellation, and whether it got far enough to leave a scene standing. */
@@ -240,6 +247,10 @@ export function Heatmap({ active }: ActProps) {
   const [basemap, setBasemap] = useState<Basemap | null>(null)
   const [frame, setFrame] = useState<ImageFrame | null>(null)
   const [imageMs, setImageMs] = useState<number | null>(null)
+  // what a render that answered no image said, which stands in the row the time would have taken
+  const [imageFailed, setImageFailed] = useState<string | null>(null)
+  // the wait on the map drawing the image it was handed, from the url to the frames stopping
+  const [handoverMs, setHandoverMs] = useState<number | null>(null)
 
   const map = useRef<MapRef>(null)
   // the run standing on screen, so paging back to the act does not rebuild what it already holds
@@ -253,6 +264,8 @@ export function Heatmap({ active }: ActProps) {
   // the wait on the map drawing the native points, which ends where its frames stop
   const nativeWait = useRef<Wait>(noWait())
   const nativeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // the wait on the map drawing the scene image, which stands beside the native one
+  const imageWait = useRef<Wait>(noWait())
 
   // the act reaches for the basemap only once it has been opened, and keeps it afterwards
   useEffect(() => {
@@ -299,7 +312,15 @@ export function Heatmap({ active }: ActProps) {
       })
   }, [reframe])
 
-  const rendered = useCallback((ms: number): void => setImageMs(ms), [])
+  // the handover starts where the url is handed over, which is the moment the render reports
+  const rendered = useCallback((ms: number): void => {
+    setImageFailed(null)
+    setImageMs(ms)
+    setHandoverMs(null)
+    openWait(imageWait.current, performance.now())
+  }, [])
+
+  const failed = useCallback((reason: string): void => setImageFailed(reason), [])
 
   /** Stops the guard that watches for a map which never draws what the native path handed it. */
   const stopGuard = useCallback((): void => {
@@ -308,7 +329,9 @@ export function Heatmap({ active }: ActProps) {
   }, [])
 
   const drew = useCallback((): void => {
-    noteFrame(nativeWait.current, performance.now(), (ms) => {
+    const at = performance.now()
+    noteFrame(imageWait.current, at, setHandoverMs)
+    noteFrame(nativeWait.current, at, (ms) => {
       stopGuard()
       setApplied(formatMs(ms))
     })
@@ -337,7 +360,8 @@ export function Heatmap({ active }: ActProps) {
       const data = featureCollection(parts)
       ms += performance.now() - closed
 
-      setNative({ data, ms, bytes: data.length })
+      // the byte count is walked outside the window, so it costs the string's time nothing
+      setNative({ data, ms, bytes: utf8Length(data) })
       setApplied(null)
       openWait(nativeWait.current, performance.now())
       stopGuard()
@@ -366,10 +390,12 @@ export function Heatmap({ active }: ActProps) {
     if (!active) {
       stopGuard()
       closeWait(nativeWait.current)
+      closeWait(imageWait.current)
     }
     return () => {
       stopGuard()
       closeWait(nativeWait.current)
+      closeWait(imageWait.current)
     }
   }, [active, stopGuard])
 
@@ -519,9 +545,13 @@ export function Heatmap({ active }: ActProps) {
     [frame, scene, projected, paint],
   )
 
-  // every control answers through the one rule, so no control can leave a state the row cannot show
+  // every control of the run answers through the one rule, so none of them can leave a state the
+  // rows cannot show; the two display choices carry no run of their own and stand outside it
   const change = useCallback((made: Change) => setSettings((held) => nextSettings(held, made)), [])
   const pushed = isPushed(settings)
+
+  // a fallback takes the mode back to the image, so the rows the attempt filled stay with it
+  const nativeShown = raw === 'native' || native !== null || applied !== null
 
   /** Reads a stage off the run, which only a finished run has measured. */
   const stage = (of: (run: Run) => string): string => (run?.done === true ? of(run) : '-')
@@ -540,12 +570,17 @@ export function Heatmap({ active }: ActProps) {
           touchPitch={false}
           onRegionDidChange={settle}
           onDidFinishLoadingMap={loaded}
-          // the map stays mounted off screen, where a frame it draws has no wait to report
-          onDidFinishRenderingFrameFully={active ? drew : undefined}
+          onDidFinishRenderingFrameFully={drew}
         >
           <Camera initialViewState={OPENING} />
           {frame === null ? null : (
-            <SceneImage id="heat-scene" frame={frame} draw={draw} onRendered={rendered} />
+            <SceneImage
+              id="heat-scene"
+              frame={frame}
+              draw={draw}
+              onRendered={rendered}
+              onFailed={failed}
+            />
           )}
           {/* the same points the classic way: one feature each, drawn by the map itself */}
           <GeoJSONSource
@@ -589,6 +624,7 @@ export function Heatmap({ active }: ActProps) {
                 label="busiest cell"
                 value={stage((of) => `${formatCount(of.busiest)} points`)}
               />
+              <Row label="grid" value={gridOf(scene)} tone="muted" />
               {/* each path answers its own rows, so no row of the other one stands empty */}
               {raw === 'native' ? null : (
                 <Row
@@ -604,10 +640,13 @@ export function Heatmap({ active }: ActProps) {
               )}
               <Row
                 label="image"
-                call="Skia offscreen + encode"
-                value={imageMs === null ? '-' : formatMs(imageMs)}
+                call="Skia offscreen + encode + write"
+                value={imageFailed ?? (imageMs === null ? '-' : formatMs(imageMs))}
+                tone={imageFailed === null ? 'text' : 'contrast'}
               />
-              {raw !== 'native' ? null : (
+              <Row label="image applied" value={handoverMs === null ? '-' : formatMs(handoverMs)} />
+              {/* the last native attempt keeps its rows after a fallback, which is its measurement */}
+              {!nativeShown ? null : (
                 <>
                   <Row
                     label="points, GeoJSON string"

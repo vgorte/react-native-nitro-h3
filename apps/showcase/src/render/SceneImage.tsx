@@ -29,9 +29,14 @@ export interface SceneImageProps {
    * does.
    */
   draw: (canvas: SkCanvas) => void
-  /** Reports what the offscreen draw and the encode took, in milliseconds. */
+  /** Reports what the offscreen draw, the encode and the write took, in milliseconds. */
   onRendered: (ms: number) => void
+  /** Reports a render that answered no image, so the act says so rather than losing its tree. */
+  onFailed: (reason: string) => void
 }
+
+// the counter stands outside the component, so a remount never writes over a url the map has seen
+let renders = 0
 
 /** Files kept on disk, so the map is never handed a url whose file the next render has removed. */
 const KEPT_FILES = 2
@@ -62,18 +67,23 @@ function renderScene(frame: ImageFrame, draw: (canvas: SkCanvas) => void, name: 
   const surface = Skia.Surface.MakeOffscreen(frame.width, frame.height)
   if (surface === null) throw new Error(`no offscreen surface of ${frame.width}x${frame.height}`)
 
-  const canvas = surface.getCanvas()
-  canvas.clear(Skia.Color('#00000000'))
-  draw(canvas)
-  surface.flush()
+  let bytes: Uint8Array
+  try {
+    const canvas = surface.getCanvas()
+    canvas.clear(Skia.Color('#00000000'))
+    draw(canvas)
+    surface.flush()
 
-  const snapshot = surface.makeImageSnapshot()
-  // the encoder cannot read a texture from the offscreen context
-  const image = snapshot.makeNonTextureImage() ?? snapshot
-  const bytes = image.encodeToBytes(ImageFormat.PNG)
-  if (image !== snapshot) snapshot.dispose()
-  image.dispose()
-  surface.dispose()
+    const snapshot = surface.makeImageSnapshot()
+    // the encoder cannot read a texture from the offscreen context
+    const image = snapshot.makeNonTextureImage() ?? snapshot
+    bytes = image.encodeToBytes(ImageFormat.PNG)
+    if (image !== snapshot) snapshot.dispose()
+    image.dispose()
+  } finally {
+    // a draw that throws leaves the surface behind otherwise, which is the heaviest handle here
+    surface.dispose()
+  }
 
   const file = new File(Paths.cache, name)
   file.create({ overwrite: true })
@@ -89,27 +99,34 @@ function renderScene(frame: ImageFrame, draw: (canvas: SkCanvas) => void, name: 
  * replaces it. The standing image keeps the map until the new one has been written, so nothing
  * ever flashes empty.
  */
-export function SceneImage({ id, frame, draw, onRendered }: SceneImageProps) {
+export function SceneImage({ id, frame, draw, onRendered, onFailed }: SceneImageProps) {
   const [carried, setCarried] = useState<Carried | null>(null)
   // the written files, oldest first, which the component owns for as long as it stands
   const written = useRef<string[]>([])
-  const renders = useRef(0)
-  const report = useRef(onRendered)
+  const report = useRef({ onRendered, onFailed })
 
   useEffect(() => {
-    report.current = onRendered
-  }, [onRendered])
+    report.current = { onRendered, onFailed }
+  }, [onRendered, onFailed])
 
   useEffect(() => {
-    renders.current += 1
-    const rendered = renderScene(frame, draw, `${id}-${renders.current}.png`)
+    renders += 1
+    let rendered: Rendered
+    try {
+      rendered = renderScene(frame, draw, `${id}-${renders}.png`)
+    } catch (error: unknown) {
+      // a surface that cannot be made or a file that cannot be written leaves the map its last
+      // image, which is a stale scene rather than an act that has fallen over
+      report.current.onFailed(error instanceof Error ? error.message : 'no image')
+      return
+    }
     written.current.push(rendered.url)
     while (written.current.length > KEPT_FILES) {
       const stale = written.current.shift()
       if (stale !== undefined) discard(stale)
     }
     setCarried({ url: rendered.url, coordinates: cornersOf(frame) })
-    report.current(rendered.ms)
+    report.current.onRendered(rendered.ms)
   }, [id, frame, draw])
 
   // an act taken off the pager leaves nothing of its own behind in the cache directory
