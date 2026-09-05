@@ -150,7 +150,7 @@ describe('servesRun', () => {
 
 describe('bucketsOfCounts', () => {
   test('takes the busiest cell to the brightest step and a single point to the darkest', () => {
-    const buckets = bucketsOfCounts(new Uint32Array([1, 200]), 200, BUCKETS)
+    const buckets = bucketsOfCounts(new Uint32Array([1, 200]), 1, 200, BUCKETS)
 
     expect(buckets[0]).toBe(0)
     expect(buckets[1]).toBe(BUCKETS - 1)
@@ -158,7 +158,7 @@ describe('bucketsOfCounts', () => {
 
   test('never falls as the count rises, and answers one bucket per cell', () => {
     const counts = new Uint32Array([1, 2, 5, 17, 60, 240, 1_000])
-    const buckets = bucketsOfCounts(counts, 1_000, BUCKETS)
+    const buckets = bucketsOfCounts(counts, 1, 1_000, BUCKETS)
 
     expect(buckets).toHaveLength(counts.length)
     for (let cell = 1; cell < buckets.length; cell++) {
@@ -167,9 +167,35 @@ describe('bucketsOfCounts', () => {
   })
 
   test('spreads the low counts a linear ramp would leave at the darkest step', () => {
-    const buckets = bucketsOfCounts(new Uint32Array([2, 8, 32]), 1_000_000, BUCKETS)
+    const buckets = bucketsOfCounts(new Uint32Array([2, 8, 32]), 1, 1_000_000, BUCKETS)
 
     expect(Array.from(buckets)).toEqual([1, 2, 4])
+  })
+
+  test('keeps the look of a run whose quietest cell holds one point', () => {
+    const counts = new Uint32Array([1, 3, 11, 47, 260])
+    const anchored = bucketsOfCounts(counts, 1, 260, BUCKETS)
+
+    expect(Array.from(anchored)).toEqual([0, 3, 6, 10, 15])
+  })
+
+  test('spreads a run with a floor over the whole ramp', () => {
+    // the resolution 7 case: a uniform floor of hundreds and hotspots an order above it
+    const counts = new Uint32Array([420, 900, 2_100, 4_800, 10_400])
+    const buckets = bucketsOfCounts(counts, 420, 10_400, BUCKETS)
+
+    expect(buckets[0]).toBe(0)
+    expect(buckets[buckets.length - 1]).toBe(BUCKETS - 1)
+    // the same counts anchored at one point crowd into the top six steps, which is the old look
+    for (const bucket of bucketsOfCounts(counts, 1, 10_400, BUCKETS)) {
+      expect(bucket).toBeGreaterThanOrEqual(10)
+    }
+  })
+
+  test('takes every cell to the top step where one count is the whole range', () => {
+    const buckets = bucketsOfCounts(new Uint32Array([550, 550]), 550, 550, BUCKETS)
+
+    expect(Array.from(buckets)).toEqual([BUCKETS - 1, BUCKETS - 1])
   })
 })
 

@@ -18,8 +18,24 @@ describe('tokens', () => {
   })
 
   test('maps a count onto a bucket on a logarithmic scale', () => {
-    expect(bucketOfCount(1, 1000, 16)).toBe(0)
-    expect(bucketOfCount(1000, 1000, 16)).toBe(15)
-    expect(bucketOfCount(32, 1000, 16)).toBeGreaterThan(bucketOfCount(4, 1000, 16))
+    expect(bucketOfCount(1, 1, 1000, 16)).toBe(0)
+    expect(bucketOfCount(1000, 1, 1000, 16)).toBe(15)
+    expect(bucketOfCount(32, 1, 1000, 16)).toBeGreaterThan(bucketOfCount(4, 1, 1000, 16))
+  })
+
+  test('anchors the darkest step at the quietest count and the brightest at the busiest', () => {
+    expect(bucketOfCount(400, 400, 10_000, 16)).toBe(0)
+    expect(bucketOfCount(10_000, 400, 10_000, 16)).toBe(15)
+    expect(bucketOfCount(2_000, 400, 10_000, 16)).toBe(8)
+  })
+
+  test('takes a count of nothing to the empty step, whatever the range is', () => {
+    expect(bucketOfCount(0, 400, 10_000, 16)).toBe(0)
+    expect(bucketOfCount(0, 1, 1, 16)).toBe(0)
+  })
+
+  test('takes every counted cell to the top step where the range is one count wide', () => {
+    expect(bucketOfCount(550, 550, 550, 16)).toBe(15)
+    expect(bucketOfCount(1, 1, 1, 16)).toBe(15)
   })
 })

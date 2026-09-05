@@ -532,7 +532,14 @@ export function Heatmap({ active }: ActProps) {
     cells = null
 
     const coloured = performance.now()
-    let buckets: Uint8Array | null = bucketsOfCounts(aggregate.counts, busiest, BUCKETS)
+    // the ramp spans the run's own range, so a resolution whose cells all hold hundreds of points
+    // still reads as a pattern rather than as one flat step near the bright end
+    let buckets: Uint8Array | null = bucketsOfCounts(
+      aggregate.counts,
+      aggregate.low,
+      busiest,
+      BUCKETS,
+    )
     const coloursMs = performance.now() - coloured
 
     const heat = buildHeatScene(aggregate.cells, buckets, CENTRE)
