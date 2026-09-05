@@ -153,10 +153,10 @@ const PUSH_NOTE =
 /**
  * Points the image draws; above it the pass steps over as many as it has to.
  *
- * A point covers five points on screen, so the pass is bound by the pixels it fills rather than by
- * the count: 384,000 of them cost 1,955 ms a settle on the emulator, against the 162 ms the cells
- * of the same frame take. This many holds the pass near the 400 ms a settle can spend before the
- * act stops answering, and the cloud it thins was saturated at that zoom either way.
+ * The pass is bound by the pixels it fills rather than by the count, and a point covers six times
+ * the area at a city scale that it covers with the whole box in the viewport. This many cost 34 ms
+ * of the image at the box scale on the emulator and hold the pass near the 400 ms a settle can
+ * spend at the city scale, where the same points fill six times as much.
  */
 const POINTS_MAX = 80_000
 
@@ -180,7 +180,7 @@ const NOTES = [
   `above ${formatCount(OUTLINE_MAX_CELLS)} cells: no empty grid, cells go inset`,
   'the cells and points are one image, redrawn on settle',
   'the image reaches half a screen past the map',
-  `${formatCount(POINTS_MAX)} drawn; 384,000 of them cost 1,955 ms`,
+  `${formatCount(POINTS_MAX)} drawn; that pass cost 34 ms at this scale`,
   'or the points draw as a circle layer of their own',
   'native at a million: a 115 MB string killed the emulator',
   PUSH_NOTE,
@@ -696,16 +696,7 @@ export function Heatmap({ active }: ActProps) {
           {/* box-none leaves the map every touch the panel head does not take */}
           <View style={styles.panel} pointerEvents="box-none">
             <Panel collapsible collapsed={collapsed} onToggle={() => setCollapsed((held) => !held)}>
-              {/* the fine print stands where the rows do, so the folded panel is the one that
-                  carries it and neither state reaches the controls */}
-              <View>
-                <Metric value={formatCount(run?.points ?? 0)} caption="points placed" />
-                {!collapsed ? null : (
-                  <View style={styles.print}>
-                    <FinePrint notes={NOTES} />
-                  </View>
-                )}
-              </View>
+              <Metric value={formatCount(run?.points ?? 0)} caption="points placed" />
               <Row label="resolution" value={`${res}`} />
               {/* a cached run drew nothing, so its row says whose measurement it is showing */}
               <Row
