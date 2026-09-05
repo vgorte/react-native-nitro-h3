@@ -2,7 +2,7 @@ import { BlurView } from 'expo-blur'
 import { Children, type ReactNode, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { colours, glass, type } from '../../theme/tokens'
-import { PANEL_BORDER, PANEL_GAP, PANEL_PADDING } from './panelMetrics'
+import { PANEL_BORDER, PANEL_HEAD_GAP, PANEL_PADDING } from './panelMetrics'
 import { bodyRoom } from './panelRoom'
 
 /** Configures {@linkcode Panel}. */
@@ -96,7 +96,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     paddingHorizontal: 14,
     paddingVertical: PANEL_PADDING,
-    gap: PANEL_GAP,
+    gap: PANEL_HEAD_GAP,
   },
   scrim: { position: 'absolute', inset: 0, backgroundColor: glass.scrim },
   tint: { position: 'absolute', inset: 0, backgroundColor: glass.fill },

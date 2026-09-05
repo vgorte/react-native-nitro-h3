@@ -31,7 +31,7 @@ interface Anchors {
 /** Counts that keep a bin to themselves, which is every count a busy map of cells reaches. */
 const EXACT_COUNTS = 1024
 
-/** The first count above {@linkcode EXACT_COUNTS} is this power of two. */
+/** The exact counts end at this power of two. */
 const EXACT_OCTAVE = 10
 
 /** Bins one doubling of a count past the exact ones is cut into, which sets how close it lands. */
@@ -40,7 +40,7 @@ const BINS_PER_OCTAVE = 16
 /** Bins the histogram holds, enough for every count a `Uint32Array` can carry. */
 const BINS = EXACT_COUNTS + (32 - EXACT_OCTAVE) * BINS_PER_OCTAVE
 
-/** Answers the bin a count above {@linkcode EXACT_COUNTS} falls in, its doubling cut into steps. */
+/** Answers the bin a count at or past {@linkcode EXACT_COUNTS} falls in, a step of its doubling. */
 function coarseBin(count: number): number {
   const octave = 31 - Math.clz32(count)
   const step = (count >>> (octave - 4)) & (BINS_PER_OCTAVE - 1)
@@ -60,10 +60,8 @@ function countOfBin(bin: number): number {
  * Answers the counts at {@linkcode LOW_QUANTILE} and {@linkcode HIGH_QUANTILE} of the busy cells.
  *
  * A histogram of a fixed size answers both in one pass of the cells and one of the bins, which is
- * what keeps the anchors inside the window the colours row names. Counts a map of cells actually
- * reaches keep a bin each and answer exactly; a count past them lands on its bin's edge, within a
- * sixteenth of a doubling. With no cell above `0` both anchors are `1`, which leaves every cell on
- * the empty step.
+ * what keeps the anchors inside the window the colours row names. With no cell above `0` both
+ * anchors are `1`, which leaves every cell on the empty step.
  *
  * @param counts The points per cell, of which the cells of no points are left out.
  * @param max The busiest cell's count, past which no bin can hold anything.

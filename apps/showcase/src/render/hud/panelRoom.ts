@@ -1,4 +1,4 @@
-import { PANEL_BORDER, PANEL_GAP, PANEL_PADDING } from './panelMetrics'
+import { PANEL_BORDER, PANEL_HEAD_GAP, PANEL_PADDING } from './panelMetrics'
 
 /** Points a panel keeps clear of whatever stands below it. */
 export const CLEARANCE = 12
@@ -9,8 +9,7 @@ const EDGE = PANEL_BORDER + PANEL_PADDING
 /**
  * Returns the height a panel starting at `top` has before it reaches what stands at the foot.
  *
- * `foot` is how far that thing reaches up from the bottom edge, so a foot that has not been measured
- * yet leaves the panel the rest of the window.
+ * `foot` is how far that thing reaches up from the bottom edge.
  */
 export function panelRoom(windowHeight: number, top: number, foot: number): number {
   return Math.max(0, windowHeight - foot - CLEARANCE - top)
@@ -23,6 +22,6 @@ export function panelRoom(windowHeight: number, top: number, foot: number): numb
  * ends up with.
  */
 export function bodyRoom(maxHeight: number, headHeight: number): number {
-  const spent = 2 * EDGE + (headHeight === 0 ? 0 : headHeight + PANEL_GAP)
+  const spent = 2 * EDGE + (headHeight === 0 ? 0 : headHeight + PANEL_HEAD_GAP)
   return Math.max(0, maxHeight - spent)
 }

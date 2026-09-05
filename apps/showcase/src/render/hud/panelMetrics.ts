@@ -5,4 +5,4 @@ export const PANEL_BORDER = 1
 export const PANEL_PADDING = 12
 
 /** Points between the head of a panel and the body that folds under it. */
-export const PANEL_GAP = 8
+export const PANEL_HEAD_GAP = 8
