@@ -14,11 +14,18 @@ import {
   POINT_CITY_M,
   POINT_RADIUS_BOX_PT,
   POINT_RADIUS_CITY_PT,
-  pointRadiusPx,
+  pointRadiusPt,
+  pointRadiusStops,
   projectPoints,
   sampleStride,
 } from '../engine/imageLayer'
-import { mercatorToLatLng, mercatorX, mercatorY, projectCells } from '../engine/projection'
+import {
+  EARTH_RADIUS_M,
+  mercatorToLatLng,
+  mercatorX,
+  mercatorY,
+  projectCells,
+} from '../engine/projection'
 
 const BERLIN_BOUNDS = {
   ne: [13.7612, 52.6755] as [number, number],
@@ -134,19 +141,19 @@ describe('frameMetresPerPoint', () => {
   })
 })
 
-describe('pointRadiusPx', () => {
+describe('pointRadiusPt', () => {
   test('draws a point at its widest at a city scale and no wider closer in', () => {
-    expect(pointRadiusPx(POINT_CITY_M)).toBeCloseTo(POINT_RADIUS_CITY_PT, 6)
-    expect(pointRadiusPx(POINT_CITY_M / 8)).toBe(POINT_RADIUS_CITY_PT)
+    expect(pointRadiusPt(POINT_CITY_M)).toBeCloseTo(POINT_RADIUS_CITY_PT, 6)
+    expect(pointRadiusPt(POINT_CITY_M / 8)).toBe(POINT_RADIUS_CITY_PT)
   })
 
   test('draws a point at its narrowest at the scale the sample box stands at', () => {
-    expect(pointRadiusPx(POINT_BOX_M)).toBeCloseTo(POINT_RADIUS_BOX_PT, 6)
-    expect(pointRadiusPx(POINT_BOX_M * 8)).toBe(POINT_RADIUS_BOX_PT)
+    expect(pointRadiusPt(POINT_BOX_M)).toBeCloseTo(POINT_RADIUS_BOX_PT, 6)
+    expect(pointRadiusPt(POINT_BOX_M * 8)).toBe(POINT_RADIUS_BOX_PT)
   })
 
   test('shrinks as the map pulls out, one step of the ramp a zoom step', () => {
-    const radii = [POINT_CITY_M, POINT_CITY_M * 2, POINT_CITY_M * 4, POINT_BOX_M].map(pointRadiusPx)
+    const radii = [POINT_CITY_M, POINT_CITY_M * 2, POINT_CITY_M * 4, POINT_BOX_M].map(pointRadiusPt)
 
     for (let step = 1; step < radii.length; step++) {
       expect(radii[step]).toBeLessThan(radii[step - 1])
@@ -156,7 +163,32 @@ describe('pointRadiusPx', () => {
   test('answers about a point of radius over the frame the act opens on', () => {
     const opening = imageFrameOf(BERLIN_BOUNDS, VIEWPORT, 3, 4_000_000, FRAME_PADDING)
 
-    expect(pointRadiusPx(frameMetresPerPoint(opening, VIEWPORT.width))).toBeLessThan(1.2)
+    expect(pointRadiusPt(frameMetresPerPoint(opening, VIEWPORT.width))).toBeLessThan(1.2)
+  })
+})
+
+/** Answers the Web Mercator metres a point spans at a map zoom, on the 512 point tile grid. */
+function metresAtMapZoom(zoom: number): number {
+  return (2 * Math.PI * EARTH_RADIUS_M) / (512 * 2 ** zoom)
+}
+
+describe('pointRadiusStops', () => {
+  test('ramps the circle layer over the scales the drawn points follow', () => {
+    const [boxZoom, boxRadius, cityZoom, cityRadius] = pointRadiusStops()
+
+    expect(metresAtMapZoom(boxZoom)).toBeCloseTo(POINT_BOX_M, 6)
+    expect(metresAtMapZoom(cityZoom)).toBeCloseTo(POINT_CITY_M, 6)
+    expect(boxRadius).toBeCloseTo(pointRadiusPt(metresAtMapZoom(boxZoom)), 6)
+    expect(cityRadius).toBeCloseTo(pointRadiusPt(metresAtMapZoom(cityZoom)), 6)
+  })
+
+  test('answers the two clamps, the wider one at the closer zoom', () => {
+    const [boxZoom, boxRadius, cityZoom, cityRadius] = pointRadiusStops()
+
+    expect(boxRadius).toBe(POINT_RADIUS_BOX_PT)
+    expect(cityRadius).toBe(POINT_RADIUS_CITY_PT)
+    expect(cityZoom).toBeGreaterThan(boxZoom)
+    expect(cityZoom - boxZoom).toBeCloseTo(Math.log2(POINT_BOX_M / POINT_CITY_M), 6)
   })
 })
 

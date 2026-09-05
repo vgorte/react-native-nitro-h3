@@ -8,8 +8,8 @@ import { type CellScene, recordCellScene } from './CellPictures'
 import { EMPTY_ALPHA, EMPTY_COLOUR, heatPalette } from './heatColours'
 import type { CameraAnchor } from './useCamera'
 
-/** Alpha the counted cells are drawn at, so the streets under the field still place it. */
-export const BUSY_ALPHA = 0.7
+// alpha the counted cells are drawn at, so the streets under the field still place it
+const BUSY_ALPHA = 0.7
 
 const CHUNK_SIZE = 10_000
 // three edges a cell cover a tiling of one resolution once, which halves the anti-aliasing work

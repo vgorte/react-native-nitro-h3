@@ -26,7 +26,7 @@ const POINT_BATCH = 65_535
  * a million round and smoothed specks cost more than a mark this size can show for it.
  *
  * @param pixelRatio Image pixels a point spans.
- * @param radiusPt The radius a point covers on screen, from `pointRadiusPx`.
+ * @param radiusPt The radius a point covers on screen, from `pointRadiusPt`.
  */
 export function pointsPaint(pixelRatio: number, radiusPt: number): SkPaint {
   const paint = Skia.Paint()

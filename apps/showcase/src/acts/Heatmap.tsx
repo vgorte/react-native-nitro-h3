@@ -34,11 +34,9 @@ import {
   type ImageFrame,
   imageFrameOf,
   MAX_IMAGE_PIXELS,
-  POINT_BOX_M,
-  POINT_CITY_M,
   POINT_RADIUS_BOX_PT,
-  POINT_RADIUS_CITY_PT,
-  pointRadiusPx,
+  pointRadiusPt,
+  pointRadiusStops,
   projectPoints,
   sampleStride,
 } from '../engine/imageLayer'
@@ -53,7 +51,6 @@ import {
   servesRun,
   UNIFORM_SHARE,
 } from '../engine/points'
-import { zoomForMetresPerPixel } from '../engine/projection'
 import {
   type Change,
   isPushed,
@@ -127,18 +124,10 @@ const PATH_OPTIONS: readonly ChoiceOption<PointsPath>[] = [
   { value: 'native', label: 'native' },
 ]
 
-// the two paths draw the same speck, so the circle layer follows the same two scales the image
-// points do, as the zooms a Web Mercator metre stands at
+// the two paths draw the same speck, so the circle layer ramps its radius over the stops the
+// drawn points follow, which carry the map's own zooms
 const POINT_CIRCLE: NonNullable<CircleLayerSpecification['paint']> = {
-  'circle-radius': [
-    'interpolate',
-    ['linear'],
-    ['zoom'],
-    zoomForMetresPerPixel(POINT_BOX_M, 0),
-    POINT_RADIUS_BOX_PT,
-    zoomForMetresPerPixel(POINT_CITY_M, 0),
-    POINT_RADIUS_CITY_PT,
-  ],
+  'circle-radius': ['interpolate', ['linear'], ['zoom'], ...pointRadiusStops()],
   'circle-color': POINT_COLOUR,
   'circle-opacity': POINT_ALPHA,
 }
@@ -180,7 +169,7 @@ const NOTES = [
   `above ${formatCount(OUTLINE_MAX_CELLS)} cells: no empty grid, cells go inset`,
   'the cells and points are one image, redrawn on settle',
   'the image reaches half a screen past the map',
-  `${formatCount(POINTS_MAX)} drawn; that pass cost 34 ms at this scale`,
+  `${formatCount(POINTS_MAX)} drawn; 34 ms of the image over the whole box`,
   'or the points draw as a circle layer of their own',
   'native at a million: a 115 MB string killed the emulator',
   PUSH_NOTE,
@@ -624,7 +613,7 @@ export function Heatmap({ active }: ActProps) {
         ? pointsPaint(1, POINT_RADIUS_BOX_PT)
         : pointsPaint(
             framePixelRatio(frame, width),
-            pointRadiusPx(frameMetresPerPoint(frame, width)),
+            pointRadiusPt(frameMetresPerPoint(frame, width)),
           ),
     [frame, width],
   )
@@ -693,7 +682,7 @@ export function Heatmap({ active }: ActProps) {
       )}
       {!active ? null : (
         <>
-          {/* box-none leaves the map every touch the panel head does not take */}
+          {/* box-none leaves the map every touch the head and the controls do not take */}
           <View style={styles.panel} pointerEvents="box-none">
             <Panel collapsible collapsed={collapsed} onToggle={() => setCollapsed((held) => !held)}>
               <Metric value={formatCount(run?.points ?? 0)} caption="points placed" />
@@ -781,10 +770,10 @@ export function Heatmap({ active }: ActProps) {
                 </>
               )}
             </Panel>
-            {/* the fine print stands where the rows do, so the folded panel is the one that carries
-                it; on a surface of its own it takes no touch beyond its own lines */}
+            {/* the fine print stands where the rows do, so the folded panel is the one that
+                carries it; nothing in it is interactive, so it takes no touch at all */}
             {!collapsed ? null : (
-              <View style={styles.print}>
+              <View style={styles.print} pointerEvents="none">
                 <Panel align="right">
                   <FinePrint notes={NOTES} />
                 </Panel>

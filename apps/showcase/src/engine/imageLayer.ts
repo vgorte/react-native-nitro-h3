@@ -1,6 +1,6 @@
 import type { LatLng } from 'react-native-nitro-h3'
 import type { ViewExtent } from './atlas'
-import { mercatorToLatLng, mercatorX, mercatorY } from './projection'
+import { mercatorToLatLng, mercatorX, mercatorY, zoomForMetresPerPixel } from './projection'
 
 /** Holds the ground a settle left the map standing over, in the order MapLibre answers it. */
 export interface ViewBounds {
@@ -43,6 +43,9 @@ export const POINT_RADIUS_CITY_PT = 2.5
 
 /** Radius a drawn point covers at {@linkcode POINT_BOX_M}, in points. */
 export const POINT_RADIUS_BOX_PT = 1
+
+// MapLibre counts zoom against a 512 point tile, the projection helpers against a 256 point one
+const ZOOM_OFFSET = 1
 
 /**
  * Fraction of the viewport the image reaches past it on every side.
@@ -139,7 +142,7 @@ export function frameMetresPerPoint(frame: ImageFrame, viewportWidth: number): n
  * @returns The radius in points, {@linkcode POINT_RADIUS_BOX_PT} to
  *   {@linkcode POINT_RADIUS_CITY_PT}.
  */
-export function pointRadiusPx(metresPerPoint: number): number {
+export function pointRadiusPt(metresPerPoint: number): number {
   const steps = Math.log2(POINT_BOX_M / POINT_CITY_M)
   const at = Math.log2(metresPerPoint / POINT_CITY_M) / steps
   const held = Math.min(1, Math.max(0, at))
@@ -228,4 +231,28 @@ export function projectPoints(points: Float64Array, frame: ImageFrame, out: Floa
 /** Answers how many points to step over between two drawn ones, so `maxDrawn` is never passed. */
 export function sampleStride(count: number, maxDrawn: number): number {
   return Math.max(1, Math.ceil(count / maxDrawn))
+}
+
+/** Holds the ramp a map interpolates a point's radius over: a zoom and a radius at either end. */
+export type PointRadiusStops = [
+  boxZoom: number,
+  boxRadius: number,
+  cityZoom: number,
+  cityRadius: number,
+]
+
+/**
+ * Answers the stops a map ramps a point's radius over, the same two scales the image draws at.
+ *
+ * The zooms are the map's own, one step below the ones the projection helpers count on their 256
+ * point tile grid, so a point of the circle layer covers what a point of the image covers at the
+ * same camera.
+ */
+export function pointRadiusStops(): PointRadiusStops {
+  return [
+    zoomForMetresPerPixel(POINT_BOX_M, 0) - ZOOM_OFFSET,
+    POINT_RADIUS_BOX_PT,
+    zoomForMetresPerPixel(POINT_CITY_M, 0) - ZOOM_OFFSET,
+    POINT_RADIUS_CITY_PT,
+  ]
 }
