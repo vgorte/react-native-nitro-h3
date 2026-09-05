@@ -17,8 +17,11 @@ import { type NativeSyntheticEvent, StyleSheet, View } from 'react-native'
 import { cellToString, getHexagonEdgeLengthAvgM, latLngToCell } from 'react-native-nitro-h3'
 import {
   ATLAS_CELL_CAP,
+  type BuiltScene,
   closeWait,
   coverage,
+  LIVE_REBUILD_MS,
+  liveRebuildDue,
   noteFrame,
   noWait,
   openWait,
@@ -69,6 +72,7 @@ const PRINT_WIDTH = 268
 const NOTES = [
   'the classic path: cells become a GeoJSON string the renderer parses; the Skia acts skip this step',
   'the applied rows run to the last frame the map drew for it, basemap tiles it fetched included',
+  `the grid follows the gesture: a rebuild at most every ${LIVE_REBUILD_MS} ms while the map moves, and one more where it settles`,
   'a tap hands the map one cell of its own, which it draws sooner than a filter over the whole set',
 ]
 
@@ -137,14 +141,15 @@ function openingView(): InitialViewState {
 /**
  * Draws the same cells as the Skia acts on a MapLibre basemap, the way a map stack takes them.
  *
- * Every rebuild waits for the map to settle, walks the grid around the view centre, turns the
- * boundaries into one GeoJSON string and hands that to a `GeoJSONSource`. The HUD keeps the H3
- * calls and the two costs the classic path adds apart, because the second pair is what this act
- * exists to show, and nothing here animates on its own.
+ * A rebuild walks the grid around the view centre, turns the boundaries into one GeoJSON string
+ * and hands that to a `GeoJSONSource`: a map still under the finger asks for one at most every
+ * {@linkcode LIVE_REBUILD_MS}, and the settle asks for the last. The HUD keeps the H3 calls and
+ * the two costs the classic path adds apart, because the second pair is what this act shows.
  */
 export function Atlas({ active, inspected, onInspect }: ActProps) {
   const map = useRef<MapRef>(null)
   const scene = useRef<Scene | null>(null)
+  const walked = useRef<BuiltScene | null>(null)
   const mapWait = useRef<Wait>(noWait())
   const pickWait = useRef<Wait>(noWait())
   const pickedIndex = useRef('')
@@ -175,7 +180,10 @@ export function Atlas({ active, inspected, onInspect }: ActProps) {
     rememberMapPosition({ centre: { lat, lng }, zoom: view.zoom + ZOOM_OFFSET })
     const res = resolutionForZoom(view.zoom + ZOOM_OFFSET, lat, getHexagonEdgeLengthAvgM)
     const k = coverage(view, res, getHexagonEdgeLengthAvgM)
-    const disk = diskAround(latLngToCell(lat, lng, res), k)
+    const centre = latLngToCell(lat, lng, res)
+    // a view the cap turns away is one the next moving view is measured against all the same
+    walked.current = { res, centre, at: performance.now() }
+    const disk = diskAround(centre, k)
     const cells = disk.value
     if (cells.length > ATLAS_CELL_CAP) return
 
@@ -205,6 +213,22 @@ export function Atlas({ active, inspected, onInspect }: ActProps) {
   const settle = useCallback(
     (event: NativeSyntheticEvent<ViewStateChangeEvent>): void => {
       rebuild(event.nativeEvent)
+    },
+    [rebuild],
+  )
+
+  const moving = useCallback(
+    (event: NativeSyntheticEvent<ViewStateChangeEvent>): void => {
+      const view = event.nativeEvent
+      const reading = { center: view.center, zoom: view.zoom + ZOOM_OFFSET }
+      const due = liveRebuildDue(
+        walked.current,
+        reading,
+        performance.now(),
+        getHexagonEdgeLengthAvgM,
+        latLngToCell,
+      )
+      if (due) rebuild(view)
     },
     [rebuild],
   )
@@ -271,6 +295,7 @@ export function Atlas({ active, inspected, onInspect }: ActProps) {
           touchRotate={false}
           touchPitch={false}
           onPress={press}
+          onRegionIsChanging={moving}
           onRegionDidChange={settle}
           onDidFinishLoadingMap={loaded}
           // the map stays mounted off screen, where a frame it draws has no wait to report

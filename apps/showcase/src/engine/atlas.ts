@@ -1,4 +1,4 @@
-import { DEG_TO_RAD, EARTH_RADIUS_M } from './projection'
+import { DEG_TO_RAD, EARTH_RADIUS_M, resolutionForZoom } from './projection'
 
 /** Caps the disk the map act asks for, the interactive ceiling every act shares. */
 export const ATLAS_CELL_CAP = 20_000
@@ -50,6 +50,56 @@ export function coverage(view: ViewExtent, res: number, edgeLengthM: EdgeLengthM
     EARTH_RADIUS_M * DEG_TO_RAD * Math.hypot(halfLat, halfLng * Math.cos(lat * DEG_TO_RAD))
   const spacing = CELL_SPACING * edgeLengthM(res)
   return Math.max(1, Math.min(MAX_K, Math.ceil(reach / (spacing * DISK_APOTHEM)) + 1))
+}
+
+/** Milliseconds a scene stands before a view that is still moving may ask for the next one. */
+export const LIVE_REBUILD_MS = 120
+
+/** Holds the scene a moving view is measured against: what it was walked from, and when. */
+export interface BuiltScene {
+  /** The resolution the scene was walked at. */
+  res: number
+  /** The cell the scene was centred on, at {@linkcode BuiltScene.res}. */
+  centre: bigint
+  /** The moment it was walked, on the clock the view is timed against. */
+  at: number
+}
+
+/** Holds a view in motion: where it stands, and the zoom the resolution ladder is read at. */
+export interface MovingView {
+  /** Longitude and latitude of the view centre, in degrees. */
+  center: readonly [number, number]
+  /** The zoom {@linkcode resolutionForZoom} takes, which is the map's own zoom plus its offset. */
+  zoom: number
+}
+
+/** Answers the cell a coordinate falls in, as `latLngToCell` gives it. */
+export type CellAt = (lat: number, lng: number, res: number) => bigint
+
+/**
+ * Answers whether a view that is still moving has left the scene the map holds behind.
+ *
+ * A gesture asks on every frame it draws, so the throttle is read before anything is computed and
+ * the resolution before the centre cell, which leaves the H3 call to the frames that got that far.
+ *
+ * @param built The scene the map holds, or `null` while it holds none.
+ * @param view Where the moving view stands.
+ * @param now The moment the view reported itself.
+ * @param edgeLengthM The average edge length of a resolution.
+ * @param cellAt The cell a coordinate falls in at a resolution.
+ */
+export function liveRebuildDue(
+  built: BuiltScene | null,
+  view: MovingView,
+  now: number,
+  edgeLengthM: EdgeLengthM,
+  cellAt: CellAt,
+): boolean {
+  if (built === null) return true
+  if (now - built.at < LIVE_REBUILD_MS) return false
+  const [lng, lat] = view.center
+  if (resolutionForZoom(view.zoom, lat, edgeLengthM) !== built.res) return true
+  return cellAt(lat, lng, built.res) !== built.centre
 }
 
 /**

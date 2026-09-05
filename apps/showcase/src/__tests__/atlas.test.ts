@@ -2,6 +2,8 @@ import { describe, expect, test } from 'bun:test'
 import {
   closeWait,
   coverage,
+  LIVE_REBUILD_MS,
+  liveRebuildDue,
   MAX_K,
   noteFrame,
   noWait,
@@ -70,6 +72,106 @@ describe('coverage', () => {
     const beside = viewAround(52.52, 0, 0.01)
 
     expect(coverage(across, RES, EDGE_M)).toBe(coverage(beside, RES, EDGE_M))
+  })
+})
+
+describe('liveRebuildDue', () => {
+  const NOW = 10_000
+  const BERLIN = [13.405, 52.52] as const
+  // the zooms the ladder answers 9 and 10 for, at the latitude the view stands on
+  const RES_9_ZOOM = 13
+  const RES_10_ZOOM = 14
+  const CENTRE = 0x89_1f_1d_48_88_3f_ff_ffn
+  const ELSEWHERE = 0x89_1f_1d_48_88_7f_ff_ffn
+  const standing = () => CENTRE
+  const built = { res: 9, centre: CENTRE, at: NOW }
+
+  test('asks for a scene while the map holds none', () => {
+    const due = liveRebuildDue(null, { center: BERLIN, zoom: RES_9_ZOOM }, NOW, EDGE_M, standing)
+
+    expect(due).toBe(true)
+  })
+
+  test('holds a view that has not waited the throttle out', () => {
+    const due = liveRebuildDue(
+      built,
+      { center: BERLIN, zoom: RES_10_ZOOM },
+      NOW + LIVE_REBUILD_MS - 1,
+      EDGE_M,
+      () => ELSEWHERE,
+    )
+
+    expect(due).toBe(false)
+  })
+
+  test('holds a view that stands on the built cell at the built resolution', () => {
+    const due = liveRebuildDue(
+      built,
+      { center: BERLIN, zoom: RES_9_ZOOM },
+      NOW + LIVE_REBUILD_MS,
+      EDGE_M,
+      standing,
+    )
+
+    expect(due).toBe(false)
+  })
+
+  test('asks once the view reads a resolution the scene was not walked at', () => {
+    const due = liveRebuildDue(
+      built,
+      { center: BERLIN, zoom: RES_10_ZOOM },
+      NOW + LIVE_REBUILD_MS,
+      EDGE_M,
+      standing,
+    )
+
+    expect(due).toBe(true)
+  })
+
+  test('asks once the centre stands in another cell of the built resolution', () => {
+    const due = liveRebuildDue(
+      built,
+      { center: BERLIN, zoom: RES_9_ZOOM },
+      NOW + LIVE_REBUILD_MS,
+      EDGE_M,
+      () => ELSEWHERE,
+    )
+
+    expect(due).toBe(true)
+  })
+
+  test('leaves the cell unasked where the resolution already answers', () => {
+    const asked: number[] = []
+
+    liveRebuildDue(
+      built,
+      { center: BERLIN, zoom: RES_10_ZOOM },
+      NOW + LIVE_REBUILD_MS,
+      EDGE_M,
+      (_lat, _lng, res) => {
+        asked.push(res)
+        return CENTRE
+      },
+    )
+
+    expect(asked).toEqual([])
+  })
+
+  test('asks for the centre the way H3 takes it, latitude first', () => {
+    const asked: [number, number, number][] = []
+
+    liveRebuildDue(
+      built,
+      { center: BERLIN, zoom: RES_9_ZOOM },
+      NOW + LIVE_REBUILD_MS,
+      EDGE_M,
+      (lat, lng, res) => {
+        asked.push([lat, lng, res])
+        return CENTRE
+      },
+    )
+
+    expect(asked).toEqual([[52.52, 13.405, 9]])
   })
 })
 
