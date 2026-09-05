@@ -150,12 +150,11 @@ const PIXEL_RATIO = PixelRatio.get()
 
 const NOTES = [
   'the points are synthetic: twelve hotspots over Berlin',
-  'past 100,000 points the run works in blocks',
-  'the sort and the count then run unchunked on purpose',
+  'past 100,000 the run chunks; the sort and count do not',
   'above 20,000 cells the grid comes off, cells go inset',
   'the cells and points are one image, redrawn on settle',
-  `${formatCount(POINTS_MAX)} points are drawn; drawing all 915,000 costs 429 ms`,
-  'the points go into that image, or the classic way as a circle layer of their own',
+  `${formatCount(POINTS_MAX)} drawn; all 915,000 cost 429 ms`,
+  'or the points draw as a circle layer of their own',
 ]
 
 /** Holds what one run has measured, a field per stage, filled in as the stages finish. */
@@ -590,33 +589,37 @@ export function Heatmap({ active }: ActProps) {
                 label="busiest cell"
                 value={stage((of) => `${formatCount(of.busiest)} points`)}
               />
-              <Row
-                label="points"
-                call="projectPoints"
-                value={
-                  projected === null
-                    ? '-'
-                    : `${formatCount(projected.count)} / ${formatMs(projected.ms)}`
-                }
-                tone={raw === 'image' ? 'text' : 'muted'}
-              />
+              {/* each path answers its own rows, so no row of the other one stands empty */}
+              {raw === 'native' ? null : (
+                <Row
+                  label="points"
+                  call="projectPoints"
+                  value={
+                    projected === null
+                      ? '-'
+                      : `${formatCount(projected.count)} / ${formatMs(projected.ms)}`
+                  }
+                  tone={raw === 'image' ? 'text' : 'muted'}
+                />
+              )}
               <Row
                 label="image"
                 call="Skia offscreen + encode"
                 value={imageMs === null ? '-' : formatMs(imageMs)}
               />
-              <Row
-                label="points, GeoJSON string"
-                value={
-                  native === null ? '-' : `${formatMs(native.ms)} / ${formatCount(native.bytes)}`
-                }
-                tone={raw === 'native' ? 'text' : 'muted'}
-              />
-              <Row
-                label="points applied"
-                value={applied ?? '-'}
-                tone={raw === 'native' ? 'text' : 'muted'}
-              />
+              {raw !== 'native' ? null : (
+                <>
+                  <Row
+                    label="points, GeoJSON string"
+                    value={
+                      native === null
+                        ? '-'
+                        : `${formatMs(native.ms)} / ${formatCount(native.bytes)}`
+                    }
+                  />
+                  <Row label="points applied" value={applied ?? '-'} />
+                </>
+              )}
               <View style={styles.print}>
                 <FinePrint notes={NOTES} />
               </View>
