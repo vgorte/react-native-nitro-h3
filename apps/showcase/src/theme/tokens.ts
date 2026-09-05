@@ -30,7 +30,6 @@ const tabular: FontVariant[] = ['tabular-nums']
 /** Carries the type scale: weight 200 for numbers, weight 400 for labels. */
 export const type = {
   metric: { fontFamily: fontFamily.light, fontSize: 32, fontVariant: tabular },
-  headline: { fontFamily: fontFamily.light, fontSize: 44, fontVariant: tabular },
   value: { fontFamily: fontFamily.regular, fontSize: 13, fontVariant: tabular },
   label: { fontFamily: fontFamily.regular, fontSize: 11 },
 } as const

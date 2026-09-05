@@ -4,7 +4,6 @@ import {
   cellsToLatLngs,
   cellToChildren,
   cellToParent,
-  compactCells,
   getBaseCellNumber,
   getRes0Cells,
   getResolution,
@@ -80,10 +79,6 @@ export function childrenOf(cell: bigint, res: number): Timed<BigUint64Array> {
 
 export function pathBetween(from: bigint, to: bigint): Timed<BigUint64Array> {
   return timed('gridPathCells', () => gridPathCells(from, to))
-}
-
-export function compactOf(cells: BigUint64Array): Timed<BigUint64Array> {
-  return timed('compactCells', () => compactCells(cells))
 }
 
 /** Answers every cell of the earth at a resolution, res 0 straight from the table. */

@@ -127,12 +127,12 @@ export function buildMesh(projected: ProjectedCells, options: MeshOptions): Mesh
 }
 
 /**
- * Rewrites the vertices of a built mesh from a new projection of the same cells.
+ * Writes the vertices and the triangle fans of a built mesh from a projection of its cells.
  *
- * The grouping and the triangle fans do not depend on the positions, so an animation that only
- * moves the vertices reuses the buffers {@linkcode buildMesh} allocated.
+ * Split out of {@linkcode buildMesh} so the counting pass and the writing pass read apart; the
+ * buffers are already sized when this runs.
  */
-export function fillMesh(build: MeshBuild, projected: ProjectedCells, options: MeshOptions): void {
+function fillMesh(build: MeshBuild, projected: ProjectedCells, options: MeshOptions): void {
   const { stride, points, vertexCounts, cellCount } = projected
   const { chunkSize, buckets, inset, bucketOf } = options
   const { groups } = build

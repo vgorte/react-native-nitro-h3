@@ -4,9 +4,7 @@ import {
   cullCells,
   DEG_TO_RAD,
   type GlobeView,
-  handoffCamera,
   latLngToXyz,
-  lerpPositions,
   mercatorToLatLng,
   mercatorX,
   mercatorY,
@@ -14,9 +12,7 @@ import {
   type ProjectedCells,
   project,
   projectCells,
-  projectCellsCity,
   projectCellsGlobeLocal,
-  projectCellsOrthographic,
   radiusForResolution,
   resolutionForZoom,
   rotateToView,
@@ -229,64 +225,6 @@ describe('resolutionForZoom', () => {
       expect(res).toBeGreaterThanOrEqual(previous)
       previous = res
     }
-  })
-})
-
-describe('handoff', () => {
-  // a resolution 3 sized hexagon (average edge 59,810 m) on the meridian through the view centre
-  function hexagonsNorthOf(lat: number, lng: number, steps: number): CellBoundaries {
-    const vertices = new Float64Array(steps * 20).fill(Number.NaN)
-    const vertexCounts = new Uint8Array(steps)
-    for (let cell = 0; cell < steps; cell++) {
-      const centreLat = lat + (cell * 400_000) / 111_320 / (steps - 1 || 1)
-      vertexCounts[cell] = 6
-      for (let vertex = 0; vertex < 6; vertex++) {
-        const angle = (vertex / 6) * 2 * Math.PI
-        vertices[cell * 20 + vertex * 2] = centreLat + 0.5 * Math.sin(angle)
-        vertices[cell * 20 + vertex * 2 + 1] = lng + Math.cos(angle)
-      }
-    }
-    return { stride: 20, vertices, vertexCounts }
-  }
-
-  test('keeps the two projections within 8 px of each other 100 px from the centre', () => {
-    const centre = { lat: 60, lng: 10 }
-    const globeView = {
-      lambda0: centre.lng * DEG_TO_RAD,
-      phi0: centre.lat * DEG_TO_RAD,
-      cx: 200,
-      cy: 400,
-      radius: 1595,
-    }
-    const camera = handoffCamera(globeView, centre)
-    const cells = hexagonsNorthOf(centre.lat, centre.lng, 6)
-
-    const globe = projectCellsOrthographic(cells, globeView)
-    const city = projectCellsCity(cells, camera)
-
-    let worst = 0
-    for (let slot = 0; slot < globe.length; slot += 2) {
-      if (Number.isNaN(globe[slot])) continue
-      const radius = Math.hypot(globe[slot] - globeView.cx, globe[slot + 1] - globeView.cy)
-      if (radius > 100) continue
-      worst = Math.max(
-        worst,
-        Math.hypot(globe[slot] - city[slot], globe[slot + 1] - city[slot + 1]),
-      )
-    }
-
-    expect(worst).toBeGreaterThan(0)
-    expect(worst).toBeLessThan(8)
-  })
-
-  test('interpolates positions end to end', () => {
-    const from = new Float32Array([0, 0, 10, 20])
-    const to = new Float32Array([100, 0, 10, 40])
-    const out = new Float32Array(4)
-
-    lerpPositions(from, to, 0.25, out)
-
-    expect(Array.from(out)).toEqual([25, 0, 10, 25])
   })
 })
 
