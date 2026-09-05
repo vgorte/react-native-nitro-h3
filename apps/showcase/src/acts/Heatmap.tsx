@@ -37,9 +37,11 @@ import {
   BERLIN,
   blocksOf,
   centreOf,
+  HOTSPOTS,
   type PointCache,
   pointStream,
   servesRun,
+  UNIFORM_SHARE,
 } from '../engine/points'
 import {
   type Change,
@@ -81,6 +83,7 @@ export {
   HOTSPOT_SIGMA_DEG,
   HOTSPOTS,
   OUTLINE_MAX_CELLS,
+  UNIFORM_SHARE,
 } from '../engine/points'
 
 const POINT_OPTIONS: readonly ChoiceOption<number>[] = POINT_CHOICES.map((value) => ({
@@ -149,7 +152,8 @@ const CONTROL_BOTTOM = 136
 const PIXEL_RATIO = PixelRatio.get()
 
 const NOTES = [
-  'the points are synthetic: twelve hotspots over Berlin',
+  `the points are synthetic: ${HOTSPOTS} weighted hotspots`,
+  `and ${Math.round(UNIFORM_SHARE * 100)} percent of them uniform over the box`,
   'past 100,000 the run chunks; the sort and count do not',
   'above 20,000 cells the grid comes off, cells go inset',
   'the cells and points are one image, redrawn on settle',

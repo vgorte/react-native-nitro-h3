@@ -5,26 +5,86 @@ import {
   blocksOf,
   centreOf,
   generatePoints,
+  hotspotsOf,
   type PointCache,
+  type PointMix,
   pointStream,
   servesRun,
+  UNIFORM_SHARE,
 } from '../engine/points'
-import { bucketsOfCounts } from '../render/heatColours'
+import { bucketsOfCounts, heatPalette } from '../render/heatColours'
+import { colours, ramp } from '../theme/tokens'
 
 const BUCKETS = 16
+
+// a mixture whose hotspots are points, so a drawn point is either on one of them or uniform
+const TIGHT: PointMix = { hotspots: 3, sigmaDeg: 1e-6, uniformShare: UNIFORM_SHARE }
+
+/** Answers how many of the drawn points sit on a hotspot of the mixture they were drawn from. */
+function onHotspots(points: Float64Array, centres: Float64Array): number[] {
+  const hits = new Array<number>(centres.length / 2).fill(0)
+  for (let point = 0; point < points.length; point += 2) {
+    for (let hotspot = 0; hotspot < hits.length; hotspot++) {
+      const lat = centres[hotspot * 2]
+      const lng = centres[hotspot * 2 + 1]
+      if (Math.hypot(points[point] - lat, points[point + 1] - lng) < 1e-3) hits[hotspot] += 1
+    }
+  }
+  return hits
+}
 
 const CACHE: PointCache = { seed: 3, count: 100_000, blocks: [], ms: 42 }
 
 describe('generatePoints', () => {
-  test('answers two doubles per point inside the box', () => {
-    const points = generatePoints(1_000, 7, BERLIN)
+  test('answers two doubles per point', () => {
+    expect(generatePoints(1_000, 7, BERLIN).length).toBe(2_000)
+  })
 
-    expect(points.length).toBe(2_000)
+  test('lets a hotspot scatter past the box, which is only the frame the run opens on', () => {
+    const points = generatePoints(20_000, 7, BERLIN)
+
+    let outside = 0
     for (let index = 0; index < points.length; index += 2) {
+      const out =
+        points[index] < BERLIN.south ||
+        points[index] > BERLIN.north ||
+        points[index + 1] < BERLIN.west ||
+        points[index + 1] > BERLIN.east
+      if (out) outside += 1
+    }
+    expect(outside).toBeGreaterThan(0)
+  })
+
+  test('keeps the uniform share inside the box, which is the part the box still describes', () => {
+    const { centres } = hotspotsOf(7, BERLIN, TIGHT)
+    const points = generatePoints(4_000, 7, BERLIN, TIGHT)
+
+    for (let index = 0; index < points.length; index += 2) {
+      const near = onHotspots(points.subarray(index, index + 2), centres).some((hit) => hit === 1)
+      if (near) continue
       expect(points[index]).toBeGreaterThanOrEqual(BERLIN.south)
       expect(points[index]).toBeLessThanOrEqual(BERLIN.north)
       expect(points[index + 1]).toBeGreaterThanOrEqual(BERLIN.west)
       expect(points[index + 1]).toBeLessThanOrEqual(BERLIN.east)
+    }
+  })
+
+  test('draws the uniform share away from the hotspots and the rest around them', () => {
+    const { centres } = hotspotsOf(7, BERLIN, TIGHT)
+    const points = generatePoints(20_000, 7, BERLIN, TIGHT)
+    const clustered = onHotspots(points, centres).reduce((sum, hits) => sum + hits, 0)
+
+    expect(clustered / 20_000).toBeCloseTo(1 - UNIFORM_SHARE, 2)
+  })
+
+  test('gives every hotspot the share of the points its weight stands for', () => {
+    const { centres, weights } = hotspotsOf(7, BERLIN, TIGHT)
+    const hits = onHotspots(generatePoints(20_000, 7, BERLIN, TIGHT), centres)
+    const drawn = hits.reduce((sum, hit) => sum + hit, 0)
+
+    expect(weights.length).toBe(TIGHT.hotspots)
+    for (const [hotspot, weight] of weights.entries()) {
+      expect(hits[hotspot] / drawn).toBeCloseTo(weight, 1)
     }
   })
 
@@ -110,6 +170,14 @@ describe('bucketsOfCounts', () => {
     const buckets = bucketsOfCounts(new Uint32Array([2, 8, 32]), 1_000_000, BUCKETS)
 
     expect(Array.from(buckets)).toEqual([1, 2, 4])
+  })
+})
+
+describe('heatPalette', () => {
+  test('takes the hot end to the contrast colour and leaves the cold end on the ramp', () => {
+    expect(heatPalette).toHaveLength(BUCKETS)
+    expect(heatPalette[BUCKETS - 1]).toBe(colours.contrast)
+    expect(heatPalette[0]).toBe(ramp[0].toLowerCase())
   })
 })
 

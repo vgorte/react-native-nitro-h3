@@ -1,5 +1,6 @@
 import type { LatLng } from 'react-native-nitro-h3'
-import { mercatorX, mercatorY } from './projection'
+import type { ViewExtent } from './atlas'
+import { mercatorToLatLng, mercatorX, mercatorY } from './projection'
 
 /** Holds the ground a settle left the map standing over, in the order MapLibre answers it. */
 export interface ViewBounds {
@@ -27,38 +28,71 @@ export interface ImageFrame {
  */
 export const MAX_IMAGE_PIXELS = 4_000_000
 
+/**
+ * Fraction of the viewport the image reaches past it on every side.
+ *
+ * A pan of half a screen therefore lands inside the raster that is already standing, so the scene
+ * never ends at an edge before the settle that follows has drawn the ground it moved onto.
+ */
+export const FRAME_PADDING = 0.5
+
 /** Maps Web Mercator metres relative to an anchor onto image pixels, `y` down. */
 export type FrameMatrix = [scaleX: number, scaleY: number, translateX: number, translateY: number]
 
 /**
  * Answers the image that covers a settled viewport, at the device's own pixels under a cap.
  *
- * The frame is the map's visible bounds, so the raster stays correct under a later pan or zoom:
- * MapLibre warps it in Web Mercator, which is the space it was drawn in. Past `maxPixels` the
- * whole frame shrinks uniformly, which keeps the viewport's aspect and leaves the ground alone.
+ * The frame is the map's visible bounds grown by `padding`, so the raster stays correct under a
+ * later pan or zoom: MapLibre warps it in Web Mercator, which is the space it was drawn in and the
+ * space the padding is measured in. Past `maxPixels` the whole frame shrinks uniformly, which keeps
+ * the viewport's aspect and leaves the ground alone.
  *
  * @param bounds The ground the map stands over, from the settle.
  * @param viewport The map's size in points.
  * @param pixelRatio Device pixels a point spans.
  * @param maxPixels Pixels the image may hold, above which it is drawn smaller and stretched.
+ * @param padding Fraction of the viewport the frame reaches past it on every side.
  */
 export function imageFrameOf(
   bounds: ViewBounds,
   viewport: { width: number; height: number },
   pixelRatio: number,
   maxPixels: number,
+  padding = FRAME_PADDING,
 ): ImageFrame {
-  const wide = viewport.width * pixelRatio
-  const tall = viewport.height * pixelRatio
+  // Mercator is linear in longitude, so the east and west edges are grown in degrees exactly
+  const spanLng = bounds.ne[0] - bounds.sw[0]
+  const northY = mercatorY(bounds.ne[1])
+  const southY = mercatorY(bounds.sw[1])
+  const padY = (northY - southY) * padding
+  const grown = 1 + 2 * padding
+  const wide = viewport.width * pixelRatio * grown
+  const tall = viewport.height * pixelRatio * grown
   const pixels = wide * tall
   const shrink = pixels <= maxPixels ? 1 : Math.sqrt(maxPixels / pixels)
   return {
-    west: bounds.sw[0],
-    south: bounds.sw[1],
-    east: bounds.ne[0],
-    north: bounds.ne[1],
+    west: bounds.sw[0] - spanLng * padding,
+    south: mercatorToLatLng(0, southY - padY).lat,
+    east: bounds.ne[0] + spanLng * padding,
+    north: mercatorToLatLng(0, northY + padY).lat,
     width: Math.max(1, Math.floor(wide * shrink)),
     height: Math.max(1, Math.floor(tall * shrink)),
+  }
+}
+
+/**
+ * Answers the ground a frame covers as a view extent, which a cell coverage is sized from.
+ *
+ * The centre is the middle of the frame in Web Mercator rather than in degrees, so it is the
+ * coordinate the image's own middle pixel stands over.
+ *
+ * @param frame The image the cells are covered for.
+ */
+export function frameExtent(frame: ImageFrame): ViewExtent {
+  const middle = mercatorToLatLng(0, (mercatorY(frame.north) + mercatorY(frame.south)) / 2)
+  return {
+    bounds: [frame.west, frame.south, frame.east, frame.north],
+    center: [(frame.west + frame.east) / 2, middle.lat],
   }
 }
 

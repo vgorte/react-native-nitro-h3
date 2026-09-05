@@ -26,10 +26,40 @@ export interface PointCache {
 export const BERLIN: BoundingBox = { south: 52.3383, west: 13.0884, north: 52.6755, east: 13.7612 }
 
 /** Hotspots the synthetic points cluster around. */
-export const HOTSPOTS = 12
+export const HOTSPOTS = 40
 
-/** Standard deviation of a hotspot, in degrees, about 1.3 km north to south. */
-export const HOTSPOT_SIGMA_DEG = 0.012
+/** Standard deviation of a hotspot, in degrees, about 2.2 km north to south. */
+export const HOTSPOT_SIGMA_DEG = 0.02
+
+/** Share of a run drawn uniformly over the box, the noise the hotspots have to show through. */
+export const UNIFORM_SHARE = 0.3
+
+/** Holds the mixture a run's points are drawn from. */
+export interface PointMix {
+  /** Hotspots the points cluster around, each with a weight of its own. */
+  hotspots: number
+  /** Standard deviation of a hotspot, in degrees. */
+  sigmaDeg: number
+  /** Share of the points drawn uniformly over the box instead of around a hotspot. */
+  uniformShare: number
+}
+
+/** The mixture every run of the act is drawn from. */
+export const POINT_MIX: PointMix = {
+  hotspots: HOTSPOTS,
+  sigmaDeg: HOTSPOT_SIGMA_DEG,
+  uniformShare: UNIFORM_SHARE,
+}
+
+/** Holds the hotspots of one run: where each stands and what share of the cluster it takes. */
+export interface Hotspots {
+  /** Latitude and longitude of every hotspot, latitude first. */
+  centres: Float64Array
+  /** The share of the clustered points each hotspot takes, summing to one. */
+  weights: Float64Array
+  /** The weights added up, which a draw between zero and one is looked up in. */
+  cumulative: Float64Array
+}
 
 /** Points one block of a chunked run holds, after which the run yields to the loop. */
 export const BLOCK = 100_000
@@ -48,6 +78,55 @@ function random(seed: number): () => number {
   }
 }
 
+/** Draws the hotspots of a run from a stream that has not been read yet. */
+function drawHotspots(next: () => number, box: BoundingBox, mix: PointMix): Hotspots {
+  const centres = new Float64Array(mix.hotspots * 2)
+  const weights = new Float64Array(mix.hotspots)
+  let total = 0
+  for (let hotspot = 0; hotspot < mix.hotspots; hotspot++) {
+    centres[hotspot * 2] = box.south + next() * (box.north - box.south)
+    centres[hotspot * 2 + 1] = box.west + next() * (box.east - box.west)
+    // a weight of its own per hotspot, so the field reads as a city and not as a lattice
+    weights[hotspot] = next()
+    total += weights[hotspot]
+  }
+
+  const cumulative = new Float64Array(mix.hotspots)
+  let running = 0
+  for (let hotspot = 0; hotspot < mix.hotspots; hotspot++) {
+    weights[hotspot] /= total
+    running += weights[hotspot]
+    cumulative[hotspot] = running
+  }
+  return { centres, weights, cumulative }
+}
+
+/** Answers the hotspot a draw between zero and one falls on, by its share of the cluster. */
+function hotspotAt(cumulative: Float64Array, draw: number): number {
+  let low = 0
+  let high = cumulative.length - 1
+  while (low < high) {
+    const middle = (low + high) >> 1
+    if (draw > cumulative[middle]) low = middle + 1
+    else high = middle
+  }
+  return low
+}
+
+/**
+ * Answers the hotspots a run draws its clustered points around.
+ *
+ * A stream reads its hotspots off the front of its own sequence, so this answers exactly the ones
+ * {@linkcode pointStream} uses for the same seed, box and mixture.
+ *
+ * @param seed The run's seed, which the reseed control bumps.
+ * @param box The region the hotspots are placed in.
+ * @param mix The mixture the run is drawn from.
+ */
+export function hotspotsOf(seed: number, box: BoundingBox, mix: PointMix = POINT_MIX): Hotspots {
+  return drawHotspots(random(seed), box, mix)
+}
+
 /**
  * Opens the point stream of one run: draws the hotspots of `seed`, then the points around them.
  *
@@ -55,41 +134,49 @@ function random(seed: number): () => number {
  * the points one call for the whole run would have drawn, which is what lets the act yield to the
  * loop between blocks without the seed meaning something else.
  *
+ * A hotspot's points are not held to the box: a cluster on its edge scatters past it, and the box
+ * is only the frame the run opens on. The uniform share is what still stands inside it.
+ *
  * @param seed The run's seed, which the reseed control bumps.
- * @param box The region the points are drawn in and clamped to.
+ * @param box The region the hotspots and the uniform share are drawn in.
+ * @param mix The mixture the run is drawn from.
  * @returns A draw that answers the next `count` coordinates, latitude first.
  */
-export function pointStream(seed: number, box: BoundingBox): (count: number) => Float64Array {
+export function pointStream(
+  seed: number,
+  box: BoundingBox,
+  mix: PointMix = POINT_MIX,
+): (count: number) => Float64Array {
   const next = random(seed)
-  const centres = new Float64Array(HOTSPOTS * 2)
-  for (let hotspot = 0; hotspot < HOTSPOTS; hotspot++) {
-    centres[hotspot * 2] = box.south + next() * (box.north - box.south)
-    centres[hotspot * 2 + 1] = box.west + next() * (box.east - box.west)
-  }
+  const { centres, cumulative } = drawHotspots(next, box, mix)
 
   return (count: number): Float64Array => {
     const points = new Float64Array(count * 2)
     for (let point = 0; point < count; point++) {
-      const hotspot = Math.floor(next() * HOTSPOTS) * 2
+      if (next() < mix.uniformShare) {
+        points[point * 2] = box.south + next() * (box.north - box.south)
+        points[point * 2 + 1] = box.west + next() * (box.east - box.west)
+        continue
+      }
+      const hotspot = hotspotAt(cumulative, next()) * 2
       // Box-Muller, one pair per point
-      const radius = Math.sqrt(-2 * Math.log(1 - next())) * HOTSPOT_SIGMA_DEG
+      const radius = Math.sqrt(-2 * Math.log(1 - next())) * mix.sigmaDeg
       const angle = 2 * Math.PI * next()
-      points[point * 2] = Math.min(
-        box.north,
-        Math.max(box.south, centres[hotspot] + radius * Math.cos(angle)),
-      )
-      points[point * 2 + 1] = Math.min(
-        box.east,
-        Math.max(box.west, centres[hotspot + 1] + radius * Math.sin(angle)),
-      )
+      points[point * 2] = centres[hotspot] + radius * Math.cos(angle)
+      points[point * 2 + 1] = centres[hotspot + 1] + radius * Math.sin(angle)
     }
     return points
   }
 }
 
 /** Answers `count` synthetic coordinates from a mixture of hotspots, latitude first. */
-export function generatePoints(count: number, seed: number, box: BoundingBox): Float64Array {
-  return pointStream(seed, box)(count)
+export function generatePoints(
+  count: number,
+  seed: number,
+  box: BoundingBox,
+  mix: PointMix = POINT_MIX,
+): Float64Array {
+  return pointStream(seed, box, mix)(count)
 }
 
 /**

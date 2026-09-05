@@ -1,8 +1,12 @@
 import { describe, expect, test } from 'bun:test'
 import type { CellBoundaries } from 'react-native-nitro-h3'
+import { ATLAS_CELL_CAP, coverage, MAX_K } from '../engine/atlas'
 import {
   cornersOf,
+  FRAME_PADDING,
+  frameExtent,
   frameMatrix,
+  type ImageFrame,
   imageFrameOf,
   projectPoints,
   sampleStride,
@@ -16,18 +20,21 @@ const BERLIN_BOUNDS = {
 
 const VIEWPORT = { width: 402, height: 874 }
 
+// `getHexagonEdgeLengthAvgM` at the resolutions the act offers, so no package call is made here
+const EDGE_M: Record<number, number> = { 7: 1220.6, 8: 461.4, 9: 174.4 }
+
 describe('imageFrameOf', () => {
   test('keeps the viewport aspect and caps the pixel count', () => {
-    const frame = imageFrameOf(BERLIN_BOUNDS, VIEWPORT, 3, 2_000_000)
+    const frame = imageFrameOf(BERLIN_BOUNDS, VIEWPORT, 3, 2_000_000, 0)
 
     expect(frame.width / frame.height).toBeCloseTo(402 / 874, 3)
     expect(frame.width * frame.height).toBeLessThanOrEqual(2_000_000)
     expect(frame.west).toBe(13.0884)
-    expect(frame.north).toBe(52.6755)
+    expect(frame.north).toBeCloseTo(52.6755, 9)
   })
 
   test('draws at the full pixel ratio where the cap leaves room for it', () => {
-    const frame = imageFrameOf(BERLIN_BOUNDS, VIEWPORT, 2, 4_000_000)
+    const frame = imageFrameOf(BERLIN_BOUNDS, VIEWPORT, 2, 4_000_000, 0)
 
     expect(frame.width).toBe(804)
     expect(frame.height).toBe(1748)
@@ -39,11 +46,65 @@ describe('imageFrameOf', () => {
     expect(frame.width).toBeGreaterThanOrEqual(1)
     expect(frame.height).toBeGreaterThanOrEqual(1)
   })
+
+  test('reaches the padding past the viewport on every side, in ground and in pixels', () => {
+    const plain = imageFrameOf(BERLIN_BOUNDS, VIEWPORT, 2, 40_000_000, 0)
+    const padded = imageFrameOf(BERLIN_BOUNDS, VIEWPORT, 2, 40_000_000, 0.5)
+    const span = BERLIN_BOUNDS.ne[0] - BERLIN_BOUNDS.sw[0]
+
+    expect(padded.west).toBeCloseTo(BERLIN_BOUNDS.sw[0] - span / 2, 9)
+    expect(padded.east).toBeCloseTo(BERLIN_BOUNDS.ne[0] + span / 2, 9)
+    expect(padded.north).toBeGreaterThan(plain.north)
+    expect(padded.south).toBeLessThan(plain.south)
+    expect(padded.width).toBe(plain.width * 2)
+    expect(padded.height).toBe(plain.height * 2)
+  })
+
+  test('grows the ground and the pixels together, so the image is drawn at the same scale', () => {
+    const plain = imageFrameOf(BERLIN_BOUNDS, VIEWPORT, 2, 40_000_000, 0)
+    const padded = imageFrameOf(BERLIN_BOUNDS, VIEWPORT, 2, 40_000_000, FRAME_PADDING)
+    const across = (of: ImageFrame): number => of.width / (mercatorX(of.east) - mercatorX(of.west))
+    const down = (of: ImageFrame): number => of.height / (mercatorY(of.north) - mercatorY(of.south))
+
+    expect(across(padded)).toBeCloseTo(across(plain), 6)
+    expect(down(padded)).toBeCloseTo(down(plain), 6)
+  })
+
+  test('holds the padded frame under the cap by shrinking it whole', () => {
+    const padded = imageFrameOf(BERLIN_BOUNDS, VIEWPORT, 3, 4_000_000, FRAME_PADDING)
+
+    expect(padded.width * padded.height).toBeLessThanOrEqual(4_000_000)
+    expect(padded.width / padded.height).toBeCloseTo(402 / 874, 2)
+  })
+})
+
+describe('frameExtent', () => {
+  test('answers the corners of the frame and the coordinate in the middle of them', () => {
+    const frame = imageFrameOf(BERLIN_BOUNDS, VIEWPORT, 2, 4_000_000, FRAME_PADDING)
+    const extent = frameExtent(frame)
+
+    expect(extent.bounds).toEqual([frame.west, frame.south, frame.east, frame.north])
+    expect(extent.center[0]).toBeCloseTo((frame.west + frame.east) / 2, 9)
+    expect(mercatorY(extent.center[1])).toBeCloseTo(
+      (mercatorY(frame.north) + mercatorY(frame.south)) / 2,
+      3,
+    )
+  })
+
+  test('sizes a disk that stays under the cell cap at every resolution the act offers', () => {
+    const frame = imageFrameOf(BERLIN_BOUNDS, VIEWPORT, 2, 4_000_000, FRAME_PADDING)
+
+    for (const res of [7, 8, 9]) {
+      const rings = coverage(frameExtent(frame), res, (of) => EDGE_M[of])
+      expect(rings).toBeLessThanOrEqual(MAX_K)
+      expect(3 * rings * (rings + 1) + 1).toBeLessThanOrEqual(ATLAS_CELL_CAP)
+    }
+  })
 })
 
 describe('frameMatrix and projectPoints', () => {
   test('puts the north-west corner at the origin and the south-east corner at the far pixel', () => {
-    const frame = imageFrameOf(BERLIN_BOUNDS, VIEWPORT, 2, 4_000_000)
+    const frame = imageFrameOf(BERLIN_BOUNDS, VIEWPORT, 2, 4_000_000, 0)
     const out = new Float32Array(4)
     const drawn = projectPoints(Float64Array.from([52.6755, 13.0884, 52.3383, 13.7612]), frame, out)
 
@@ -55,14 +116,14 @@ describe('frameMatrix and projectPoints', () => {
   })
 
   test('leaves a point outside the frame out of the count', () => {
-    const frame = imageFrameOf(BERLIN_BOUNDS, VIEWPORT, 2, 4_000_000)
+    const frame = imageFrameOf(BERLIN_BOUNDS, VIEWPORT, 2, 4_000_000, 0)
     const out = new Float32Array(2)
 
     expect(projectPoints(Float64Array.from([53.5, 10.0]), frame, out)).toBe(0)
   })
 
   test('packs the points inside the frame from the front', () => {
-    const frame = imageFrameOf(BERLIN_BOUNDS, VIEWPORT, 2, 4_000_000)
+    const frame = imageFrameOf(BERLIN_BOUNDS, VIEWPORT, 2, 4_000_000, 0)
     const out = new Float32Array(4)
     const drawn = projectPoints(
       Float64Array.from([53.5, 10.0, 52.6755, 13.0884, 52.3383, 13.7612]),
@@ -76,7 +137,7 @@ describe('frameMatrix and projectPoints', () => {
   })
 
   test('lands a cell drawn under the matrix on the pixel a point at its centre takes', () => {
-    const frame = imageFrameOf(BERLIN_BOUNDS, VIEWPORT, 2, 4_000_000)
+    const frame = imageFrameOf(BERLIN_BOUNDS, VIEWPORT, 2, 4_000_000, FRAME_PADDING)
     const anchor = { lat: 52.5, lng: 13.4 }
     const centres = [
       { lat: 52.62, lng: 13.2 },
@@ -103,14 +164,12 @@ describe('frameMatrix and projectPoints', () => {
 
 describe('cornersOf', () => {
   test('answers top-left, top-right, bottom-right, bottom-left as lng,lat pairs', () => {
-    const frame = imageFrameOf(BERLIN_BOUNDS, VIEWPORT, 2, 4_000_000)
+    const corners = cornersOf(imageFrameOf(BERLIN_BOUNDS, VIEWPORT, 2, 4_000_000, 0))
 
-    expect(cornersOf(frame)).toEqual([
-      [13.0884, 52.6755],
-      [13.7612, 52.6755],
-      [13.7612, 52.3383],
-      [13.0884, 52.3383],
-    ])
+    expect(corners.map(([lng]) => lng)).toEqual([13.0884, 13.7612, 13.7612, 13.0884])
+    for (const [corner, lat] of [52.6755, 52.6755, 52.3383, 52.3383].entries()) {
+      expect(corners[corner][1]).toBeCloseTo(lat, 9)
+    }
   })
 })
 

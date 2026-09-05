@@ -27,13 +27,14 @@ export const PUSH_POINTS = 1_000_000
 /**
  * The resolution of the push-it step.
  *
- * A million points of this mixture land in about 123,000 distinct cells at resolution 11, which is
- * the size the inset geometry was measured holding 60 fps at.
+ * It is the one whose distinct cells land between 100,000 and 160,000, the size the inset geometry
+ * was measured holding 60 fps at: a million points of this mixture reach 3,454 cells at resolution
+ * 8 and 515,147 at resolution 11, and 137,972 here.
  */
-export const PUSH_RES = 11
+export const PUSH_RES = 10
 
 /** Cells the push-it step reaches, measured over the seed the act opens on. */
-export const PUSH_CELLS = 123_000
+export const PUSH_CELLS = 138_000
 
 /** Answers whether the push-it step stands, which is both of its values at once. */
 export function isPushed(settings: Settings): boolean {
