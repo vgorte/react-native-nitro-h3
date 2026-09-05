@@ -288,16 +288,16 @@ export function fixAhead(
 /**
  * Answers the ramp bucket of a trail cell from its age, filled cells on their own lower band.
  *
- * The fade is normalised to the trail that is standing: the head takes the brightest step and the
- * oldest cell the darkest, whether the trail holds eight cells or the whole {@linkcode AGE_SPAN},
- * so the ramp reads on the first minute of a walk as well as on an hour of one. A cell the grid
- * path filled in was never measured, and stays under the measured cell of the same age by taking
- * {@linkcode FILLED_BAND} of the ramp instead of all of it.
+ * The fade is normalised to the span the caller frames: the head takes the brightest step, a cell
+ * that old takes the darkest, and anything older takes the darkest too. A walk frames the trail
+ * standing, so the ramp reads on the first minute as well as on an hour of one; a time lapse frames
+ * the stretch it can show instead. A cell the grid path filled in was never measured, and stays
+ * under the measured cell of the same age by taking {@linkcode FILLED_BAND} of the ramp.
  *
  * @param age Cells between this one and the head, `0` for the head itself.
  * @param filled Whether the grid path filled the cell in.
  * @param buckets Steps the ramp is cut into, which the caller takes from the theme.
- * @param span The age of the oldest cell standing, which is what the fade is spread over.
+ * @param span The age the fade is spread over; a cell at least that old takes the darkest step.
  */
 export function bucketOfAge(age: number, filled: boolean, buckets: number, span: number): number {
   const top = filled ? Math.floor((buckets - 1) * FILLED_BAND) : buckets - 1

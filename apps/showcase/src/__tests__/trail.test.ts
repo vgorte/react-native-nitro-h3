@@ -232,6 +232,11 @@ describe('bucketOfAge', () => {
     expect(bucketOfAge(AGE_SPAN - 1, false, BUCKETS, AGE_SPAN - 1)).toBe(0)
   })
 
+  test('gives a cell older than the span the darkest step as well, which a lapse relies on', () => {
+    expect(bucketOfAge(8, false, BUCKETS, 7)).toBe(0)
+    expect(bucketOfAge(AGE_SPAN, false, BUCKETS, TIME_LAPSE_FADE_SPAN)).toBe(0)
+  })
+
   test('never brightens as a cell ages', () => {
     let last = BUCKETS
     for (let age = 0; age <= AGE_SPAN; age += 7) {

@@ -297,13 +297,18 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
   // the ground and the viewport the standing image was cut for, so a settle that moved nothing
   // rebuilds nothing
   const cut = useRef('')
-  // when the standing scene was recorded and the frame it stands in, which paces the next one
+  // what the standing scene was recorded from and when, which paces the next one and says whether
+  // there is anything new to record at all
   const drawn = useRef<{
     at: number
     anchor: LatLng
     trail: TrailStep[] | null
     ground: number
-  }>({ at: 0, anchor: BERLIN, trail: null, ground: -1 })
+    width: number
+    height: number
+  }>({ at: 0, anchor: BERLIN, trail: null, ground: -1, width: 0, height: 0 })
+  // counts the builds, so one the map answered late does not lay an older trail over a newer one
+  const building = useRef(0)
 
   // the act reaches for the basemap only once it has been opened, and keeps it afterwards
   useEffect(() => {
@@ -316,12 +321,13 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
       })
   }, [active, basemap])
 
+  /** Cuts the image's frame for the ground the map is over, and says whether that moved it. */
   const reframe = useCallback(
-    (view: ViewState): void => {
+    (view: ViewState): boolean => {
       viewed.current = view.zoom
       const [west, south, east, north] = view.bounds
       const key = `${west},${south},${east},${north}/${width}x${height}`
-      if (key === cut.current) return
+      if (key === cut.current) return false
       cut.current = key
       setFrame(
         imageFrameOf(
@@ -331,6 +337,7 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
           MAX_IMAGE_PIXELS,
         ),
       )
+      return true
     },
     [width, height],
   )
@@ -634,13 +641,13 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
       const ended = played.current >= REPLAY_ROUTE.length
       const ahead = fixAhead(REPLAY_ROUTE, Math.max(0, played.current - 1), pace, CAMERA_STEP_MS)
       if (ahead !== undefined && (!ended || zoom !== null)) {
-        const cut = zoom !== null && isZoomCut(zoom, viewed.current)
-        const duration = cut ? 0 : CAMERA_STEP_MS
+        const cutting = zoom !== null && isZoomCut(zoom, viewed.current)
+        const duration = cutting ? 0 : CAMERA_STEP_MS
         move({
           center: [ahead.lng, ahead.lat],
           zoom: zoom ?? undefined,
           duration,
-          easing: cut ? undefined : 'linear',
+          easing: cutting ? undefined : 'linear',
           padding: padded.current,
         })
         // a redraw follows the frame while fixes arrive; a stop after the last one has to say so
@@ -664,15 +671,26 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
       setScene(null)
       return
     }
-    // the same cells over the same ground are already recorded, and re-encoding them buys nothing
+    // the same cells over the same ground in the same viewport are already recorded
     const held = drawn.current
-    if (held.trail === trail && held.ground === landed && held.anchor === anchor) return
+    if (
+      held.trail === trail &&
+      held.ground === landed &&
+      held.anchor === anchor &&
+      held.width === width &&
+      held.height === height
+    ) {
+      return
+    }
     const every = leading ? TIME_LAPSE_REDRAW_MS : REDRAW_MS
     const record = (): void => {
       setScene(buildTrailScene(trail, anchor, fadeSpan(trail.length, leading)))
     }
     const build = (): void => {
-      drawn.current = { at: performance.now(), anchor, trail, ground: landed }
+      const was = drawn.current
+      const generation = building.current + 1
+      building.current = generation
+      drawn.current = { at: performance.now(), anchor, trail, ground: landed, width, height }
       // the frame and the scene reach React in one commit, so the image is encoded once and into
       // the ground it is georeferenced by rather than once into each
       let asked: Promise<ViewState> | undefined
@@ -688,10 +706,15 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
       }
       asked
         .then((view) => {
-          reframe(view)
-          record()
+          // a build the map answered late has been overtaken, and its cells are the older ones
+          if (building.current !== generation) return
+          const moved = reframe(view)
+          // a camera stop that moved nothing leaves the cells over the ground they are drawn on
+          if (moved || was.trail !== trail || was.anchor !== anchor) record()
         })
-        .catch(record)
+        .catch(() => {
+          if (building.current === generation) record()
+        })
     }
     const waited = performance.now() - drawn.current.at
     if (drawn.current.anchor !== anchor || waited >= every) {
@@ -700,7 +723,7 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
     }
     const timer = setTimeout(build, every - waited)
     return () => clearTimeout(timer)
-  }, [trail, anchor, leading, landed, reframe])
+  }, [trail, anchor, leading, landed, width, height, reframe])
 
   // a tap opens the sheet on the cell under it, and lands on the ground where the trail is not
   const press = useCallback(
