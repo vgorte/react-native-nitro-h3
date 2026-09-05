@@ -17,7 +17,7 @@ export interface SliderProps {
   width: number
   /** Called on every whole step the drag crosses. */
   onChange(next: number): void
-  /** Called once the drag ends, which is when a rebuild is allowed. */
+  /** Called once the drag ends, for the work that is too heavy to do at every step. */
   onSettle(next: number): void
   /** The gesture of the canvas underneath, which the drag must win against. */
   blocks?: ComposedGesture
@@ -31,8 +31,9 @@ const ROW_HEIGHT = 28
 /**
  * Draws the hairline slider every act sets its one control with.
  *
- * The knob follows the finger on the UI thread; `onChange` reaches the act only when the drag
- * crosses a whole step, and `onSettle` once it ends, so no rebuild happens inside a gesture.
+ * The knob follows the finger on the UI thread, so a drag costs the act nothing between steps.
+ * `onChange` reaches the act on each whole step the drag crosses, which is a data change and may
+ * rebuild; `onSettle` reaches it once the drag ends, for the work that is only worth doing then.
  */
 export function Slider({ min, max, value, width, onChange, onSettle, blocks }: SliderProps) {
   const position = useSharedValue(value)
