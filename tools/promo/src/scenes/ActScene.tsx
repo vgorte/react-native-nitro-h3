@@ -2,6 +2,7 @@ import { Video } from '@remotion/media'
 import type { CSSProperties } from 'react'
 import { interpolate, staticFile, useCurrentFrame, useVideoConfig } from 'remotion'
 import { colours, fontFamily } from '../theme'
+import { numberLine } from './numberLine'
 import { Cursor, phoneScale, Ripples } from './Overlays'
 import { readingAt } from './reading'
 import type { Scene } from './scenes'
@@ -11,33 +12,50 @@ interface Measures {
   phone: number
   caption: number
   gap: number
+  headline: number
   number: number
-  act: number
-  label: number
+  unit: number
+  call: number
 }
 
-const WIDE: Measures = { phone: 940, caption: 620, gap: 110, number: 96, act: 30, label: 24 }
-const HERO: Measures = { phone: 620, caption: 420, gap: 80, number: 76, act: 22, label: 19 }
+const WIDE: Measures = {
+  phone: 940,
+  caption: 780,
+  gap: 100,
+  headline: 30,
+  number: 78,
+  unit: 44,
+  call: 20,
+}
+const HERO: Measures = {
+  phone: 620,
+  caption: 520,
+  gap: 80,
+  headline: 22,
+  number: 62,
+  unit: 34,
+  call: 17,
+}
 
 /** The aspect of a take, which is the iPhone 17 Pro screen. */
-const PHONE_ASPECT = 402 / 874
+export const PHONE_ASPECT = 402 / 874
 
 /** What the phone is scaled to by the end of a scene that pushes in. */
 const PUSH_IN = 1.04
 
 interface ActSceneProps {
   scene: Scene
-  /** Whether the scene runs in the hero loop, which drops the act name and the two lines. */
+  /** Whether the scene runs in the hero loop, which drops the headline and the call line. */
   hero?: boolean
 }
 
 /**
- * Plays one act: the take on the left of the reading its panel carried while the take ran.
+ * Plays one act: the take beside three lines, what it is for, what it counted, and the call behind it.
  *
- * The take is drawn at its own pace, never sped up, and the reading steps with the take's own
- * events rather than counting up on its own, so the caption always says what the phone beside it
- * shows. Touches the simulator does not record are drawn back over the phone at the coordinates
- * they landed on.
+ * The take is drawn at its own pace, never sped up, and the number steps with the take's own events
+ * rather than counting up on its own, so the line always says what the phone beside it shows.
+ * Touches the simulator does not record are drawn back over the phone at the coordinates they
+ * landed on.
  */
 export function ActScene({ scene, hero = false }: ActSceneProps) {
   const frame = useCurrentFrame()
@@ -46,7 +64,7 @@ export function ActScene({ scene, hero = false }: ActSceneProps) {
   const skip = hero ? scene.heroSkip : 0
   const seconds = frame / fps + skip
 
-  const reading = readingAt(scene, seconds)
+  const line = numberLine(scene, readingAt(scene, seconds))
   const height = measures.phone
   const width = Math.round(height * PHONE_ASPECT)
   const push =
@@ -57,20 +75,17 @@ export function ActScene({ scene, hero = false }: ActSceneProps) {
       <div style={styles.vignette} />
       <div style={{ ...styles.row, gap: measures.gap }}>
         <div style={{ ...styles.caption, width: measures.caption }}>
-          {hero ? null : <div style={{ ...styles.act, fontSize: measures.act }}>{scene.act}</div>}
+          {hero ? null : (
+            <div style={{ ...styles.headline, fontSize: measures.headline }}>{scene.headline}</div>
+          )}
           <div style={{ ...styles.number, fontSize: measures.number }}>
-            {reading.value === null ? '' : format(reading.value, scene.decimals)}
-            <span style={styles.suffix}>{reading.value === null ? '' : scene.suffix}</span>
+            {line.lead}
+            {line.number}
+            <span style={styles.suffix}>{line.suffix}</span>
+            <span style={{ ...styles.unit, fontSize: measures.unit }}>{line.unit}</span>
           </div>
-          <div style={{ ...styles.label, fontSize: measures.label }}>
-            {reading.value === null ? '' : reading.label}
-          </div>
-          {hero ? null : <div style={styles.call}>{scene.call}</div>}
-          {/* it keeps its room before a reading exists */}
-          {hero || scene.note === undefined ? null : (
-            <div style={{ ...styles.note, opacity: reading.value === null ? 0 : 1 }}>
-              {scene.note}
-            </div>
+          {hero ? null : (
+            <div style={{ ...styles.call, fontSize: measures.call }}>{scene.call}</div>
           )}
         </div>
         {/* the overlays ride the phone, so a push-in carries them with it */}
@@ -91,20 +106,6 @@ export function ActScene({ scene, hero = false }: ActSceneProps) {
       </div>
     </div>
   )
-}
-
-/**
- * Writes a number the way the act's own panel writes it.
- *
- * Counts are grouped, as `formatCount` groups them; a factor is not, because the app's own factor
- * row writes it with `toFixed` and the caption must not disagree with the phone beside it.
- */
-function format(value: number, decimals: number): string {
-  return value.toLocaleString('en-US', {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-    useGrouping: decimals === 0,
-  })
 }
 
 const styles: Record<string, CSSProperties> = {
@@ -130,46 +131,34 @@ const styles: Record<string, CSSProperties> = {
   caption: {
     display: 'flex',
     flexDirection: 'column',
-    // the block hangs off the phone, so a short label never leaves a hole in the middle of the frame
+    // the block hangs off the phone, so a short line never leaves a hole in the middle of the frame
     alignItems: 'flex-end',
     textAlign: 'right',
   },
-  act: {
+  headline: {
     fontFamily: fontFamily.regular,
     color: colours.muted,
-    letterSpacing: 2,
-    marginBottom: 26,
+    letterSpacing: 1,
+    marginBottom: 24,
   },
   number: {
     fontFamily: fontFamily.light,
     color: colours.text,
-    lineHeight: 1,
+    lineHeight: 1.1,
     fontVariantNumeric: 'tabular-nums',
-    // it keeps its height before a reading exists
-    minHeight: '1em',
+    whiteSpace: 'nowrap',
   },
   suffix: {
     color: colours.contrast,
   },
-  label: {
-    fontFamily: fontFamily.regular,
-    color: colours.muted,
-    marginTop: 18,
-    minHeight: '1.2em',
+  unit: {
+    marginLeft: '0.35em',
   },
   call: {
     fontFamily: fontFamily.regular,
     color: colours.muted,
     opacity: 0.7,
-    fontSize: 20,
-    marginTop: 40,
-    lineHeight: 1.5,
-  },
-  note: {
-    fontFamily: fontFamily.regular,
-    color: colours.contrast,
-    fontSize: 20,
-    marginTop: 10,
+    marginTop: 32,
     lineHeight: 1.5,
   },
   phone: {

@@ -13,7 +13,7 @@ export interface Key {
   /** The number the panel carried, `null` where the act had not measured one yet. */
   value: number | null
   /** What the number counts, where the reading changed what is being counted. */
-  label?: string
+  unit?: string
 }
 
 /** One tap the take took, drawn back over the phone as a ripple. */
@@ -25,45 +25,51 @@ export interface Tap {
   y: number
 }
 
+/** The window a cut plays of a clip: what it skips, and how long it stands. */
+export interface Window {
+  skip: number
+  seconds: number
+}
+
 /** One act of the showcase, as the video plays it. */
 export interface Scene {
   /** The clip under public/clips, without its extension. */
   id: string
-  /** The act name, as the app's own indicator spells it. */
-  act: string
-  /** Seconds the scene stands for; never longer than the clip. */
+  /** What the act is for, which the caption leads with and a portrait card carries alone. */
+  headline: string
+  /** Seconds the landscape scene stands for; never longer than the clip. */
   seconds: number
-  /** The reading the caption opens on, `null` where the act has measured nothing yet. */
+  /** The reading the number line opens on, `null` where that line is words alone. */
   value: number | null
   /** Decimal places the number is written with. */
   decimals: number
   /** What follows the number, where the panel wrote a unit onto it. */
   suffix: string
-  /** What the number counts, until a key replaces it. */
-  label: string
+  /** Words before the number, where the line reads as a claim rather than a count. */
+  lead?: string
+  /**
+   * The words the number line ends on, or the whole line where there is no number.
+   *
+   * `{k}` stands for the ring count the reading was walked at, which only a disk carries.
+   */
+  unit: string
   /** The H3 call the act is making, named the way the act's own rows name it. */
   call: string
   /** What the panel read, and when; the caption steps through these. */
   keys: readonly Key[]
-  /** A third line in the theme's amber, which stands from the first reading on. */
-  note?: string
   taps?: readonly Tap[]
   drag?: Drag
   /** Whether the phone is pushed in slowly over the scene. */
   pushIn?: boolean
   /** Seconds of the clip the hero loop skips, so its three seconds hold the interaction. */
   heroSkip: number
+  /** The core the portrait cut plays, trimmed to the interaction and nothing around it. */
+  portrait: Window
 }
 
 /** Seconds the caption takes to ease from one reading onto the next. */
 export const EASE_SECONDS = 0.3
 
-/**
- * Names the six acts in the order the video plays them, with the readings each take stepped through.
- *
- * Every number here was read off the panel in the take it belongs to, at the second it is keyed to,
- * so what the caption says is what the phone in the same frame shows.
- */
 /**
  * The Magnetic grid's slider, measured off the clip the composition plays: the thumb's centre at
  * k 1 and at k 50, and the row it stands on.
@@ -97,46 +103,46 @@ const RING_READINGS: readonly Reading[] = [
 export const SCENES: readonly Scene[] = [
   {
     id: 'atlas',
-    act: 'Atlas',
+    headline: 'Live H3 grid adapting to zoom',
     seconds: 5.0,
     value: 817,
     decimals: 0,
     suffix: '',
-    label: 'cells on the map',
+    unit: 'cells rendered',
     call: 'gridDisk',
     keys: [
       { at: 0.65, value: 2791 },
       { at: 4.55, value: 3997 },
     ],
     heroSkip: 0,
+    portrait: { skip: 1.4, seconds: 3.6 },
   },
   {
+    // the number is the documented iPhone XS factor, not this take's live one, which the phone shows
     id: 'engine',
-    act: 'Engine',
+    headline: 'Milliseconds, not seconds',
     seconds: 4.3,
-    value: null,
-    decimals: 1,
+    value: 862,
+    decimals: 0,
     suffix: '\u00d7',
-    label: 'faster than h3-js',
-    call: 'compactCells, 99,919 cells',
-    keys: [{ at: 2.15, value: 1104.9 }],
-    note: 'h3-js held the JS thread 1.6 s',
+    lead: 'up to ',
+    unit: 'faster',
+    call: 'compactCells',
+    keys: [],
     heroSkip: 0,
+    portrait: { skip: 0, seconds: 3.5 },
   },
   {
+    // the leaf count stays on the phone's own panel, so the line can say what the act is doing
     id: 'fractal',
-    act: 'Fractal city',
+    headline: 'Explore 6 levels deep',
     seconds: 4.2,
-    value: 817,
+    value: null,
     decimals: 0,
     suffix: '',
-    label: 'leaf cells',
+    unit: 'Recursive splitting',
     call: 'cellToChildren',
-    keys: [
-      { at: 0.525, value: 823 },
-      { at: 2.15, value: 829 },
-      { at: 3.775, value: 835 },
-    ],
+    keys: [],
     taps: [
       { at: 0.36, x: 0.4975, y: 0.5492 },
       { at: 1.98, x: 0.4975, y: 0.5492 },
@@ -144,42 +150,45 @@ export const SCENES: readonly Scene[] = [
     ],
     pushIn: true,
     heroSkip: 0,
+    portrait: { skip: 0, seconds: 3.9 },
   },
   {
     id: 'grid',
-    act: 'Magnetic grid',
+    headline: 'Zero-latency expansion',
     seconds: 4.6,
     value: 7,
     decimals: 0,
     suffix: '',
-    label: 'cells drawn',
+    unit: 'cells at k={k}',
     call: 'gridRing',
     keys: RING_READINGS.slice(1).map(({ at, cells }) => ({ at, value: cells })),
     drag: cursorOn(RING_TRACK, 4.1, RING_READINGS),
     heroSkip: 0,
+    portrait: { skip: 0.3, seconds: 3.6 },
   },
   {
     id: 'heatmap',
-    act: 'Heatmap',
+    headline: 'From noise to spatial density',
     seconds: 4.2,
     value: 1000000,
     decimals: 0,
     suffix: '',
-    label: 'points placed',
-    call: 'latLngsToCells, 1,000,000 points',
-    keys: [{ at: 0.85, value: 3454, label: 'cells from a million points' }],
+    unit: 'points placed',
+    call: 'latLngsToCells',
+    keys: [{ at: 0.85, value: 3454, unit: 'cells from 1M points' }],
     taps: [{ at: 0.68, x: 0.7811, y: 0.706 }],
     heroSkip: 0,
+    portrait: { skip: 0.2, seconds: 3.4 },
   },
   {
     id: 'trail',
-    act: 'Trail',
+    headline: 'Live tracking at 60x',
     seconds: 4.5,
     value: 193,
     decimals: 0,
     suffix: '',
-    label: 'cells on the trail',
-    call: 'latLngToCell, one call per fix',
+    unit: 'cells updated instantly',
+    call: 'latLngToCell',
     keys: [
       { at: 0.25, value: 198 },
       { at: 0.5, value: 206 },
@@ -200,6 +209,7 @@ export const SCENES: readonly Scene[] = [
       { at: 4.25, value: 303 },
     ],
     heroSkip: 0,
+    portrait: { skip: 0.4, seconds: 3.5 },
   },
 ]
 

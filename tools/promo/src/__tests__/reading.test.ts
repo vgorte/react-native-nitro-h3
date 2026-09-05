@@ -44,7 +44,7 @@ function largestDelta(scene: Scene): number {
 }
 
 describe('readingAt', () => {
-  for (const scene of SCENES) {
+  for (const scene of SCENES.filter((scene) => scene.keys.length > 0)) {
     test(`${scene.id} crosses no key in a single frame`, () => {
       expect(largestStep(scene)).toBeLessThan(largestDelta(scene))
     })
@@ -58,15 +58,15 @@ describe('readingAt', () => {
     test(`${scene.id} never falls back or overshoots`, () => {
       const top = Math.max(scene.value ?? 0, ...scene.keys.map((key) => key.value ?? 0))
       let before: number | null = null
-      let counting = scene.label
+      let counting = scene.unit
       let renaming = -1
-      for (const [frame, { value, label }] of walk(scene).entries()) {
+      for (const [frame, { value, unit }] of walk(scene).entries()) {
         const seconds = frame / FPS
         if (value === null) continue
         expect(value).toBeLessThanOrEqual(top + 1e-9)
         // an ease onto another unit may fall, counting something else
-        if (label !== counting) {
-          counting = label
+        if (unit !== counting) {
+          counting = unit
           renaming = seconds + EASE_SECONDS
         }
         if (seconds > renaming && before !== null) {
@@ -85,18 +85,25 @@ describe('readingAt', () => {
   }
 
   test('an act that has measured nothing shows nothing until its key', () => {
-    const engine = sceneOf('engine')
-    const key = engine.keys[0]
-    expect(readingAt(engine, key.at - 0.01).value).toBeNull()
-    expect(readingAt(engine, key.at).value).toBe(0)
-    expect(readingAt(engine, key.at + EASE_SECONDS).value).toBeCloseTo(key.value as number, 6)
+    const rising: Scene = { ...sceneOf('atlas'), value: null, keys: [{ at: 1, value: 900 }] }
+    expect(readingAt(rising, 0.99).value).toBeNull()
+    expect(readingAt(rising, 1).value).toBe(0)
+    expect(readingAt(rising, 1 + EASE_SECONDS).value).toBeCloseTo(900, 6)
+  })
+
+  test('an act with no keys holds the line it opens on', () => {
+    for (const scene of SCENES.filter((candidate) => candidate.keys.length === 0)) {
+      const opening = readingAt(scene, 0)
+      expect(readingAt(scene, scene.seconds).value).toBe(opening.value)
+      expect(readingAt(scene, scene.seconds).unit).toBe(opening.unit)
+    }
   })
 
   test('a key that renames what is counted keeps the name afterwards', () => {
     const heatmap = sceneOf('heatmap')
     const key = heatmap.keys[0]
-    expect(readingAt(heatmap, 0).label).toBe('points placed')
-    expect(readingAt(heatmap, key.at + 1).label).toBe('cells from a million points')
+    expect(readingAt(heatmap, 0).unit).toBe('points placed')
+    expect(readingAt(heatmap, key.at + 1).unit).toBe('cells from 1M points')
   })
 
   test('the last of two keys on the same second is the one that is shown', () => {

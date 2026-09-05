@@ -1,9 +1,9 @@
 import { EASE_SECONDS, type Scene } from './scenes'
 
-/** Holds what the caption says at one moment: the reading, and what it counts. */
+/** Holds what the number line says at one moment: the reading, and what it counts. */
 export interface Reading {
   value: number | null
-  label: string
+  unit: string
 }
 
 /**
@@ -15,7 +15,7 @@ export interface Reading {
  * measured nothing eases from zero, and keys sharing a second collapse onto the last of them.
  */
 export function readingAt(scene: Scene, seconds: number): Reading {
-  let label = scene.label
+  let unit = scene.unit
   let from = scene.value
   let to = scene.value
   let at = 0
@@ -29,12 +29,12 @@ export function readingAt(scene: Scene, seconds: number): Reading {
       at = key.at
     }
     to = key.value
-    label = key.label ?? label
+    unit = key.unit ?? unit
     keyed = true
   }
 
-  if (!keyed) return { value: scene.value, label }
-  return { value: easedTo(from, to, at, seconds), label }
+  if (!keyed) return { value: scene.value, unit }
+  return { value: easedTo(from, to, at, seconds), unit }
 }
 
 /** Answers where an ease that started at `at` stands by `time`, holding once it has landed. */
