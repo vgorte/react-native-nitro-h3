@@ -11,6 +11,7 @@ import { Heatmap } from './acts/Heatmap'
 import { MagneticGrid } from './acts/MagneticGrid'
 import { Trail } from './acts/Trail'
 import type { ActProps } from './acts/types'
+import { ActBoundary } from './render/ActBoundary'
 import { resetWorstGap } from './render/BlockedReadout'
 import { ActIndicator } from './render/hud/ActIndicator'
 import { Inspector } from './render/Inspector'
@@ -69,11 +70,13 @@ export default function App() {
       >
         {PAGES.map((Act, index) => (
           <View key={ACTS[index]} style={styles.page} collapsable={false}>
-            <Act
-              active={current === index}
-              inspected={current === index ? inspected : null}
-              onInspect={setInspected}
-            />
+            <ActBoundary act={ACTS[index]}>
+              <Act
+                active={current === index}
+                inspected={current === index ? inspected : null}
+                onInspect={setInspected}
+              />
+            </ActBoundary>
           </View>
         ))}
       </PagerView>
