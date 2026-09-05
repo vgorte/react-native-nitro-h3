@@ -75,25 +75,41 @@ function diskSpanM(rings: number, lat: number, edgeLengthM: EdgeLengthM): number
 }
 
 /**
- * Answers the pixel scale that frames a disk of `rings` rings, on the narrow side of the viewport.
+ * Answers the open band a disk is framed in, between the panel's lower edge and the readout's top.
+ *
+ * The expanded panel's height is set by what it says rather than by the viewport, so the band is
+ * measured rather than taken as a fraction of the screen; a panel that reaches the readout leaves
+ * no band at all.
+ *
+ * @param height The viewport height in points.
+ * @param panelBottom The lower edge of the HUD panel, in points from the top.
+ * @param readoutBand Points the blocked readout takes along the bottom edge.
+ */
+export function bandHeight(height: number, panelBottom: number, readoutBand: number): number {
+  return Math.max(0, height - readoutBand - panelBottom)
+}
+
+/**
+ * Answers the pixel scale that frames a disk of `rings` rings, on the narrow side of the band.
  *
  * The act opens on {@linkcode OPEN_K} and asks again for every k that outgrows the frame, so this
- * answers both the opening and every re-fit after it.
+ * answers both the opening and every re-fit after it. The band rather than the viewport is what a
+ * disk is fitted into, so the widest one stands clear of the panel instead of behind it.
  *
  * @param width The viewport width in points.
- * @param height The viewport height in points.
+ * @param band The open band the disk is framed in, from {@linkcode bandHeight}.
  * @param lat The latitude the disk is centred on.
  * @param edgeLengthM The average edge length of a resolution.
  * @param rings The rings the disk holds, which is the slider's k.
  */
 export function scaleForDisk(
   width: number,
-  height: number,
+  band: number,
   lat: number,
   edgeLengthM: EdgeLengthM,
   rings: number,
 ): number {
-  return (Math.min(width, height) * FIT_MARGIN) / diskSpanM(rings, lat, edgeLengthM)
+  return (Math.min(width, band) * FIT_MARGIN) / diskSpanM(rings, lat, edgeLengthM)
 }
 
 /**

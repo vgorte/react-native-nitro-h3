@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import {
+  bandHeight,
   bucketOfRing,
   cellSpacingM,
   cellsInRings,
@@ -19,6 +20,8 @@ const BUCKETS = 16
 const LAT = 52.52
 const WIDTH = 402
 const HEIGHT = 874
+// the band an expanded panel and the readout leave open on the viewport above
+const BAND = 560
 
 // the scene metres a disk spans, counted in the spacing the act itself answers: a ring of cells
 // either side of the centre, plus the margin ring the fit leaves free
@@ -72,7 +75,7 @@ describe('scaleForDisk', () => {
   test('opens with a cell about 24 points across, corner to corner', () => {
     // a hexagon is two edges across its corners and the square root of three between its centres
     const across =
-      ((2 / Math.sqrt(3)) * spanOf(OPEN_K) * scaleForDisk(WIDTH, HEIGHT, LAT, EDGE_M, OPEN_K)) /
+      ((2 / Math.sqrt(3)) * spanOf(OPEN_K) * scaleForDisk(WIDTH, BAND, LAT, EDGE_M, OPEN_K)) /
       (2 * (OPEN_K + 1))
 
     expect(across).toBeGreaterThan(20)
@@ -81,7 +84,7 @@ describe('scaleForDisk', () => {
 
   test('frames the disk it is asked for inside the viewport', () => {
     for (const rings of [OPEN_K, 20, MAX_K]) {
-      const span = spanOf(rings) * scaleForDisk(WIDTH, HEIGHT, LAT, EDGE_M, rings)
+      const span = spanOf(rings) * scaleForDisk(WIDTH, BAND, LAT, EDGE_M, rings)
 
       expect(span).toBeLessThanOrEqual(WIDTH)
       expect(span).toBeGreaterThan(WIDTH * 0.75)
@@ -89,16 +92,16 @@ describe('scaleForDisk', () => {
   })
 
   test('zooms out in step with the disk, so twice the rings is half the scale', () => {
-    const opening = scaleForDisk(WIDTH, HEIGHT, LAT, EDGE_M, OPEN_K)
-    const doubled = scaleForDisk(WIDTH, HEIGHT, LAT, EDGE_M, 2 * OPEN_K + 1)
+    const opening = scaleForDisk(WIDTH, BAND, LAT, EDGE_M, OPEN_K)
+    const doubled = scaleForDisk(WIDTH, BAND, LAT, EDGE_M, 2 * OPEN_K + 1)
 
-    expect(scaleForDisk(WIDTH, HEIGHT, LAT, EDGE_M, OPEN_K + 1)).toBeLessThan(opening)
+    expect(scaleForDisk(WIDTH, BAND, LAT, EDGE_M, OPEN_K + 1)).toBeLessThan(opening)
     expect(doubled).toBeCloseTo(opening / 2, 10)
   })
 
   test('draws the same disk at any latitude, because the scale carries the projection', () => {
     for (const lat of [0, 30, LAT, 70]) {
-      const span = spanOf(OPEN_K, lat) * scaleForDisk(WIDTH, HEIGHT, lat, EDGE_M, OPEN_K)
+      const span = spanOf(OPEN_K, lat) * scaleForDisk(WIDTH, BAND, lat, EDGE_M, OPEN_K)
 
       expect(span).toBeCloseTo(WIDTH * 0.9, 9)
     }
@@ -109,22 +112,48 @@ describe('scaleForDisk', () => {
 
     expect(span).toBeLessThanOrEqual(WIDTH)
   })
+
+  test('fits the band where the panel has left less of it than the viewport is wide', () => {
+    const narrow = 300
+    const span = spanOf(MAX_K) * scaleForDisk(WIDTH, narrow, LAT, EDGE_M, MAX_K)
+
+    expect(span).toBeLessThanOrEqual(narrow)
+    expect(span).toBeGreaterThan(narrow * 0.75)
+  })
+})
+
+describe('bandHeight', () => {
+  test('answers what the panel and the readout leave between them', () => {
+    expect(bandHeight(874, 600, 106)).toBe(168)
+  })
+
+  test('shrinks with a panel that grows', () => {
+    expect(bandHeight(874, 700, 106)).toBeLessThan(bandHeight(874, 600, 106))
+  })
+
+  test('grows with the viewport at the same panel height', () => {
+    expect(bandHeight(1000, 600, 106)).toBeGreaterThan(bandHeight(874, 600, 106))
+  })
+
+  test('answers nothing where the panel reaches the readout', () => {
+    expect(bandHeight(874, 800, 106)).toBe(0)
+  })
 })
 
 describe('gridReads', () => {
   const spacing = cellSpacingM(LAT, EDGE_M)
 
   test('has the grid on at the opening, where a cell is two dozen points across', () => {
-    expect(gridReads(spacing, scaleForDisk(WIDTH, HEIGHT, LAT, EDGE_M, OPEN_K))).toBe(true)
+    expect(gridReads(spacing, scaleForDisk(WIDTH, BAND, LAT, EDGE_M, OPEN_K))).toBe(true)
   })
 
   test('drops the grid once the disk has grown past what a line every cell can carry', () => {
-    expect(gridReads(spacing, scaleForDisk(WIDTH, HEIGHT, LAT, EDGE_M, MAX_K))).toBe(false)
+    expect(gridReads(spacing, scaleForDisk(WIDTH, BAND, LAT, EDGE_M, MAX_K))).toBe(false)
   })
 
   test('crosses at about fifteen rings on the viewport the act is framed for', () => {
     const reads = (rings: number) =>
-      gridReads(spacing, scaleForDisk(WIDTH, HEIGHT, LAT, EDGE_M, rings))
+      gridReads(spacing, scaleForDisk(WIDTH, BAND, LAT, EDGE_M, rings))
 
     expect(reads(14)).toBe(true)
     expect(reads(15)).toBe(false)

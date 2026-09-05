@@ -12,6 +12,7 @@ import {
 } from 'react-native-reanimated'
 import { diskDistancesAround } from '../engine/cells'
 import {
+  bandHeight,
   cellSpacingM,
   cellsInRings,
   GRID_RES,
@@ -25,7 +26,7 @@ import {
   scaleForDisk,
 } from '../engine/rings'
 import { formatCount, formatMs } from '../engine/stats'
-import { resetWorstGap } from '../render/BlockedReadout'
+import { BLOCKED_READOUT_BAND, resetWorstGap } from '../render/BlockedReadout'
 import { CellPictures } from '../render/CellPictures'
 import { EngineCanvas } from '../render/EngineCanvas'
 import { FinePrint } from '../render/hud/FinePrint'
@@ -100,6 +101,8 @@ export function MagneticGrid({ active }: ActProps) {
   const [walk, setWalk] = useState<Walk | null>(null)
   const [grid, setGrid] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
+  // the panel's own height, measured, because what it says decides it and the viewport does not
+  const [panelHeight, setPanelHeight] = useState(0)
 
   // the rings already built, held outside the render so a rebuild of the act rebuilds no geometry
   const built = useRef<RingLayer[]>([])
@@ -107,6 +110,8 @@ export function MagneticGrid({ active }: ActProps) {
   const fades = useRef<ReturnType<typeof setTimeout>[]>([])
   const appends = useRef(0)
   const fits = useRef(0)
+  // the act frames the opening disk once, after the panel has said how much room it leaves
+  const opened = useRef(false)
 
   // the rings stand in the anchor's own metre frame, so a settle has nothing to rebuild
   const settle = useCallback(() => {}, [])
@@ -124,9 +129,13 @@ export function MagneticGrid({ active }: ActProps) {
 
   const spacing = useMemo(() => cellSpacingM(BERLIN.lat, getHexagonEdgeLengthAvgM), [])
 
+  // the disk is framed in the band the panel and the readout leave open, not in the whole viewport
+  const panelBottom = PANEL_TOP + panelHeight
+  const band = bandHeight(height, panelBottom, BLOCKED_READOUT_BAND)
+
   const fitFor = useCallback(
-    (rings: number) => scaleForDisk(width, height, BERLIN.lat, getHexagonEdgeLengthAvgM, rings),
-    [width, height],
+    (rings: number) => scaleForDisk(width, band, BERLIN.lat, getHexagonEdgeLengthAvgM, rings),
+    [width, band],
   )
 
   const frameAt = useCallback(
@@ -180,14 +189,15 @@ export function MagneticGrid({ active }: ActProps) {
     setWalk(walkOf(cell, MIN_K))
   }, [active, centre])
 
-  // the opening disk stands in the middle of what the act indicator leaves rather than of the
-  // viewport, so the smallest disks are clear of the panel instead of under it
+  // the opening disk stands in the middle of the band, so the smallest disks are clear of the
+  // panel instead of under it; it is framed once, and a later fold of the panel leaves it alone
   useEffect(() => {
-    if (centre === null) return
+    if (centre === null || panelHeight === 0 || opened.current) return
+    opened.current = true
     translateX.value = width / 2
-    translateY.value = (PANEL_TOP + height) / 2
+    translateY.value = panelBottom + band / 2
     frameAt(fitFor(OPEN_K), false)
-  }, [centre, width, height, translateX, translateY, fitFor, frameAt])
+  }, [centre, width, panelHeight, panelBottom, band, translateX, translateY, fitFor, frameAt])
 
   // a k that has outgrown the frame pulls the camera back to it, unless the visitor holds the zoom
   useEffect(() => {
@@ -292,7 +302,11 @@ export function MagneticGrid({ active }: ActProps) {
         ))}
       </EngineCanvas>
       {/* box-none leaves the scene every touch the panel head does not take */}
-      <View style={styles.panel} pointerEvents="box-none">
+      <View
+        style={styles.panel}
+        pointerEvents="box-none"
+        onLayout={(event) => setPanelHeight(event.nativeEvent.layout.height)}
+      >
         <Panel collapsible collapsed={collapsed} onToggle={() => setCollapsed((held) => !held)}>
           <Metric value={formatCount(cells)} caption="cells drawn" />
           <Row label="k" value={`${k}`} />
