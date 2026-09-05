@@ -3,7 +3,8 @@ import type { CSSProperties } from 'react'
 import { interpolate, staticFile, useCurrentFrame, useVideoConfig } from 'remotion'
 import { colours, fontFamily } from '../theme'
 import { Cursor, phoneScale, Ripples } from './Overlays'
-import { EASE_SECONDS, type Scene } from './scenes'
+import { readingAt } from './reading'
+import type { Scene } from './scenes'
 
 /** Sizes one variant of the scene: the wide cut, or the short hero loop. */
 interface Measures {
@@ -28,12 +29,6 @@ interface ActSceneProps {
   scene: Scene
   /** Whether the scene runs in the hero loop, which drops the act name and the two lines. */
   hero?: boolean
-}
-
-/** Holds what the caption says at one moment: the reading, and what it counts. */
-interface Reading {
-  value: number | null
-  label: string
 }
 
 /**
@@ -71,14 +66,14 @@ export function ActScene({ scene, hero = false }: ActSceneProps) {
             {reading.value === null ? '' : reading.label}
           </div>
           {hero ? null : <div style={styles.call}>{scene.call}</div>}
-          {/* the line keeps its room before the run has measured it, so nothing above it moves */}
+          {/* it keeps its room before a reading exists, so nothing above it moves */}
           {hero || scene.note === undefined ? null : (
             <div style={{ ...styles.note, opacity: reading.value === null ? 0 : 1 }}>
               {scene.note}
             </div>
           )}
         </div>
-        {/* the overlays ride the phone, so the push-in carries them with the control they name */}
+        {/* the overlays ride the phone, so a push-in carries them with it */}
         <div style={{ ...styles.phone, height, width, transform: `scale(${push})` }}>
           <Video
             src={staticFile(`clips/${scene.id}.mp4`)}
@@ -96,27 +91,6 @@ export function ActScene({ scene, hero = false }: ActSceneProps) {
       </div>
     </div>
   )
-}
-
-/**
- * Answers the reading the caption stands on, easing from the one before it.
- *
- * A key whose predecessor measured nothing eases from zero, so the first number of an act rises
- * into place the way the bar behind it does.
- */
-function readingAt(scene: Scene, seconds: number): Reading {
-  let held: Reading = { value: scene.value, label: scene.label }
-  for (const key of scene.keys) {
-    if (seconds < key.at) break
-    const next: Reading = { value: key.value, label: key.label ?? held.label }
-    if (next.value !== null && seconds < key.at + EASE_SECONDS) {
-      const from = held.value ?? 0
-      const eased = interpolate(seconds, [key.at, key.at + EASE_SECONDS], [from, next.value])
-      return { value: eased, label: next.label }
-    }
-    held = next
-  }
-  return held
 }
 
 /**
@@ -171,7 +145,7 @@ const styles: Record<string, CSSProperties> = {
     color: colours.text,
     lineHeight: 1,
     fontVariantNumeric: 'tabular-nums',
-    // the line keeps its height while an act has measured nothing, so nothing under it moves
+    // it keeps its height before a reading exists, so nothing under it moves
     minHeight: '1em',
   },
   suffix: {

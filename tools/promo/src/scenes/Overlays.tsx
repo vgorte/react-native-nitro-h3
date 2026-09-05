@@ -76,7 +76,7 @@ export function Cursor({ drag, seconds, scale }: CursorProps) {
   const times = drag.steps.map((step) => step.at)
   const positions = drag.steps.map((step) => step.x)
   const x = interpolate(Math.min(seconds, last.at), times, positions)
-  // the finger lifts at the end of the drag, and the disc goes with it rather than blinking out
+  // the finger goes with the drag rather than blinking out
   const lift = interpolate(seconds, [drag.until, drag.until + LIFT_SECONDS], [1, 0], {
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',

@@ -7,6 +7,7 @@
     "clips": "scripts/clips.sh",
     "studio": "remotion studio",
     "render": "remotion render Showcase out/showcase.mp4 --codec h264 --crf 18 && remotion render ShowcaseHero out/hero.mp4 --codec h264 --crf 18 && scripts/gif.sh",
+    "test": "bun test ./src/__tests__",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
