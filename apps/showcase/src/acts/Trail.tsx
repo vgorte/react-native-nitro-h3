@@ -157,13 +157,14 @@ const HEAD_RADIUS_PT = 5
 
 const PIXEL_RATIO = PixelRatio.get()
 
+// the control panel stands over the foot of this block, so every note is kept to one line
 const NOTES = [
-  'a fix that is not a neighbour of the head is joined with gridPathCells',
-  'a fix a second lands in the same cell or a neighbour, so only a gap asks',
-  'those filled cells take the lower half of the ramp, measured ones all of it',
-  `without a live location, a recorded bicycle ride plays at its own pace or at ${TIME_LAPSE_PACE}x`,
-  'the trail is one image, redrawn a few times a second at either pace',
-  'a coarser resolution is the data minimisation the GDPR asks for',
+  'a gap in the fixes is joined with gridPathCells',
+  'a fix a second seldom leaves one',
+  'filled cells read below measured ones',
+  `no live location: the ride plays, or ${TIME_LAPSE_PACE}x`,
+  'the trail is one image, redrawn often',
+  'a coarser cell is GDPR data minimisation',
 ]
 
 /** Names where the fixes come from: the device itself, or the route recorded on a simulated run. */
@@ -378,6 +379,23 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
     }
   }, [])
 
+  /**
+   * Asks the map where it landed once the stop it was given is due to have finished.
+   *
+   * A stop reaches the map over the bridge and can land later than it was given, and with the ride
+   * over there is nothing behind it to correct a frame cut too early, so it is asked twice.
+   */
+  const afterStop = useCallback(
+    (duration: number): void => {
+      if (landing.current !== null) clearTimeout(landing.current)
+      landing.current = setTimeout(() => {
+        land()
+        landing.current = setTimeout(land, FRAME_SETTLE_MS * 3)
+      }, duration + FRAME_SETTLE_MS)
+    },
+    [land],
+  )
+
   const centreOn = useCallback(
     (cell: bigint, zoom: number | undefined, duration: number): void => {
       const centre = cellToLatLng(cell)
@@ -394,10 +412,9 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
       })
       // the map reports no region change while it is gliding, so the frame the image is cut for is
       // asked for again once the stop it was given is due to have landed
-      if (landing.current !== null) clearTimeout(landing.current)
-      landing.current = setTimeout(land, duration + FRAME_SETTLE_MS)
+      afterStop(duration)
     },
-    [move, padding, land],
+    [move, padding, afterStop],
   )
 
   // the two sources reach for the standing resolution rather than depend on it, so a change of it
@@ -544,7 +561,9 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
   // it either way
   useEffect(() => {
     const head = trail[trail.length - 1]
-    if (head === undefined) return
+    // an act off screen gave its map back, and the one it gets on its return opens on the view the
+    // act was written for rather than the one it left, so coming back frames the trail again
+    if (!active || head === undefined) return
     const was = framed.current
     // both answers count against the projection's 256 point tile grid, which the map takes a step
     // lower
@@ -598,7 +617,7 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
       return
     }
     if (following && !leading) centreOn(head.cell, undefined, FOLLOW_MS)
-  }, [trail, following, leading, res, pace, across, width, height, centreOn])
+  }, [active, trail, following, leading, res, pace, across, width, height, centreOn])
 
   // at sixty times the pace the trail grows ten times a second, and a camera put on each new head
   // cuts the glide it was running short: the map lands on the stop and stands there until the next
@@ -609,21 +628,23 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
     if (!active || !leading || !following) return
     let timer: ReturnType<typeof setTimeout> | null = null
     const step = () => {
-      // a route that has played out has nowhere left to lead, and the camera stays where it landed
-      if (played.current < REPLAY_ROUTE.length) {
-        const ahead = fixAhead(REPLAY_ROUTE, Math.max(0, played.current - 1), pace, CAMERA_STEP_MS)
-        const zoom = wanted.current
-        wanted.current = null
-        if (ahead !== undefined) {
-          const cut = zoom !== null && isZoomCut(zoom, viewed.current)
-          move({
-            center: [ahead.lng, ahead.lat],
-            zoom: zoom ?? undefined,
-            duration: cut ? 0 : CAMERA_STEP_MS,
-            easing: cut ? undefined : 'linear',
-            padding: padded.current,
-          })
-        }
+      const zoom = wanted.current
+      wanted.current = null
+      // a route that has played out has nowhere left to lead, but a frame it was handed still moves
+      const ended = played.current >= REPLAY_ROUTE.length
+      const ahead = fixAhead(REPLAY_ROUTE, Math.max(0, played.current - 1), pace, CAMERA_STEP_MS)
+      if (ahead !== undefined && (!ended || zoom !== null)) {
+        const cut = zoom !== null && isZoomCut(zoom, viewed.current)
+        const duration = cut ? 0 : CAMERA_STEP_MS
+        move({
+          center: [ahead.lng, ahead.lat],
+          zoom: zoom ?? undefined,
+          duration,
+          easing: cut ? undefined : 'linear',
+          padding: padded.current,
+        })
+        // a redraw follows the frame while fixes arrive; a stop after the last one has to say so
+        if (zoom !== null) afterStop(duration)
       }
       timer = setTimeout(step, CAMERA_STEP_MS * CAMERA_STEP_LEAD)
     }
@@ -632,7 +653,7 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
     return () => {
       if (timer !== null) clearTimeout(timer)
     }
-  }, [active, leading, following, pace, move])
+  }, [active, leading, following, pace, move, afterStop])
 
   // the offscreen draw, the PNG encode and the write are one block of the JS thread, so a walk
   // that crosses a cell a second gets one image every `REDRAW_MS` carrying the trail it ended on,
