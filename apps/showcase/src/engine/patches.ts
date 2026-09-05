@@ -1,10 +1,17 @@
-import { cellToCenterChild, cellToParent, gridDiskDistances } from 'react-native-nitro-h3'
-import { PATCH_DEPTH } from '../engine/atlas'
-import { bucketOfBaseCell, timed } from '../engine/cells'
-import { bucketForDistance, PATCH_RINGS } from '../engine/mesh'
+import { PATCH_DEPTH } from './atlas'
+import { bucketForDistance, PATCH_RINGS } from './mesh'
+import { timed } from './timed'
 
 /** One ramp step per ring of a patch, plus the step every cell outside one takes. */
 export const PATCH_BUCKETS = PATCH_RINGS + 1
+
+/** The H3 calls the patches are read and timed from, injected so the rules import no package. */
+export interface PatchCalls {
+  getBaseCellNumber(cell: bigint): number
+  cellToParent(cell: bigint, res: number): bigint
+  cellToCenterChild(cell: bigint, res: number): bigint
+  gridDiskDistances(cell: bigint, k: number): BigUint64Array[]
+}
 
 /** Holds the colour of every cell and what the calls behind it cost. */
 export interface PatchBuckets {
@@ -26,13 +33,14 @@ export interface PatchBuckets {
  *
  * @param cells The cells the collection is built from.
  * @param res The resolution they were asked for.
+ * @param calls The H3 calls to read the grid with.
  */
-export function patchBuckets(cells: BigUint64Array, res: number): PatchBuckets {
+export function patchBuckets(cells: BigUint64Array, res: number, calls: PatchCalls): PatchBuckets {
   if (res < PATCH_DEPTH) {
     const buckets = new Uint8Array(cells.length)
     const global = timed('getBaseCellNumber', () => {
       for (let cell = 0; cell < cells.length; cell++) {
-        buckets[cell] = bucketOfBaseCell(cells[cell], PATCH_BUCKETS)
+        buckets[cell] = calls.getBaseCellNumber(cells[cell]) % PATCH_BUCKETS
       }
     })
     return { buckets, call: 'getBaseCellNumber', patchMs: null, ringsMs: global.ms }
@@ -41,7 +49,7 @@ export function patchBuckets(cells: BigUint64Array, res: number): PatchBuckets {
   const patches = timed('cellToParent', () => {
     const ancestors = new BigUint64Array(cells.length)
     for (let cell = 0; cell < cells.length; cell++) {
-      ancestors[cell] = cellToParent(cells[cell], res - PATCH_DEPTH)
+      ancestors[cell] = calls.cellToParent(cells[cell], res - PATCH_DEPTH)
     }
     return ancestors
   })
@@ -58,13 +66,13 @@ export function patchBuckets(cells: BigUint64Array, res: number): PatchBuckets {
   // the centre child of each patch is climbed to outside the window too, so the row times the walk
   const centres = new BigUint64Array(ancestors.length)
   for (let patch = 0; patch < ancestors.length; patch++) {
-    centres[patch] = cellToCenterChild(ancestors[patch], res)
+    centres[patch] = calls.cellToCenterChild(ancestors[patch], res)
   }
 
   const rings = timed('gridDiskDistances', () => {
     const walked = new Array<BigUint64Array[]>(ancestors.length)
     for (let patch = 0; patch < ancestors.length; patch++) {
-      walked[patch] = gridDiskDistances(centres[patch], PATCH_RINGS)
+      walked[patch] = calls.gridDiskDistances(centres[patch], PATCH_RINGS)
     }
     return walked
   })

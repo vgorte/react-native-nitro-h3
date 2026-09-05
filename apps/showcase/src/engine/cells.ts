@@ -2,6 +2,7 @@ import type { CellBoundaries } from 'react-native-nitro-h3'
 import {
   cellsToBoundaries,
   cellsToLatLngs,
+  cellToCenterChild,
   cellToChildren,
   cellToParent,
   getBaseCellNumber,
@@ -15,6 +16,8 @@ import {
   uncompactCells,
 } from 'react-native-nitro-h3'
 import type { NeighbourhoodCalls } from './inspect'
+import type { PatchCalls } from './patches'
+import { type Timed, timed } from './timed'
 
 /** Caps what any control in the app can allocate; passed to `configure` before the first call. */
 export const MAX_CELL_COUNT = 1_500_000
@@ -32,21 +35,12 @@ export const NEIGHBOURHOOD_CALLS: NeighbourhoodCalls = {
   gridDisk,
 }
 
-/** Holds a call's result together with the milliseconds it took and the name it is shown under. */
-export interface Timed<T> {
-  label: string
-  value: T
-  ms: number
-}
-
-// resolved once, so no property lookup happens inside a timed window
-const now = performance.now.bind(performance)
-
-/** Runs a call inside a `performance.now()` window and labels its duration. */
-export function timed<T>(label: string, call: () => T): Timed<T> {
-  const start = now()
-  const value = call()
-  return { label, value, ms: now() - start }
+/** Bundles the calls the patch colouring reads the grid with, for the same reason. */
+export const PATCH_CALLS: PatchCalls = {
+  getBaseCellNumber,
+  cellToParent,
+  cellToCenterChild,
+  gridDiskDistances,
 }
 
 export function diskAround(centre: bigint, k: number): Timed<BigUint64Array> {

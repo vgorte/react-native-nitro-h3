@@ -24,11 +24,12 @@ import {
   openWait,
   type Wait,
 } from '../engine/atlas'
-import { boundariesOf, diskAround, timed } from '../engine/cells'
+import { boundariesOf, diskAround, PATCH_CALLS } from '../engine/cells'
 import { cellsToFeatureCollection } from '../engine/geojson'
+import { PATCH_BUCKETS, patchBuckets } from '../engine/patches'
 import { resolutionForZoom } from '../engine/projection'
 import { formatCount, formatMs } from '../engine/stats'
-import { PATCH_BUCKETS, patchBuckets } from '../render/atlasColours'
+import { timed } from '../engine/timed'
 import { BlockedReadout } from '../render/BlockedReadout'
 import { type Basemap, loadBasemap, PLAIN_BASEMAP } from '../render/basemap'
 import { Attribution } from '../render/hud/Attribution'
@@ -178,7 +179,7 @@ export function Atlas({ active, inspected, onInspect }: ActProps) {
     const cells = disk.value
     if (cells.length > ATLAS_CELL_CAP) return
 
-    const patched = patchBuckets(cells, res)
+    const patched = patchBuckets(cells, res, PATCH_CALLS)
     const boundaries = boundariesOf(cells)
     const json = timed('geojson', () => cellsToFeatureCollection(boundaries.value, patched.buckets))
 

@@ -32,7 +32,7 @@ import {
   type LatLng,
   latLngToCell,
 } from 'react-native-nitro-h3'
-import { pathBetween, timed } from '../engine/cells'
+import { pathBetween } from '../engine/cells'
 import {
   frameMatrix,
   type ImageFrame,
@@ -41,6 +41,7 @@ import {
   projectPoints,
 } from '../engine/imageLayer'
 import { formatCount, formatMs, formatUs } from '../engine/stats'
+import { timed } from '../engine/timed'
 import {
   AGE_SPAN,
   capFixes,

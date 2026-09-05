@@ -24,14 +24,7 @@ import {
   latLngToCell,
 } from 'react-native-nitro-h3'
 import { runOnJS, useDerivedValue, useFrameCallback, useSharedValue } from 'react-native-reanimated'
-import {
-  boundariesOf,
-  bucketOfBaseCell,
-  centresOf,
-  diskAround,
-  earthAt,
-  timed,
-} from '../engine/cells'
+import { boundariesOf, bucketOfBaseCell, centresOf, diskAround, earthAt } from '../engine/cells'
 import {
   buildGlobeFrame,
   createGlobeFrame,
@@ -73,6 +66,7 @@ import {
   type TileId,
   visibleTiles,
 } from '../engine/tiles'
+import { timed } from '../engine/timed'
 import { resetWorstGap } from '../render/BlockedReadout'
 import { CellPictures, type CellScene, recordCellScene } from '../render/CellPictures'
 import { EngineCanvas } from '../render/EngineCanvas'
