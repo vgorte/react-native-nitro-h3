@@ -12,7 +12,7 @@ export interface Reading {
  * Keys closer together than {@linkcode EASE_SECONDS} interrupt one another, so an ease starts from
  * the value the running one had reached rather than from the last key's target: the caption is
  * continuous over the whole scene, whatever the takes were sampled at. A key whose predecessor
- * measured nothing eases from zero, so the first number of an act rises into place.
+ * measured nothing eases from zero, and keys sharing a second collapse onto the last of them.
  */
 export function readingAt(scene: Scene, seconds: number): Reading {
   let label = scene.label
@@ -23,9 +23,12 @@ export function readingAt(scene: Scene, seconds: number): Reading {
 
   for (const key of scene.keys) {
     if (seconds < key.at) break
-    from = keyed ? easedTo(from, to, at, key.at) : to
+    // keys sharing a second are one moment, and the last wins
+    if (!keyed || key.at > at) {
+      from = keyed ? easedTo(from, to, at, key.at) : to
+      at = key.at
+    }
     to = key.value
-    at = key.at
     label = key.label ?? label
     keyed = true
   }

@@ -23,11 +23,11 @@ cut() {
     -c:v libx264 -crf 16 -preset slow -pix_fmt yuv420p "$target"
 }
 
-cut atlas-ios.mp4 6.00 4.20 "$clips/atlas.mp4"
-cut engine-ios.mp4 13.20 4.50 "$clips/engine.mp4"
-cut fractal-ios.mp4 5.45 4.30 "$clips/fractal.mp4"
-cut grid-ios.mp4 5.00 4.70 "$clips/grid.mp4"
-cut heatmap-ios.mp4 4.40 4.30 "$clips/heatmap.mp4"
-cut trail-ios.mp4 13.75 4.70 "$clips/trail.mp4"
+cut atlas-ios.mp4 10.90 4.20 "$clips/atlas.mp4"
+cut engine-ios.mp4 8.75 4.40 "$clips/engine.mp4"
+cut fractal-ios.mp4 7.70 4.30 "$clips/fractal.mp4"
+cut grid-ios.mp4 8.50 4.70 "$clips/grid.mp4"
+cut heatmap-ios.mp4 8.35 4.30 "$clips/heatmap.mp4"
+cut trail-ios.mp4 15.00 4.70 "$clips/trail.mp4"
 
 ls -l "$clips"

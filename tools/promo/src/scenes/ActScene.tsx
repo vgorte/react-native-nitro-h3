@@ -66,7 +66,7 @@ export function ActScene({ scene, hero = false }: ActSceneProps) {
             {reading.value === null ? '' : reading.label}
           </div>
           {hero ? null : <div style={styles.call}>{scene.call}</div>}
-          {/* it keeps its room before a reading exists, so nothing above it moves */}
+          {/* it keeps its room before a reading exists */}
           {hero || scene.note === undefined ? null : (
             <div style={{ ...styles.note, opacity: reading.value === null ? 0 : 1 }}>
               {scene.note}
@@ -145,7 +145,7 @@ const styles: Record<string, CSSProperties> = {
     color: colours.text,
     lineHeight: 1,
     fontVariantNumeric: 'tabular-nums',
-    // it keeps its height before a reading exists, so nothing under it moves
+    // it keeps its height before a reading exists
     minHeight: '1em',
   },
   suffix: {
