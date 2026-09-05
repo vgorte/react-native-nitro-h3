@@ -65,7 +65,7 @@ const MAX_START_ZOOM = 16
 // MapLibre counts zoom against a 512 point tile, the projection helpers against a 256 point one
 const ZOOM_OFFSET = 1
 
-const CELL_LINE_WIDTH = 0.5
+const CELL_LINE_WIDTH = 0.8
 const PICK_LINE_WIDTH = 1.5
 const PANEL_TOP = 104
 const PRINT_WIDTH = 268
