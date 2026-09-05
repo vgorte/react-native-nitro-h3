@@ -24,6 +24,7 @@ jobs:
         run: bun run docs:api --check
       # The parity suite needs the compiled probe this job does not build, so `parity.yml` runs it.
       - run: bun test packages/react-native-nitro-h3/__tests__
+      - run: bun test apps/showcase/src/__tests__
       - name: Vendored h3 matches the pinned upstream tag
         run: bun run vendor:h3 --check
       - name: App icons match the logo
