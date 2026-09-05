@@ -24,9 +24,8 @@ import {
   openWait,
   type Wait,
 } from '../engine/atlas'
-import { boundariesOf, diskAround, NEIGHBOURHOOD_CALLS, timed } from '../engine/cells'
+import { boundariesOf, diskAround, timed } from '../engine/cells'
 import { cellsToFeatureCollection } from '../engine/geojson'
-import { type Highlight, neighbourhoodOf } from '../engine/inspect'
 import { resolutionForZoom } from '../engine/projection'
 import { formatCount, formatMs } from '../engine/stats'
 import { PATCH_BUCKETS, patchBuckets } from '../render/atlasColours'
@@ -37,7 +36,16 @@ import { FinePrint } from '../render/hud/FinePrint'
 import { Metric } from '../render/hud/Metric'
 import { Panel } from '../render/hud/Panel'
 import { Row } from '../render/hud/Row'
-import { CELL_FILL_OPACITY, colours, ramp, rampColours } from '../theme/tokens'
+import {
+  CHILD_FILL,
+  EMPTY_COLLECTION,
+  GHOST_LINE,
+  highlightOf,
+  NEIGHBOUR_FILL,
+  NEIGHBOUR_LINE,
+  oneCellCollection,
+} from '../render/inspectSources'
+import { CELL_FILL_OPACITY, colours, rampColours } from '../theme/tokens'
 import { lastMapPosition, rememberMapPosition } from './mapPosition'
 import type { ActProps } from './types'
 
@@ -54,18 +62,8 @@ const ZOOM_OFFSET = 1
 
 const CELL_LINE_WIDTH = 0.5
 const PICK_LINE_WIDTH = 1.5
-// the ghost of the parent is lighter than the outline of the tapped cell, so the two read apart
-const GHOST_LINE_WIDTH = 1
-const GHOST_LINE_OPACITY = 0.8
-const NEIGHBOUR_LINE_WIDTH = 1
-const NEIGHBOUR_FILL_OPACITY = 0.22
-const CHILD_FILL_OPACITY = 0.45
 const PANEL_TOP = 104
 const PRINT_WIDTH = 268
-
-const EMPTY_COLLECTION = '{"type":"FeatureCollection","features":[]}'
-// the highlight's own cell carries no ring distance, and its layer draws no fill
-const ONE_BUCKET = new Uint8Array(1)
 
 const NOTES = [
   'the classic path: cells become a GeoJSON string the renderer parses; the Skia acts skip this step',
@@ -104,28 +102,6 @@ const PICK_LINE: LinePaint = {
   'line-width': PICK_LINE_WIDTH,
 }
 
-const CHILD_FILL: FillPaint = {
-  // the brightest step of the ramp, which is what the Skia hosts fill the children with
-  'fill-color': ramp[ramp.length - 1],
-  'fill-opacity': CHILD_FILL_OPACITY,
-}
-
-const NEIGHBOUR_FILL: FillPaint = {
-  'fill-color': colours.contrast,
-  'fill-opacity': NEIGHBOUR_FILL_OPACITY,
-}
-
-const NEIGHBOUR_LINE: LinePaint = {
-  'line-color': colours.contrast,
-  'line-width': NEIGHBOUR_LINE_WIDTH,
-}
-
-const GHOST_LINE: LinePaint = {
-  'line-color': colours.text,
-  'line-width': GHOST_LINE_WIDTH,
-  'line-opacity': GHOST_LINE_OPACITY,
-}
-
 /** Holds one settle's cells together with what every step of the classic path cost. */
 interface Scene {
   data: string
@@ -144,24 +120,6 @@ interface Scene {
 interface Picked {
   data: string
   index: string
-}
-
-/** Holds what the map draws around an inspected cell, one collection a layer. */
-type AtlasHighlight = Highlight<string, string>
-
-/** Builds the collection of a cell set, which one layer of the highlight draws from. */
-function collectionOf(cells: BigUint64Array): string {
-  return cellsToFeatureCollection(boundariesOf(cells).value, new Uint8Array(cells.length))
-}
-
-/** Answers the three collections the sheet's highlight is drawn from. */
-function highlightOf(cell: bigint): AtlasHighlight {
-  const around = neighbourhoodOf(cell, NEIGHBOURHOOD_CALLS)
-  return {
-    neighbours: collectionOf(around.neighbours),
-    children: around.children.length === 0 ? null : collectionOf(around.children),
-    parent: around.parent === null ? null : collectionOf(BigUint64Array.of(around.parent)),
-  }
 }
 
 /** Answers the camera the act opens on: the position the shared store holds, or Berlin. */
@@ -291,9 +249,8 @@ export function Atlas({ active, inspected, onInspect }: ActProps) {
       pickedIndex.current = index
       // a tap this early leaves the map wait no frame to report, and the guard below stops it
       if (mapWait.current.timer === null) mapWait.current.from = 0
-      const boundaries = boundariesOf(new BigUint64Array([cell]))
       openWait(pickWait.current, at)
-      setPicked({ data: cellsToFeatureCollection(boundaries.value, ONE_BUCKET), index })
+      setPicked({ data: oneCellCollection(cell), index })
     },
     [onInspect],
   )
