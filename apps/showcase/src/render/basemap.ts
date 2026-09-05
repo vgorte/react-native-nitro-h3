@@ -10,7 +10,7 @@ export interface Basemap {
   /** The recoloured style, or the plain URL where the style could not be read. */
   style: string | StyleSpecification
   attribution: string
-  /** `false` where the style could not be read, which offline is a map that draws nothing. */
+  /** `false` where the style could not be read here; the map's own fetch may still succeed. */
   loaded: boolean
 }
 

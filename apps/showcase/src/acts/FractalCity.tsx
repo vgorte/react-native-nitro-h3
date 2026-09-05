@@ -74,6 +74,18 @@ export const GROWTH_MS = 300
 /** Milliseconds the parent outline stays as a ghost before it is gone. */
 export const GHOST_FADE_MS = 1_000
 
+/** Frees the children growing over a split, which the merge hands to the scene itself. */
+function disposeGrowth(held: Growth | null): void {
+  if (held === null) return
+  disposeCellScene(held.cells)
+  held.outline.dispose()
+}
+
+/** Frees the parent outline once the ghost has faded off the split it came from. */
+function disposeGhost(held: SkPath | null): void {
+  held?.dispose()
+}
+
 /** Frees the scene a split or a merge has replaced: both layers and the grid over them. */
 function disposeScene(held: Scene | null): void {
   if (held === null) return
@@ -175,6 +187,8 @@ export function FractalCity({ active, inspected, onInspect }: ActProps) {
 
   const scene = useMemo(() => (tree === null ? null : buildScene(tree, anchor)), [tree, anchor])
   useDisposed(scene, disposeScene)
+  useDisposed(growth, disposeGrowth)
+  useDisposed(ghost, disposeGhost)
 
   // the act reaches for the position store only once it is on screen, where Atlas has written it
   useEffect(() => {

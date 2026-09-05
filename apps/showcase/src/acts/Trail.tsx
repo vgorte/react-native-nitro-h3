@@ -258,7 +258,7 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
     loadBasemap()
       .then(setBasemap)
       .catch(() => {
-        // a style that will not load leaves the map on the plain URL and the known licence line
+        // the map fetches the style itself, so it can still draw; the licence line stands either way
         setBasemap(PLAIN_BASEMAP)
       })
   }, [active, basemap])
