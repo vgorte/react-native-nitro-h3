@@ -31,8 +31,13 @@ export interface TrailScene {
  *
  * @param trail The cells walked so far, oldest first.
  * @param anchor The coordinate the scene's metre space is measured from.
+ * @param span The age the fade is spread over; a time lapse frames less than the trail it keeps.
  */
-export function buildTrailScene(trail: readonly TrailStep[], anchor: CameraAnchor): TrailScene {
+export function buildTrailScene(
+  trail: readonly TrailStep[],
+  anchor: CameraAnchor,
+  span?: number,
+): TrailScene {
   const boundaries = boundariesOf(cellsOfTrail(trail))
   const started = performance.now()
   const projected = projectCells(boundaries.value, anchor)
@@ -40,7 +45,7 @@ export function buildTrailScene(trail: readonly TrailStep[], anchor: CameraAncho
     chunkSize: CHUNK_SIZE,
     buckets: BUCKETS,
     inset: INSET,
-    bucketOf: bucketsOfTrail(trail, BUCKETS),
+    bucketOf: bucketsOfTrail(trail, BUCKETS, span),
   })
 
   return {

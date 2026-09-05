@@ -51,9 +51,11 @@ import {
   capTrail,
   extendTrail,
   FIX_HISTORY,
+  fadeSpan,
   filledCells,
   fixAhead,
   fixesDue,
+  isZoomCut,
   MAX_TRAIL_RES,
   MIN_TRAIL_RES,
   pathOrJump,
@@ -138,9 +140,6 @@ const ZOOM_OFFSET = 1
 // the grace a glide is given to land before the frame is cut for where the map ended up
 const FRAME_SETTLE_MS = 80
 
-// zoom levels a re-frame may travel over before it is taken as a cut rather than a flight
-const ZOOM_CUT_LEVELS = 3
-
 const PACE_OPTIONS: readonly ChoiceOption<number>[] = [
   { value: RECORDED_PACE, label: 'recorded' },
   { value: TIME_LAPSE_PACE, label: `${TIME_LAPSE_PACE}x` },
@@ -163,8 +162,8 @@ const NOTES = [
   'a fix a second lands in the same cell or a neighbour, so only a gap asks',
   'those filled cells take the lower half of the ramp, measured ones all of it',
   `without a live location, a recorded bicycle ride plays at its own pace or at ${TIME_LAPSE_PACE}x`,
-  'the trail is one image, redrawn when the trail gains a cell',
-  'a coarser resolution keeps the ride and drops the doorstep: the data minimisation GDPR asks for, and the cell area row says how much',
+  'the trail is one image, redrawn a few times a second at either pace',
+  'a coarser resolution is the data minimisation the GDPR asks for',
 ]
 
 /** Names where the fixes come from: the device itself, or the route recorded on a simulated run. */
@@ -258,6 +257,10 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
   const [imageMs, setImageMs] = useState<number | null>(null)
   // what a render that answered no image said, which stands in the row the time would have taken
   const [imageFailed, setImageFailed] = useState<string | null>(null)
+  // bumped whenever the ground under the image has moved, which the one build below answers
+  const [landed, setLanded] = useState(0)
+  // the resolution the slider reads out while it is dragged; the walk waits for the drag to end
+  const [sliding, setSliding] = useState(TRAIL_RES)
   // the coordinate the scene's metre space is measured from, which the first fix sets
   const [anchor, setAnchor] = useState<LatLng>(BERLIN)
   // the opening frame is written once; every frame after it comes from a camera stop
@@ -286,11 +289,20 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
   const viewed = useRef<number | null>(null)
   // the wait for the standing glide to land, after which the frame is cut for where it landed
   const landing = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // the zoom a re-frame asks for while the time lapse owns the camera, carried into its next step
+  const wanted = useRef<number | null>(null)
+  // the padding the camera keeps clear, read by the lead loop without tearing it down on a change
+  const padded = useRef({ top: PANEL_TOP, bottom: BLOCKED_READOUT_BAND, left: 0, right: 0 })
   // the ground and the viewport the standing image was cut for, so a settle that moved nothing
   // rebuilds nothing
   const cut = useRef('')
   // when the standing scene was recorded and the frame it stands in, which paces the next one
-  const drawn = useRef<{ at: number; anchor: LatLng }>({ at: 0, anchor: BERLIN })
+  const drawn = useRef<{
+    at: number
+    anchor: LatLng
+    trail: TrailStep[] | null
+    ground: number
+  }>({ at: 0, anchor: BERLIN, trail: null, ground: -1 })
 
   // the act reaches for the basemap only once it has been opened, and keeps it afterwards
   useEffect(() => {
@@ -322,23 +334,12 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
     [width, height],
   )
 
-  const settle = useCallback(
-    (event: NativeSyntheticEvent<ViewStateChangeEvent>): void => {
-      reframe(event.nativeEvent)
-    },
-    [reframe],
-  )
+  // every change of the ground under the image goes through the one build below, so the trail is
+  // encoded once a redraw interval and always into the frame it is georeferenced by; a settle, a
+  // glide that has landed and a map that has just loaded all only say that the ground moved
+  const land = useCallback((): void => setLanded((count) => count + 1), [])
 
-  // a glide the map is still running has not settled, so it reports no region change and the frame
-  // the image was cut for would stand where the camera left it: every redraw asks where the map is
-  const refit = useCallback((): void => {
-    map.current
-      ?.getViewState()
-      .then(reframe)
-      .catch(() => {
-        // a view state the map will not answer leaves the frame to the next settle
-      })
-  }, [reframe])
+  const settle = useCallback((): void => land(), [land])
 
   const rendered = useCallback((ms: number): void => {
     setImageFailed(null)
@@ -362,6 +363,9 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
     () => ({ top: PANEL_TOP + panelHeight, bottom: BLOCKED_READOUT_BAND, left: 0, right: 0 }),
     [panelHeight],
   )
+  useEffect(() => {
+    padded.current = padding
+  }, [padding])
 
   /** Moves the camera, and says nothing where the map has not mounted one yet. */
   const move = useCallback((stop: CameraStop): void => {
@@ -391,9 +395,9 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
       // the map reports no region change while it is gliding, so the frame the image is cut for is
       // asked for again once the stop it was given is due to have landed
       if (landing.current !== null) clearTimeout(landing.current)
-      landing.current = setTimeout(refit, duration + FRAME_SETTLE_MS)
+      landing.current = setTimeout(land, duration + FRAME_SETTLE_MS)
     },
-    [move, padding, refit],
+    [move, padding, land],
   )
 
   // the two sources reach for the standing resolution rather than depend on it, so a change of it
@@ -516,6 +520,13 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
     resetWorstGap()
   }, [active])
 
+  useEffect(
+    () => () => {
+      if (landing.current !== null) clearTimeout(landing.current)
+    },
+    [],
+  )
+
   // a gesture takes the camera off the head, and only the recentre control gives it back
   const grabbed = useCallback((event: NativeSyntheticEvent<ViewStateChangeEvent>): void => {
     if (event.nativeEvent.userInteraction) setFollowing(false)
@@ -564,17 +575,26 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
       return
     }
     if (following && (was.res !== res || was.pace !== pace || was.across !== across)) {
-      framed.current = { res, pace, across }
       const standing = viewed.current
       const next = framedZoom(was, standing)
+      // a stretch the camera was not moved for is not recorded, so a widening that was declined
+      // fires later, once the trail has grown into it
+      framed.current = next === null ? { ...was, res, pace } : { res, pace, across }
       if (next === null) {
-        centreOn(head.cell, undefined, FOLLOW_MS)
+        if (!leading) centreOn(head.cell, undefined, FOLLOW_MS)
         return
       }
-      // the ladder spans seven zoom levels, and a flight over more than a few of them leaves the
-      // map with no tiles drawn when it lands, so a long re-frame is a cut rather than a glide
-      const far = standing === null || Math.abs(next - ZOOM_OFFSET - standing) > ZOOM_CUT_LEVELS
-      centreOn(head.cell, next - ZOOM_OFFSET, far ? 0 : FOLLOW_MS)
+      // the lead loop owns the camera while the time lapse runs, so the frame is handed to it
+      // rather than issued against it
+      if (leading) {
+        wanted.current = next - ZOOM_OFFSET
+        return
+      }
+      centreOn(
+        head.cell,
+        next - ZOOM_OFFSET,
+        isZoomCut(next - ZOOM_OFFSET, standing) ? 0 : FOLLOW_MS,
+      )
       return
     }
     if (following && !leading) centreOn(head.cell, undefined, FOLLOW_MS)
@@ -589,14 +609,21 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
     if (!active || !leading || !following) return
     let timer: ReturnType<typeof setTimeout> | null = null
     const step = () => {
-      const ahead = fixAhead(REPLAY_ROUTE, Math.max(0, played.current - 1), pace, CAMERA_STEP_MS)
-      if (ahead !== undefined) {
-        move({
-          center: [ahead.lng, ahead.lat],
-          duration: CAMERA_STEP_MS,
-          easing: 'linear',
-          padding,
-        })
+      // a route that has played out has nowhere left to lead, and the camera stays where it landed
+      if (played.current < REPLAY_ROUTE.length) {
+        const ahead = fixAhead(REPLAY_ROUTE, Math.max(0, played.current - 1), pace, CAMERA_STEP_MS)
+        const zoom = wanted.current
+        wanted.current = null
+        if (ahead !== undefined) {
+          const cut = zoom !== null && isZoomCut(zoom, viewed.current)
+          move({
+            center: [ahead.lng, ahead.lat],
+            zoom: zoom ?? undefined,
+            duration: cut ? 0 : CAMERA_STEP_MS,
+            easing: cut ? undefined : 'linear',
+            padding: padded.current,
+          })
+        }
       }
       timer = setTimeout(step, CAMERA_STEP_MS * CAMERA_STEP_LEAD)
     }
@@ -605,7 +632,7 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
     return () => {
       if (timer !== null) clearTimeout(timer)
     }
-  }, [active, leading, following, pace, move, padding])
+  }, [active, leading, following, pace, move])
 
   // the offscreen draw, the PNG encode and the write are one block of the JS thread, so a walk
   // that crosses a cell a second gets one image every `REDRAW_MS` carrying the trail it ended on,
@@ -616,11 +643,28 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
       setScene(null)
       return
     }
+    // the same cells over the same ground are already recorded, and re-encoding them buys nothing
+    const held = drawn.current
+    if (held.trail === trail && held.ground === landed && held.anchor === anchor) return
     const every = leading ? TIME_LAPSE_REDRAW_MS : REDRAW_MS
+    const record = (): void => {
+      setScene(buildTrailScene(trail, anchor, fadeSpan(trail.length, leading)))
+    }
     const build = (): void => {
-      refit()
-      drawn.current = { at: performance.now(), anchor }
-      setScene(buildTrailScene(trail, anchor))
+      drawn.current = { at: performance.now(), anchor, trail, ground: landed }
+      // the frame and the scene reach React in one commit, so the image is encoded once and into
+      // the ground it is georeferenced by rather than once into each
+      const asked = map.current?.getViewState()
+      if (asked === undefined) {
+        record()
+        return
+      }
+      asked
+        .then((view) => {
+          reframe(view)
+          record()
+        })
+        .catch(record)
     }
     const waited = performance.now() - drawn.current.at
     if (drawn.current.anchor !== anchor || waited >= every) {
@@ -629,7 +673,7 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
     }
     const timer = setTimeout(build, every - waited)
     return () => clearTimeout(timer)
-  }, [trail, anchor, leading, refit])
+  }, [trail, anchor, leading, landed, reframe])
 
   // a tap opens the sheet on the cell under it, and lands on the ground where the trail is not
   const press = useCallback(
@@ -710,7 +754,7 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
           onPress={press}
           onRegionWillChange={grabbed}
           onRegionDidChange={settle}
-          onDidFinishLoadingMap={refit}
+          onDidFinishLoadingMap={land}
         >
           <Camera ref={camera} initialViewState={opening} />
           {frame === null ? null : (
@@ -744,7 +788,11 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
             onLayout={(event) => setPanelHeight(event.nativeEvent.layout.height)}
           >
             <Panel collapsible collapsed={collapsed} onToggle={() => setCollapsed((was) => !was)}>
-              <Metric value={formatCount(trail.length)} caption="cells on the trail" />
+              {/* the count is the trail the image carries, so the panel and the map never disagree */}
+              <Metric
+                value={scene === null ? '0' : formatCount(scene.cells)}
+                caption="cells on the trail"
+              />
               <Row label="fixes" value={formatCount(reading.fixes)} />
               <Row label="source" value={source ?? 'asking'} />
               <Row label="resolution" value={`${res}`} />
@@ -793,13 +841,14 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
           </View>
           <View style={styles.control}>
             <Panel align="right">
-              <Row label="resolution" value={`${res}`} />
+              <Row label="resolution" value={`${sliding}`} />
+              {/* a step of the drag walks the whole route again, so only the release commits one */}
               <Slider
                 min={MIN_TRAIL_RES}
                 max={MAX_TRAIL_RES}
-                value={res}
+                value={sliding}
                 width={SLIDER_WIDTH}
-                onChange={setRes}
+                onChange={setSliding}
                 onSettle={setRes}
               />
               {/* a live feed arrives at the pace the visitor moves, so only a replay has one to set */}

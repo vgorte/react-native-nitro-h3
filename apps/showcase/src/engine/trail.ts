@@ -32,6 +32,18 @@ export const TIME_LAPSE_CELLS_ACROSS = 60
 /** Cells of a new resolution that must still fit across the view before the camera re-fits. */
 export const MIN_CELLS_ACROSS = 4
 
+/** Zoom levels a re-frame may travel over before it is taken as a cut rather than a flight. */
+export const ZOOM_CUT_LEVELS = 3
+
+/**
+ * Cells the fade is spread over while the time lapse runs.
+ *
+ * The trail keeps {@linkcode AGE_SPAN} cells and the time-lapse frame holds a fraction of them, so
+ * a ramp spread over the whole trail leaves everything on screen at its brightest end. Twice the
+ * framed stretch puts the dark end of the ramp just outside the frame, and the tail fades inside it.
+ */
+export const TIME_LAPSE_FADE_SPAN = TIME_LAPSE_CELLS_ACROSS * 2
+
 // the time-lapse frame follows the trail in steps, so a growing one re-frames a few times a run
 const CELLS_ACROSS_STEP = 10
 
@@ -84,15 +96,18 @@ export interface TrailStep {
  * twice, so the older step gives way to the newer one and the trail holds every standing cell once.
  */
 function appended(trail: readonly TrailStep[], steps: readonly TrailStep[]): TrailStep[] {
-  const coming = new Map(steps.map((step) => [step.cell, step]))
+  const coming = new Set(steps.map((step) => step.cell))
   const kept: TrailStep[] = []
+  const walked = new Set<bigint>()
   for (const step of trail) {
-    const moving = coming.get(step.cell)
-    if (moving === undefined) kept.push(step)
-    // a cell a fix once landed in stays measured, however the trail reaches it again
-    else if (!step.filled) moving.filled = false
+    if (!coming.has(step.cell)) kept.push(step)
+    else if (!step.filled) walked.add(step.cell)
   }
-  return [...kept, ...steps]
+  // a cell a fix once landed in stays measured, however the trail reaches it again
+  const moved = steps.map((step) =>
+    step.filled && walked.has(step.cell) ? { cell: step.cell, filled: false } : step,
+  )
+  return [...kept, ...moved]
 }
 
 /** Extends a trail by one fix, closing a gap with the grid path when the fix is not a neighbour. */
@@ -238,22 +253,11 @@ export function zoomForResolution(
   edgeLengthM: (res: number) => number,
   res: number,
 ): number | null {
-  const narrow = Math.min(width, height) * metresPerPixel(zoom, lat)
-  const fitting = narrow / (CELL_SPACING * edgeLengthM(res))
+  // the framed stretch is what `zoomForTrail` fits cells into, margin and all, so both count alike
+  const framed = Math.min(width, height) * FIT_MARGIN * metresPerPixel(zoom, lat)
+  const fitting = framed / (CELL_SPACING * edgeLengthM(res))
   if (fitting >= MIN_CELLS_ACROSS) return null
   return zoomForTrail(width, height, lat, edgeLengthM, res)
-}
-
-/**
- * Answers the milliseconds a replay waits between two fixes, the recorded gap divided by the pace.
- *
- * @param from The fix the replay last delivered.
- * @param to The fix that comes after it.
- * @param pace How much faster than the recording the replay runs, {@linkcode RECORDED_PACE} for
- *   the pace it was ridden at.
- */
-export function replayDelayMs(from: TrailFix, to: TrailFix, pace: number): number {
-  return Math.max(0, (to.t - from.t) / pace)
 }
 
 /**
@@ -277,7 +281,7 @@ export function fixAhead(
   const from = route[index]
   if (from === undefined) return undefined
   let at = index
-  while (at + 1 < route.length && replayDelayMs(from, route[at + 1], pace) <= aheadMs) at += 1
+  while (at + 1 < route.length && (route[at + 1].t - from.t) / pace <= aheadMs) at += 1
   return route[at]
 }
 
@@ -303,14 +307,48 @@ export function bucketOfAge(age: number, filled: boolean, buckets: number, span:
   return Math.round(((span - age) / span) * top)
 }
 
-/** Answers the ramp bucket of every step of a trail, in the order the cells are drawn in. */
-export function bucketsOfTrail(trail: readonly TrailStep[], buckets: number): Uint8Array {
+/**
+ * Answers the ramp bucket of every step of a trail, in the order the cells are drawn in.
+ *
+ * @param trail The cells walked so far, oldest first.
+ * @param buckets Steps the ramp is cut into, which the caller takes from the theme.
+ * @param span The age the fade is spread over, the whole trail unless a caller frames less of it.
+ */
+export function bucketsOfTrail(
+  trail: readonly TrailStep[],
+  buckets: number,
+  span = trail.length - 1,
+): Uint8Array {
   const of = new Uint8Array(trail.length)
-  const span = trail.length - 1
+  const oldest = trail.length - 1
   for (let index = 0; index < trail.length; index++) {
-    of[index] = bucketOfAge(span - index, trail[index].filled, buckets, span)
+    of[index] = bucketOfAge(oldest - index, trail[index].filled, buckets, span)
   }
   return of
+}
+
+/**
+ * Answers the ages the fade is spread over: the trail standing, or the frame's own span in a lapse.
+ *
+ * @param standing Cells of the trail that are drawn.
+ * @param lapse Whether the time lapse is running, which frames a fraction of the trail.
+ */
+export function fadeSpan(standing: number, lapse: boolean): number {
+  const whole = Math.max(0, standing - 1)
+  return lapse ? Math.min(whole, TIME_LAPSE_FADE_SPAN) : whole
+}
+
+/**
+ * Answers whether a re-frame travels too far to be animated.
+ *
+ * A stop that interpolates over more than {@linkcode ZOOM_CUT_LEVELS} levels leaves the map with
+ * no tiles drawn where it lands, so such a re-frame is issued as a cut instead.
+ *
+ * @param next The zoom the frame asks for.
+ * @param standing The zoom the map is on, `null` where it has reported none yet.
+ */
+export function isZoomCut(next: number, standing: number | null): boolean {
+  return standing === null || Math.abs(next - standing) > ZOOM_CUT_LEVELS
 }
 
 /**

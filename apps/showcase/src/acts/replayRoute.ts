@@ -1,17 +1,17 @@
 import type { TrailFix } from '../engine/trail'
 
 /**
- * The route the act plays when the location is refused, at the pace it was ridden.
+ * The route the act plays when the location is refused, at its own pace or as a time lapse.
  *
  * Recorded on 2026-09-05 from the app itself, on the iPhone 17 Pro simulator with
- * `EXPO_PUBLIC_TRAIL_RECORD=1`, over a 16.3 km bicycle loop through Berlin: Alexanderplatz, Unter
- * den Linden, the Brandenburger Tor, Potsdamer Platz, the Landwehrkanal through Kreuzberg, the
- * Oberbaumbrücke and back along the Spree. The streets come from the public OSRM demo router and
- * the ride from `simctl location start --speed=8 --interval=1`, which delivered a fix a second
- * about 6.4 m on, well inside a cell at resolution 12. The log became this file through a script:
- * the window is the longest run of fixes with no hole in it, the timestamps are rebased to the
- * first of them and rounded to the millisecond, the coordinates are rounded to six decimals, and
- * nothing here was typed by hand.
+ * `EXPO_PUBLIC_TRAIL_RECORD=1`, over a bicycle loop through Berlin: Alexanderplatz, Unter den
+ * Linden, the Brandenburger Tor, Potsdamer Platz, the Landwehrkanal through Kreuzberg, the
+ * Oberbaumbrücke and back along the Spree. The public OSRM demo router routed 15,986 m of streets
+ * and `simctl location start --speed=8 --interval=1` rode them, delivering a fix a second about
+ * 6.4 m on over 16,304 m of ground, well inside a cell at resolution 12. The log became this file
+ * through a script: the window is the longest run of fixes with no hole over five seconds in it,
+ * the timestamps are rebased to the first of them and rounded to the millisecond, the coordinates
+ * are rounded to six decimals, and nothing here was typed by hand.
  */
 export const REPLAY_ROUTE: readonly TrailFix[] = [
   { lat: 52.522937, lng: 13.41373, t: 0 },

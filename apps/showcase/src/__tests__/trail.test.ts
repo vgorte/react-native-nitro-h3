@@ -11,24 +11,27 @@ import {
   cellsOfTrail,
   extendTrail,
   FIX_HISTORY,
+  fadeSpan,
   filledCells,
   fixAhead,
   fixesDue,
+  isZoomCut,
   MAX_TRAIL_RES,
   MIN_CELLS_ACROSS,
   MIN_TRAIL_RES,
   pathOrJump,
   RECORDED_PACE,
   REPLAY_TICK_MS,
-  replayDelayMs,
   routeTimeAt,
   TIME_LAPSE_CELLS_ACROSS,
+  TIME_LAPSE_FADE_SPAN,
   TIME_LAPSE_PACE,
   TRAIL_CELLS_ACROSS,
   TRAIL_RES,
   type TrailFix,
   type TrailStep,
   timeLapseCellsAcross,
+  ZOOM_CUT_LEVELS,
   zoomForResolution,
   zoomForTrail,
 } from '../engine/trail'
@@ -317,27 +320,6 @@ describe('bucketsOfTrail', () => {
 const ridden = (count: number): TrailFix[] =>
   Array.from({ length: count }, (_, index) => ({ lat: 0, lng: 0, t: index * 1_000 }))
 
-describe('replayDelayMs', () => {
-  test('answers the recorded gap at the recorded pace', () => {
-    const route = ridden(2)
-
-    expect(replayDelayMs(route[0], route[1], RECORDED_PACE)).toBe(1_000)
-  })
-
-  test('divides the recorded gap by the pace', () => {
-    const route = ridden(2)
-
-    expect(replayDelayMs(route[0], route[1], TIME_LAPSE_PACE)).toBeCloseTo(1_000 / 60, 9)
-  })
-
-  test('holds at zero where the recording stood still or stepped back', () => {
-    const fix = { lat: 0, lng: 0, t: 5_000 }
-
-    expect(replayDelayMs(fix, fix, RECORDED_PACE)).toBe(0)
-    expect(replayDelayMs(fix, { lat: 0, lng: 0, t: 4_000 }, TIME_LAPSE_PACE)).toBe(0)
-  })
-})
-
 describe('routeTimeAt', () => {
   test('stands where it was read when no time has passed', () => {
     expect(routeTimeAt({ at: 1_000, t: 4_000 }, 1_000, TIME_LAPSE_PACE)).toBe(4_000)
@@ -540,12 +522,90 @@ describe('zoomForResolution', () => {
     expect(next as number).toBeLessThan(standing)
   })
 
-  test('holds the view at exactly the least cells, and gives it up below them', () => {
-    const onTheEdge = zoomFitting(MIN_CELLS_ACROSS, TRAIL_RES)
-    const under = zoomFitting(MIN_CELLS_ACROSS - 1, TRAIL_RES)
+  test('holds the view just above the least cells, and gives it up just below them', () => {
+    // the threshold counts the stretch `zoomForTrail` fits cells into, margin and all, so the two
+    // agree cell for cell; the edge itself is a float and is approached from either side
+    const over = zoomFitting(MIN_CELLS_ACROSS + 0.01, TRAIL_RES)
+    const under = zoomFitting(MIN_CELLS_ACROSS - 0.01, TRAIL_RES)
 
-    expect(zoomForResolution(onTheEdge, WIDTH, HEIGHT, LAT, EDGE_M, TRAIL_RES)).toBeNull()
+    expect(zoomForResolution(over, WIDTH, HEIGHT, LAT, EDGE_M, TRAIL_RES)).toBeNull()
     expect(zoomForResolution(under, WIDTH, HEIGHT, LAT, EDGE_M, TRAIL_RES)).not.toBeNull()
+    // and a stretch that fits five cells is comfortably above it, a stretch that fits three below
+    expect(
+      zoomForResolution(
+        zoomFitting(MIN_CELLS_ACROSS + 1, TRAIL_RES),
+        WIDTH,
+        HEIGHT,
+        LAT,
+        EDGE_M,
+        TRAIL_RES,
+      ),
+    ).toBeNull()
+    expect(
+      zoomForResolution(
+        zoomFitting(MIN_CELLS_ACROSS - 1, TRAIL_RES),
+        WIDTH,
+        HEIGHT,
+        LAT,
+        EDGE_M,
+        TRAIL_RES,
+      ),
+    ).not.toBeNull()
+  })
+})
+
+describe('fadeSpan', () => {
+  test('spreads the fade over the standing trail at the recorded pace', () => {
+    expect(fadeSpan(8, false)).toBe(7)
+    expect(fadeSpan(AGE_SPAN, false)).toBe(AGE_SPAN - 1)
+  })
+
+  test('caps the fade at what a time lapse frames', () => {
+    expect(fadeSpan(AGE_SPAN, true)).toBe(TIME_LAPSE_FADE_SPAN)
+  })
+
+  test('spreads a trail shorter than the cap over itself, whatever the pace', () => {
+    expect(fadeSpan(8, true)).toBe(7)
+  })
+
+  test('holds at zero for a trail of one cell or none', () => {
+    expect(fadeSpan(1, true)).toBe(0)
+    expect(fadeSpan(0, false)).toBe(0)
+  })
+
+  test('darkens the cells outside the framed span in a lapse', () => {
+    const trail = measured(AGE_SPAN)
+    const buckets = bucketsOfTrail(trail, BUCKETS, fadeSpan(trail.length, true))
+
+    // the head is brightest, the oldest cell the frame holds is darkest, and everything before it
+    expect(buckets[AGE_SPAN - 1]).toBe(BUCKETS - 1)
+    expect(buckets[AGE_SPAN - 1 - TIME_LAPSE_FADE_SPAN]).toBe(0)
+    expect(buckets[0]).toBe(0)
+    expect(new Set(buckets).size).toBe(BUCKETS)
+  })
+})
+
+describe('isZoomCut', () => {
+  test('takes a re-frame the map has no standing view for as a cut', () => {
+    expect(isZoomCut(9, null)).toBe(true)
+  })
+
+  test('glides over a re-frame inside the levels a stop may travel', () => {
+    expect(isZoomCut(12, 12)).toBe(false)
+    expect(isZoomCut(12 - ZOOM_CUT_LEVELS, 12)).toBe(false)
+    expect(isZoomCut(12 + ZOOM_CUT_LEVELS, 12)).toBe(false)
+  })
+
+  test('cuts a re-frame that travels further than that, either way', () => {
+    expect(isZoomCut(12 - ZOOM_CUT_LEVELS - 0.01, 12)).toBe(true)
+    expect(isZoomCut(12 + ZOOM_CUT_LEVELS + 0.01, 12)).toBe(true)
+  })
+
+  test('cuts the ladder end to end, which is what it is there for', () => {
+    const coarse = zoomForTrail(WIDTH, HEIGHT, LAT, EDGE_M, MIN_TRAIL_RES)
+    const fine = zoomForTrail(WIDTH, HEIGHT, LAT, EDGE_M, MAX_TRAIL_RES)
+
+    expect(isZoomCut(coarse, fine)).toBe(true)
   })
 })
 
