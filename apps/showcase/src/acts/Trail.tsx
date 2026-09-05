@@ -80,6 +80,7 @@ import { Choice, type ChoiceOption } from '../render/hud/Choice'
 import { FinePrint } from '../render/hud/FinePrint'
 import { Metric } from '../render/hud/Metric'
 import { Panel } from '../render/hud/Panel'
+import { panelRoom } from '../render/hud/panelRoom'
 import { Row } from '../render/hud/Row'
 import { Slider } from '../render/hud/Slider'
 import {
@@ -253,6 +254,8 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
   const [collapsed, setCollapsed] = useState(true)
   // the panel's own height, measured, because what it says decides it and the viewport does not
   const [panelHeight, setPanelHeight] = useState(0)
+  // the control panel is what the expanded panel has to stop above, and only it knows its height
+  const [controlHeight, setControlHeight] = useState(0)
   const [basemap, setBasemap] = useState<Basemap | null>(null)
   const [frame, setFrame] = useState<ImageFrame | null>(null)
   const [imageMs, setImageMs] = useState<number | null>(null)
@@ -837,7 +840,12 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
             pointerEvents="box-none"
             onLayout={(event) => setPanelHeight(event.nativeEvent.layout.height)}
           >
-            <Panel collapsible collapsed={collapsed} onToggle={() => setCollapsed((was) => !was)}>
+            <Panel
+              collapsible
+              collapsed={collapsed}
+              onToggle={() => setCollapsed((was) => !was)}
+              maxHeight={panelRoom(height, PANEL_TOP, CONTROL_BOTTOM + controlHeight)}
+            >
               {/* the count is the trail the image carries, so the panel and the map never disagree */}
               <Metric
                 value={scene === null ? '0' : formatCount(scene.cells)}
@@ -889,7 +897,10 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
               </View>
             </Panel>
           </View>
-          <View style={styles.control}>
+          <View
+            style={styles.control}
+            onLayout={(event) => setControlHeight(event.nativeEvent.layout.height)}
+          >
             <Panel align="right">
               <Row label="resolution" value={`${sliding}`} />
               {/* a step of the drag walks the whole route again, so only the release commits one */}

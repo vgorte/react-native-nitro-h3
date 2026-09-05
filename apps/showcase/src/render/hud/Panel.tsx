@@ -1,7 +1,8 @@
 import { BlurView } from 'expo-blur'
-import { Children, type ReactNode } from 'react'
-import { Pressable, StyleSheet, Text, View } from 'react-native'
+import { Children, type ReactNode, useState } from 'react'
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { colours, glass, type } from '../../theme/tokens'
+import { bodyRoom } from './panelRoom'
 
 /** Configures {@linkcode Panel}. */
 export interface PanelProps {
@@ -17,6 +18,12 @@ export interface PanelProps {
   collapsible?: boolean
   collapsed?: boolean
   onToggle?: () => void
+  /**
+   * Height the whole panel has to stay inside; the body scrolls once it needs more.
+   *
+   * The act measures the room, because only the act knows what else stands over its scene.
+   */
+  maxHeight?: number
 }
 
 /** Blur strength of the glass; the theme's 18 px radius over data this bright needs it high. */
@@ -29,12 +36,16 @@ export function Panel({
   collapsible = false,
   collapsed = false,
   onToggle,
+  maxHeight,
 }: PanelProps) {
   const items = Children.toArray(children)
   const head = collapsible ? items[0] : null
   const body = collapsible ? items.slice(1) : items
 
+  const [headHeight, setHeadHeight] = useState(0)
+
   const edge = align === 'right' ? styles.right : styles.left
+  const room = maxHeight === undefined ? null : bodyRoom(maxHeight, headHeight)
 
   return (
     // a collapsed panel is its head alone, so the scene keeps every touch outside it; expanded, the
@@ -51,15 +62,24 @@ export function Panel({
           onPress={onToggle}
           accessibilityRole="button"
           accessibilityState={{ expanded: !collapsed }}
+          onLayout={(event) => setHeadHeight(event.nativeEvent.layout.height)}
         >
           {head}
           <Text style={styles.toggle}>{collapsed ? 'more' : 'less'}</Text>
         </Pressable>
       )}
       {collapsed ? null : collapsible ? (
-        <View style={[styles.body, edge]} pointerEvents="none">
+        // a body given a room of its own scrolls rather than run past it, and takes the drag that
+        // scrolls it so the scene below never sees one
+        <ScrollView
+          style={[styles.scroll, room === null ? null : { maxHeight: room }]}
+          contentContainerStyle={[styles.body, edge]}
+          pointerEvents={room === null ? 'none' : 'auto'}
+          bounces={false}
+          showsVerticalScrollIndicator
+        >
           {body}
-        </View>
+        </ScrollView>
       ) : (
         body
       )}
@@ -88,6 +108,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 16,
   },
-  body: { alignSelf: 'stretch', gap: 8 },
+  scroll: { flexGrow: 0 },
+  body: { gap: 8 },
   toggle: { ...type.label, color: colours.muted, marginTop: 6 },
 })

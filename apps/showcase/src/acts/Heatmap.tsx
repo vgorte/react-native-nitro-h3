@@ -45,6 +45,7 @@ import {
   blocksOf,
   centreOf,
   HOTSPOTS,
+  OUTLINE_MAX_CELLS,
   type PointCache,
   pointStream,
   servesRun,
@@ -76,6 +77,7 @@ import { Choice, type ChoiceOption } from '../render/hud/Choice'
 import { FinePrint } from '../render/hud/FinePrint'
 import { Metric } from '../render/hud/Metric'
 import { Panel } from '../render/hud/Panel'
+import { panelRoom } from '../render/hud/panelRoom'
 import { Row } from '../render/hud/Row'
 import { EMPTY_COLLECTION } from '../render/inspectSources'
 import { drawPoints, POINT_ALPHA, POINT_COLOUR, pointsPaint } from '../render/pointsPicture'
@@ -174,11 +176,13 @@ const PRINT_WIDTH = 268
 
 const PIXEL_RATIO = PixelRatio.get()
 
-// the panel's rows already reach the control panel, so only the notes that carry the act are kept
 const NOTES = [
   `${HOTSPOTS} weighted hotspots and ${Math.round(UNIFORM_SHARE * 100)} percent uniform noise`,
   'past 100,000 the run chunks; the sort and count do not',
+  `above ${formatCount(OUTLINE_MAX_CELLS)} cells: no empty grid, cells go inset`,
   'the cells and points are one image, redrawn on settle',
+  'the image reaches half a screen past the map',
+  `${formatCount(POINTS_MAX)} drawn; 34 ms of the image over the whole box`,
   'or the points draw as a circle layer of their own',
   'native at a million: a 115 MB string killed the emulator',
   PUSH_NOTE,
@@ -290,6 +294,8 @@ export function Heatmap({ active }: ActProps) {
   // what the native path answered: the time the map took, or why it has no time to answer
   const [applied, setApplied] = useState<string | null>(null)
   const [collapsed, setCollapsed] = useState(true)
+  // the control panel is what the expanded panel has to stop above, and only it knows its height
+  const [controlHeight, setControlHeight] = useState(0)
   const [basemap, setBasemap] = useState<Basemap | null>(null)
   const [frame, setFrame] = useState<ImageFrame | null>(null)
   // the distinct cells of the run, kept so a settle can tell a covered cell of points from an empty
@@ -696,7 +702,12 @@ export function Heatmap({ active }: ActProps) {
         <>
           {/* box-none leaves the map every touch the head does not take */}
           <View style={styles.panel} pointerEvents="box-none">
-            <Panel collapsible collapsed={collapsed} onToggle={() => setCollapsed((held) => !held)}>
+            <Panel
+              collapsible
+              collapsed={collapsed}
+              onToggle={() => setCollapsed((held) => !held)}
+              maxHeight={panelRoom(height, PANEL_TOP, CONTROL_BOTTOM + controlHeight)}
+            >
               <Metric value={formatCount(run?.points ?? 0)} caption="points placed" />
               <Row label="resolution" value={`${res}`} />
               {/* a cached run drew nothing, so its row says whose measurement it is showing */}
@@ -786,7 +797,10 @@ export function Heatmap({ active }: ActProps) {
               </View>
             </Panel>
           </View>
-          <View style={styles.control}>
+          <View
+            style={styles.control}
+            onLayout={(event) => setControlHeight(event.nativeEvent.layout.height)}
+          >
             <Panel align="right">
               <Choice
                 label="draw"
