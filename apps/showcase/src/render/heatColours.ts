@@ -28,40 +28,73 @@ interface Anchors {
   high: number
 }
 
+/** Counts that keep a bin to themselves, which is every count a busy map of cells reaches. */
+const EXACT_COUNTS = 1024
+
+/** The first count above {@linkcode EXACT_COUNTS} is this power of two. */
+const EXACT_OCTAVE = 10
+
+/** Bins one doubling of a count past the exact ones is cut into, which sets how close it lands. */
+const BINS_PER_OCTAVE = 16
+
+/** Bins the histogram holds, enough for every count a `Uint32Array` can carry. */
+const BINS = EXACT_COUNTS + (32 - EXACT_OCTAVE) * BINS_PER_OCTAVE
+
+/** Answers the bin a count above {@linkcode EXACT_COUNTS} falls in, its doubling cut into steps. */
+function coarseBin(count: number): number {
+  const octave = 31 - Math.clz32(count)
+  const step = (count >>> (octave - 4)) & (BINS_PER_OCTAVE - 1)
+  return EXACT_COUNTS + (octave - EXACT_OCTAVE) * BINS_PER_OCTAVE + step
+}
+
+/** Answers the count a bin stands for, its lower edge, which is what an anchor is read off. */
+function countOfBin(bin: number): number {
+  if (bin < EXACT_COUNTS) return bin
+  const above = bin - EXACT_COUNTS
+  const octave = EXACT_OCTAVE + Math.floor(above / BINS_PER_OCTAVE)
+  const step = above - (octave - EXACT_OCTAVE) * BINS_PER_OCTAVE
+  return (BINS_PER_OCTAVE + step) * 2 ** (octave - 4)
+}
+
 /**
  * Answers the counts at {@linkcode LOW_QUANTILE} and {@linkcode HIGH_QUANTILE} of the busy cells.
  *
- * A counting histogram over the integer counts answers both in one pass of the cells and one of the
- * counts they reach, which is what keeps the anchors inside the window the colours row names.
+ * A histogram of a fixed size answers both in one pass of the cells and one of the bins, which is
+ * what keeps the anchors inside the window the colours row names. Counts a map of cells actually
+ * reaches keep a bin each and answer exactly; a count past them lands on its bin's edge, within a
+ * sixteenth of a doubling. With no cell above `0` both anchors are `1`, which leaves every cell on
+ * the empty step.
  *
  * @param counts The points per cell, of which the cells of no points are left out.
- * @param max The busiest cell's count, which the histogram is sized by.
+ * @param max The busiest cell's count, past which no bin can hold anything.
  */
 function anchorsOfCounts(counts: Uint32Array, max: number): Anchors {
-  const histogram = new Uint32Array(max + 1)
+  const histogram = new Uint32Array(BINS)
   let busy = 0
   for (let cell = 0; cell < counts.length; cell++) {
     const count = counts[cell]
     if (count <= 0) continue
-    histogram[count] += 1
+    histogram[count < EXACT_COUNTS ? count : coarseBin(count)] += 1
     busy += 1
   }
   if (busy === 0) return { low: 1, high: 1 }
 
   const lowRank = Math.max(1, Math.ceil(LOW_QUANTILE * busy))
   const highRank = Math.max(1, Math.ceil(HIGH_QUANTILE * busy))
-  let low = max
-  let high = max
+  const busiest = Math.max(1, max)
+  const top = busiest < EXACT_COUNTS ? busiest : coarseBin(busiest)
+  let low = 1
+  let high = 1
   let found = false
   let seen = 0
-  for (let count = 1; count <= max; count++) {
-    seen += histogram[count]
+  for (let bin = 0; bin <= top; bin++) {
+    seen += histogram[bin]
     if (!found && seen >= lowRank) {
-      low = count
+      low = countOfBin(bin)
       found = true
     }
     if (seen >= highRank) {
-      high = count
+      high = countOfBin(bin)
       break
     }
   }

@@ -17,7 +17,7 @@ import { bucketOfCount, colours, ramp } from '../theme/tokens'
 
 const BUCKETS = 16
 
-// a mixture whose hotspots are points, so a drawn point is either on one of them or uniform
+// hotspots tight enough to be points, so a hit is unambiguous
 const TIGHT: PointMix = { hotspots: 3, sigmaDeg: 1e-6, uniformShare: UNIFORM_SHARE }
 
 /** Answers how many of the drawn points sit on a hotspot of the mixture they were drawn from. */
@@ -151,9 +151,9 @@ describe('servesRun', () => {
 /** Builds counts of the shape a million points reach at resolution 7: a thin tail under a bulk. */
 function resolution7Shape(): Uint32Array {
   const counts: number[] = []
-  // the fringe of the sample box, where a cell catches a sliver of the uniform share
+  // the fringe of the sample box, on a sliver of the uniform share
   for (let cell = 0; cell < 30; cell++) counts.push(1 + (cell % 3))
-  // the bulk, which is what has to spread instead of crowding the bright end
+  // the bulk, which is what has to spread over the ramp
   for (let cell = 0; cell < 450; cell++) counts.push(200 + Math.round(cell * 6.4))
   // the hotspots, up to the busiest cell the device measured
   for (let cell = 0; cell < 67; cell++) counts.push(3_200 + Math.round(cell * 130))
@@ -176,6 +176,16 @@ describe('bucketsOfCounts', () => {
     for (let cell = 1; cell < buckets.length; cell++) {
       expect(buckets[cell]).toBeGreaterThanOrEqual(buckets[cell - 1])
     }
+  })
+
+  test('leaves every cell on the empty step where no cell is busy', () => {
+    expect(Array.from(bucketsOfCounts(new Uint32Array([0, 0, 0]), 0, BUCKETS))).toEqual([0, 0, 0])
+  })
+
+  test('takes the one busy cell of a run to the top step', () => {
+    const buckets = bucketsOfCounts(new Uint32Array([0, 7, 0]), 7, BUCKETS)
+
+    expect(Array.from(buckets)).toEqual([0, BUCKETS - 1, 0])
   })
 
   test('takes every cell to the top step where the two anchors meet', () => {
@@ -206,14 +216,14 @@ describe('bucketsOfCounts', () => {
 
     const buckets = bucketsOfCounts(counts, max, BUCKETS)
 
-    // the tail sits on the first step and the busiest percent on the last, as the anchors say
+    // the tail sits on the first step and the busiest percent on the last
     expect(buckets[0]).toBe(0)
     expect(buckets[buckets.length - 1]).toBe(BUCKETS - 1)
-    // every step of the ramp carries cells, where anchoring at one point left eleven of them used
+    // every step carries cells, where anchoring at one left eleven of them used
     expect(new Set(buckets).size).toBe(BUCKETS)
     const anchoredAtOne = Array.from(counts, (count) => bucketOfCount(count, 1, max, BUCKETS))
     expect(new Set(anchoredAtOne).size).toBeLessThan(12)
-    // and it left the whole bulk above the middle of the ramp, which is the flat look
+    // and it left the whole bulk above the ramp's middle, the flat look
     for (let cell = 30; cell < counts.length; cell++) {
       expect(anchoredAtOne[cell]).toBeGreaterThanOrEqual(8)
     }
