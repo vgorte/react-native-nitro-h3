@@ -13,19 +13,23 @@ import {
   FIX_HISTORY,
   filledCells,
   fixAhead,
-  fixesInTick,
+  fixesDue,
   MAX_TRAIL_RES,
+  MIN_CELLS_ACROSS,
   MIN_TRAIL_RES,
   pathOrJump,
   RECORDED_PACE,
   REPLAY_TICK_MS,
   replayDelayMs,
+  routeTimeAt,
   TIME_LAPSE_CELLS_ACROSS,
   TIME_LAPSE_PACE,
   TRAIL_CELLS_ACROSS,
   TRAIL_RES,
   type TrailFix,
   type TrailStep,
+  timeLapseCellsAcross,
+  zoomForResolution,
   zoomForTrail,
 } from '../engine/trail'
 
@@ -73,6 +77,51 @@ describe('extendTrail', () => {
 
   test('starts the trail from the first fix', () => {
     expect(extendTrail([], 5n, neighbours, path)).toEqual([{ cell: 5n, filled: false }])
+  })
+
+  test('moves a cell the ride comes back to, rather than holding it twice', () => {
+    const walked = [
+      { cell: 5n, filled: false },
+      { cell: 6n, filled: false },
+      { cell: 7n, filled: false },
+    ]
+    const trail = extendTrail(walked, 6n, neighbours, path)
+
+    expect(trail.map((step) => step.cell)).toEqual([5n, 7n, 6n])
+  })
+
+  test('holds every standing cell once, so the count is what is drawn', () => {
+    let trail = extendTrail([], 5n, neighbours, path)
+    for (const cell of [6n, 7n, 6n, 5n, 6n, 7n]) {
+      trail = extendTrail(trail, cell, neighbours, path)
+    }
+
+    expect(trail).toHaveLength(new Set(trail.map((step) => step.cell)).size)
+    expect(trail.map((step) => step.cell)).toEqual([5n, 6n, 7n])
+  })
+
+  test('moves the cells a grid path crosses again as well', () => {
+    const walked = [
+      { cell: 5n, filled: false },
+      { cell: 22n, filled: true },
+      { cell: 20n, filled: false },
+    ]
+    const trail = extendTrail(walked, 23n, neighbours, path)
+
+    expect(trail.map((step) => step.cell)).toEqual([5n, 20n, 21n, 22n, 23n])
+    expect(trail).toHaveLength(new Set(trail.map((step) => step.cell)).size)
+  })
+
+  test('keeps a cell a fix landed in measured when a grid path crosses it again', () => {
+    const walked = [
+      { cell: 6n, filled: false },
+      { cell: 5n, filled: false },
+    ]
+    const trail = extendTrail(walked, 8n, neighbours, path)
+
+    expect(trail.map((step) => step.cell)).toEqual([5n, 6n, 7n, 8n])
+    // cell 6 was walked into before the path filled it in, and the trail says so
+    expect(trail.map((step) => step.filled)).toEqual([false, false, true, false])
   })
 })
 
@@ -239,6 +288,17 @@ describe('bucketsOfTrail', () => {
     expect(buckets[0]).toBe(0)
   })
 
+  test('follows the order a revisited cell was moved into', () => {
+    let trail = extendTrail([], 5n, neighbours, path)
+    for (const cell of [6n, 7n, 6n]) trail = extendTrail(trail, cell, neighbours, path)
+    const buckets = bucketsOfTrail(trail, BUCKETS)
+
+    // cell 6 is the head now, so it takes the brightest step and cell 7 the one before it
+    expect(trail.map((step) => step.cell)).toEqual([5n, 7n, 6n])
+    expect(buckets[2]).toBe(BUCKETS - 1)
+    expect(buckets[0]).toBe(0)
+  })
+
   test('reads a filled step on the lower band', () => {
     const trail: TrailStep[] = [
       { cell: 1n, filled: false },
@@ -278,54 +338,103 @@ describe('replayDelayMs', () => {
   })
 })
 
-describe('fixesInTick', () => {
-  test('holds one fix a tick at the recorded pace', () => {
+describe('routeTimeAt', () => {
+  test('stands where it was read when no time has passed', () => {
+    expect(routeTimeAt({ at: 1_000, t: 4_000 }, 1_000, TIME_LAPSE_PACE)).toBe(4_000)
+  })
+
+  test('runs with the wall clock at the recorded pace', () => {
+    expect(routeTimeAt({ at: 1_000, t: 4_000 }, 3_500, RECORDED_PACE)).toBe(6_500)
+  })
+
+  test('runs the pace faster in a time lapse', () => {
+    expect(routeTimeAt({ at: 0, t: 0 }, 1_000, TIME_LAPSE_PACE)).toBe(60_000)
+  })
+
+  test('never runs backwards on a clock that stepped back', () => {
+    expect(routeTimeAt({ at: 5_000, t: 4_000 }, 1_000, TIME_LAPSE_PACE)).toBe(4_000)
+  })
+
+  test('holds the whole route to the wall clock the pace asks for', () => {
+    const route = ridden(2_536)
+    const span = route[route.length - 1].t
+
+    // the replay is done once the clock has run the recording's own length over the pace
+    expect(routeTimeAt({ at: 0, t: 0 }, span / TIME_LAPSE_PACE, TIME_LAPSE_PACE)).toBeCloseTo(
+      span,
+      6,
+    )
+  })
+})
+
+describe('fixesDue', () => {
+  test('answers the fixes whose time has come, and no more', () => {
     const route = ridden(10)
 
-    for (let index = 0; index < route.length; index++) {
-      expect(fixesInTick(route, index, RECORDED_PACE, REPLAY_TICK_MS)).toBe(1)
-    }
+    expect(fixesDue(route, 0, 0)).toBe(1)
+    expect(fixesDue(route, 0, 2_500)).toBe(3)
+    expect(fixesDue(route, 3, 5_000)).toBe(3)
   })
 
-  test('packs the tick full in a time lapse', () => {
-    const route = ridden(100)
-
-    // a fix a second at sixty times the pace is one every 16.7 ms, so six of them fit in 100
-    expect(fixesInTick(route, 0, TIME_LAPSE_PACE, REPLAY_TICK_MS)).toBe(6)
-    expect(fixesInTick(route, 0, TIME_LAPSE_PACE, 300)).toBe(18)
-  })
-
-  test('stops at the end of the route', () => {
-    const route = ridden(4)
-
-    expect(fixesInTick(route, 1, TIME_LAPSE_PACE, REPLAY_TICK_MS)).toBe(3)
-    expect(fixesInTick(route, 3, TIME_LAPSE_PACE, REPLAY_TICK_MS)).toBe(1)
+  test('answers nothing before the next fix is due', () => {
+    expect(fixesDue(ridden(10), 4, 3_999)).toBe(0)
   })
 
   test('answers nothing past the end of the route', () => {
-    expect(fixesInTick(ridden(2), 2, RECORDED_PACE, REPLAY_TICK_MS)).toBe(0)
+    expect(fixesDue(ridden(2), 2, 600_000)).toBe(0)
   })
 
-  test('takes the fix it stands on however long the gap after it is', () => {
-    const route = [
-      { lat: 0, lng: 0, t: 0 },
-      { lat: 0, lng: 0, t: 600_000 },
-    ]
+  test('hands over the whole tick in one batch during a time lapse', () => {
+    const route = ridden(100)
+    // 100 ms of wall clock at sixty times the pace is six seconds of the ride
+    const routeMs = routeTimeAt({ at: 0, t: 0 }, REPLAY_TICK_MS, TIME_LAPSE_PACE)
 
-    expect(fixesInTick(route, 0, TIME_LAPSE_PACE, REPLAY_TICK_MS)).toBe(1)
+    expect(fixesDue(route, 0, routeMs)).toBe(7)
+  })
+
+  test('catches up rather than falling behind when a tick came late', () => {
+    const route = ridden(100)
+    const onTime = fixesDue(route, 0, routeTimeAt({ at: 0, t: 0 }, 100, TIME_LAPSE_PACE))
+    const late = fixesDue(route, 0, routeTimeAt({ at: 0, t: 0 }, 300, TIME_LAPSE_PACE))
+
+    expect(late).toBeGreaterThan(onTime)
   })
 
   test('walks a route the way the act does, fix for fix', () => {
     const route = ridden(50)
     let index = 0
-    let taken = 0
-    while (index < route.length) {
-      const batch = fixesInTick(route, index, TIME_LAPSE_PACE, REPLAY_TICK_MS)
-      taken += batch
-      index += batch
+    for (let step = 0; index < route.length; step++) {
+      index += fixesDue(route, index, routeTimeAt({ at: 0, t: 0 }, step * 100, TIME_LAPSE_PACE))
     }
 
-    expect(taken).toBe(route.length)
+    expect(index).toBe(route.length)
+  })
+})
+
+describe('timeLapseCellsAcross', () => {
+  test('never frames less than the stretch the act opens on', () => {
+    expect(timeLapseCellsAcross(0)).toBe(TRAIL_CELLS_ACROSS)
+    expect(timeLapseCellsAcross(9)).toBe(TRAIL_CELLS_ACROSS)
+  })
+
+  test('never frames more than the time lapse asks for', () => {
+    expect(timeLapseCellsAcross(600)).toBe(TIME_LAPSE_CELLS_ACROSS)
+    expect(timeLapseCellsAcross(10_000)).toBe(TIME_LAPSE_CELLS_ACROSS)
+  })
+
+  test('follows the trail between the two, in steps', () => {
+    expect(timeLapseCellsAcross(30)).toBe(30)
+    expect(timeLapseCellsAcross(39)).toBe(30)
+    expect(timeLapseCellsAcross(40)).toBe(40)
+  })
+
+  test('never widens as the trail grows shorter', () => {
+    let last = 0
+    for (let standing = 0; standing <= 700; standing += 7) {
+      const across = timeLapseCellsAcross(standing)
+      expect(across).toBeGreaterThanOrEqual(last)
+      last = across
+    }
   })
 })
 
@@ -379,7 +488,7 @@ describe('zoomForTrail', () => {
 
     expect(fine).toBeGreaterThan(coarse)
     // a resolution is an aperture of seven, which is half a step of zoom either way
-    expect(fine - coarse).toBeCloseTo(Math.log2(7), 6)
+    expect(fine - coarse).toBeCloseTo(((MAX_TRAIL_RES - MIN_TRAIL_RES) * Math.log2(7)) / 2, 6)
   })
 
   test('fits the narrow side, so a viewport turned on its side frames the same stretch', () => {
@@ -400,6 +509,43 @@ describe('zoomForTrail', () => {
 
     expect(lapsed).toBeLessThan(opened)
     expect(opened - lapsed).toBeCloseTo(Math.log2(TIME_LAPSE_CELLS_ACROSS / TRAIL_CELLS_ACROSS), 6)
+  })
+})
+
+describe('zoomForResolution', () => {
+  /** Answers the zoom at which `cells` cells of a resolution span the narrow side. */
+  const zoomFitting = (cells: number, res: number) =>
+    zoomForTrail(WIDTH, HEIGHT, LAT, EDGE_M, res, cells)
+
+  test('keeps the view where the new cells still read on it', () => {
+    const standing = zoomFitting(TRAIL_CELLS_ACROSS, TRAIL_RES)
+
+    expect(zoomForResolution(standing, WIDTH, HEIGHT, LAT, EDGE_M, TRAIL_RES)).toBeNull()
+  })
+
+  test('never zooms in, however much finer the new resolution is', () => {
+    const standing = zoomFitting(TRAIL_CELLS_ACROSS, MIN_TRAIL_RES)
+
+    for (let res = MIN_TRAIL_RES; res <= MAX_TRAIL_RES; res++) {
+      expect(zoomForResolution(standing, WIDTH, HEIGHT, LAT, EDGE_M, res)).toBeNull()
+    }
+  })
+
+  test('re-fits where fewer than the least cells would span the view', () => {
+    const standing = zoomFitting(TRAIL_CELLS_ACROSS, MAX_TRAIL_RES)
+    const next = zoomForResolution(standing, WIDTH, HEIGHT, LAT, EDGE_M, MIN_TRAIL_RES)
+
+    expect(next).not.toBeNull()
+    expect(next).toBe(zoomFitting(TRAIL_CELLS_ACROSS, MIN_TRAIL_RES))
+    expect(next as number).toBeLessThan(standing)
+  })
+
+  test('holds the view at exactly the least cells, and gives it up below them', () => {
+    const onTheEdge = zoomFitting(MIN_CELLS_ACROSS, TRAIL_RES)
+    const under = zoomFitting(MIN_CELLS_ACROSS - 1, TRAIL_RES)
+
+    expect(zoomForResolution(onTheEdge, WIDTH, HEIGHT, LAT, EDGE_M, TRAIL_RES)).toBeNull()
+    expect(zoomForResolution(under, WIDTH, HEIGHT, LAT, EDGE_M, TRAIL_RES)).not.toBeNull()
   })
 })
 

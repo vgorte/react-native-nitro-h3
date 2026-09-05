@@ -1,10 +1,10 @@
-import { zoomForMetresPerPixel } from './projection'
+import { metresPerPixel, zoomForMetresPerPixel } from './projection'
 
 /** The resolution the trail opens at, a cell about 57 m across. */
 export const TRAIL_RES = 11
 
-/** The coarsest resolution the control offers. */
-export const MIN_TRAIL_RES = 10
+/** The coarsest resolution the control offers, a cell about 2.4 km across. */
+export const MIN_TRAIL_RES = 7
 
 /** The finest resolution the control offers. */
 export const MAX_TRAIL_RES = 12
@@ -29,13 +29,18 @@ export const RECORDED_PACE = 1
  */
 export const TIME_LAPSE_CELLS_ACROSS = 60
 
+/** Cells of a new resolution that must still fit across the view before the camera re-fits. */
+export const MIN_CELLS_ACROSS = 4
+
+// the time-lapse frame follows the trail in steps, so a growing one re-frames a few times a run
+const CELLS_ACROSS_STEP = 10
+
 /**
  * Milliseconds a replay lets pass between two renders, which is what one timer tick is worth.
  *
  * At the recorded pace a fix arrives every second and a tick holds one of them. A time lapse packs
- * a tick full instead, and the whole batch reaches the trail in a single pass. The camera is put on
- * the new head once a tick, and the map draws about a frame for each, so a longer tick reads as a
- * coarser follow and a shorter one only crowds the thread.
+ * a tick full instead, and the whole batch reaches the trail in a single pass. The tick paces the
+ * renders only; the ride itself runs off the wall clock, so a tick that came late catches up.
  */
 export const REPLAY_TICK_MS = 100
 
@@ -71,6 +76,25 @@ export interface TrailStep {
   filled: boolean
 }
 
+/**
+ * Appends steps to a trail, moving a cell it already stood in to its new place at the head.
+ *
+ * A ride that crosses itself comes back into cells it left earlier, and a coarse resolution turns a
+ * whole loop into a handful of them. Holding such a cell twice would draw it once and count it
+ * twice, so the older step gives way to the newer one and the trail holds every standing cell once.
+ */
+function appended(trail: readonly TrailStep[], steps: readonly TrailStep[]): TrailStep[] {
+  const coming = new Map(steps.map((step) => [step.cell, step]))
+  const kept: TrailStep[] = []
+  for (const step of trail) {
+    const moving = coming.get(step.cell)
+    if (moving === undefined) kept.push(step)
+    // a cell a fix once landed in stays measured, however the trail reaches it again
+    else if (!step.filled) moving.filled = false
+  }
+  return [...kept, ...steps]
+}
+
 /** Extends a trail by one fix, closing a gap with the grid path when the fix is not a neighbour. */
 export function extendTrail(
   trail: TrailStep[],
@@ -81,14 +105,15 @@ export function extendTrail(
   const head = trail[trail.length - 1]
   if (head === undefined) return [{ cell: next, filled: false }]
   if (head.cell === next) return trail
-  if (neighbours(head.cell, next)) return [...trail, { cell: next, filled: false }]
+  if (neighbours(head.cell, next)) return appended(trail, [{ cell: next, filled: false }])
 
   const between = path(head.cell, next)
-  const filled: TrailStep[] = []
+  const steps: TrailStep[] = []
   for (let index = 1; index < between.length - 1; index++) {
-    filled.push({ cell: between[index], filled: true })
+    steps.push({ cell: between[index], filled: true })
   }
-  return [...trail, ...filled, { cell: next, filled: false }]
+  steps.push({ cell: next, filled: false })
+  return appended(trail, steps)
 }
 
 /**
@@ -146,6 +171,79 @@ export function capFixes(fixes: TrailFix[], span: number): void {
   if (fixes.length > span) fixes.splice(0, fixes.length - span)
 }
 
+/** Holds where a replay's clock stands: the moment it was last read, and the route time then. */
+export interface ReplayClock {
+  /** The wall clock the reading was taken at. */
+  at: number
+  /** How far into the recording the replay had come by then. */
+  t: number
+}
+
+/**
+ * Answers how far into the recording a replay has come, its clock read at `now`.
+ *
+ * The route time runs off the wall clock rather than off a chain of timers, so a tick the image
+ * render held up delivers a bigger batch instead of playing the ride slower than the pace says.
+ *
+ * @param clock Where the replay stood when its clock was last read.
+ * @param now The wall clock to read it at.
+ * @param pace How much faster than the recording the replay runs.
+ */
+export function routeTimeAt(clock: ReplayClock, now: number, pace: number): number {
+  return clock.t + Math.max(0, now - clock.at) * pace
+}
+
+/** Counts the fixes from `index` whose time has come by `routeMs`, oldest first. */
+export function fixesDue(route: readonly TrailFix[], index: number, routeMs: number): number {
+  let count = 0
+  while (index + count < route.length && route[index + count].t <= routeMs) count += 1
+  return count
+}
+
+/**
+ * Answers the cells a time lapse frames across the narrow side of the view.
+ *
+ * A ride at a coarse resolution stands in a handful of cells, and framing sixty of those would put
+ * a whole state around a trail that fits in a district. The frame therefore holds
+ * {@linkcode TIME_LAPSE_CELLS_ACROSS} cells at most and never fewer than the stretch the act opens
+ * on, and the trail it follows is counted in steps so a growing one re-frames a few times a run.
+ *
+ * @param standing Cells of the trail that are drawn.
+ */
+export function timeLapseCellsAcross(standing: number): number {
+  const stepped = Math.floor(standing / CELLS_ACROSS_STEP) * CELLS_ACROSS_STEP
+  return Math.min(TIME_LAPSE_CELLS_ACROSS, Math.max(TRAIL_CELLS_ACROSS, stepped))
+}
+
+/**
+ * Answers the zoom a change of resolution asks for, or `null` where the standing view still holds.
+ *
+ * The resolution is the act's privacy dial rather than its zoom, so the camera stays where the
+ * visitor left it: a finer resolution only ever puts more cells on the screen, and a coarser one is
+ * followed out only once fewer than {@linkcode MIN_CELLS_ACROSS} of its cells would fit across the
+ * view, where it re-fits to the stretch the act opened on.
+ *
+ * @param zoom The standing zoom, counted against the 256 point tile grid.
+ * @param width The viewport width in points.
+ * @param height The viewport height in points.
+ * @param lat The latitude the trail stands at.
+ * @param edgeLengthM The average edge length of a resolution.
+ * @param res The resolution the trail is walked at now.
+ */
+export function zoomForResolution(
+  zoom: number,
+  width: number,
+  height: number,
+  lat: number,
+  edgeLengthM: (res: number) => number,
+  res: number,
+): number | null {
+  const narrow = Math.min(width, height) * metresPerPixel(zoom, lat)
+  const fitting = narrow / (CELL_SPACING * edgeLengthM(res))
+  if (fitting >= MIN_CELLS_ACROSS) return null
+  return zoomForTrail(width, height, lat, edgeLengthM, res)
+}
+
 /**
  * Answers the milliseconds a replay waits between two fixes, the recorded gap divided by the pace.
  *
@@ -156,37 +254,6 @@ export function capFixes(fixes: TrailFix[], span: number): void {
  */
 export function replayDelayMs(from: TrailFix, to: TrailFix, pace: number): number {
   return Math.max(0, (to.t - from.t) / pace)
-}
-
-/**
- * Counts the fixes from `index` that fall due inside one tick, never fewer than the one at `index`.
- *
- * A time lapse makes fixes arrive faster than a frame, and a render each would leave the JS thread
- * no time for anything else. The whole tick's worth is taken in one pass instead, so the trail
- * grows by a batch and React renders once; at the recorded pace a tick holds a single fix and this
- * answers `1`.
- *
- * @param route The recorded route, oldest fix first.
- * @param index The fix the replay stands on.
- * @param pace How much faster than the recording the replay runs.
- * @param tickMs The tick the replay renders on, {@linkcode REPLAY_TICK_MS} in the act.
- */
-export function fixesInTick(
-  route: readonly TrailFix[],
-  index: number,
-  pace: number,
-  tickMs: number,
-): number {
-  const first = route[index]
-  if (first === undefined) return 0
-  let count = 1
-  while (
-    index + count < route.length &&
-    replayDelayMs(first, route[index + count], pace) < tickMs
-  ) {
-    count += 1
-  }
-  return count
 }
 
 /**

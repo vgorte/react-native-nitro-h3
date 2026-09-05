@@ -26,6 +26,7 @@ import {
 } from 'react-native'
 import {
   areNeighborCells,
+  cellAreaKm2,
   cellToLatLng,
   getHexagonEdgeLengthAvgM,
   H3Error,
@@ -40,7 +41,7 @@ import {
   MAX_IMAGE_PIXELS,
   projectPoints,
 } from '../engine/imageLayer'
-import { formatCount, formatMs, formatUs } from '../engine/stats'
+import { formatAreaKm2, formatCount, formatMs, formatUs } from '../engine/stats'
 import { timed } from '../engine/timed'
 import {
   AGE_SPAN,
@@ -52,19 +53,21 @@ import {
   FIX_HISTORY,
   filledCells,
   fixAhead,
-  fixesInTick,
+  fixesDue,
   MAX_TRAIL_RES,
   MIN_TRAIL_RES,
   pathOrJump,
   RECORDED_PACE,
   REPLAY_TICK_MS,
-  replayDelayMs,
-  TIME_LAPSE_CELLS_ACROSS,
+  type ReplayClock,
+  routeTimeAt,
   TIME_LAPSE_PACE,
   TRAIL_CELLS_ACROSS,
   TRAIL_RES,
   type TrailFix,
   type TrailStep,
+  timeLapseCellsAcross,
+  zoomForResolution,
   zoomForTrail,
 } from '../engine/trail'
 import { BLOCKED_READOUT_BAND, BlockedReadout, resetWorstGap } from '../render/BlockedReadout'
@@ -76,6 +79,7 @@ import { FinePrint } from '../render/hud/FinePrint'
 import { Metric } from '../render/hud/Metric'
 import { Panel } from '../render/hud/Panel'
 import { Row } from '../render/hud/Row'
+import { Slider } from '../render/hud/Slider'
 import {
   CHILD_FILL,
   EMPTY_COLLECTION,
@@ -131,11 +135,11 @@ const TIME_LAPSE_REDRAW_MS = 200
 // MapLibre counts zoom against a 512 point tile, the projection helpers against a 256 point one
 const ZOOM_OFFSET = 1
 
-const RES_OPTIONS: readonly ChoiceOption<number>[] = [
-  { value: MIN_TRAIL_RES, label: `${MIN_TRAIL_RES}` },
-  { value: TRAIL_RES, label: `${TRAIL_RES}` },
-  { value: MAX_TRAIL_RES, label: `${MAX_TRAIL_RES}` },
-]
+// the grace a glide is given to land before the frame is cut for where the map ended up
+const FRAME_SETTLE_MS = 80
+
+// zoom levels a re-frame may travel over before it is taken as a cut rather than a flight
+const ZOOM_CUT_LEVELS = 3
 
 const PACE_OPTIONS: readonly ChoiceOption<number>[] = [
   { value: RECORDED_PACE, label: 'recorded' },
@@ -144,6 +148,9 @@ const PACE_OPTIONS: readonly ChoiceOption<number>[] = [
 
 const PANEL_TOP = 104
 const PRINT_WIDTH = 268
+const SLIDER_WIDTH = 168
+// the coarsest resolution whose cell still reads as a fraction of a square kilometre
+const KM2_FLOOR_RES = 9
 // clears the licence line, which stands over the blocked readout at the other edge
 const CONTROL_BOTTOM = 136
 // the head is a dot the size of a fingertip's centre, in points
@@ -157,6 +164,7 @@ const NOTES = [
   'those filled cells take the lower half of the ramp, measured ones all of it',
   `without a live location, a recorded bicycle ride plays at its own pace or at ${TIME_LAPSE_PACE}x`,
   'the trail is one image, redrawn when the trail gains a cell',
+  'a coarser resolution keeps the ride and drops the doorstep: the data minimisation GDPR asks for, and the cell area row says how much',
 ]
 
 /** Names where the fixes come from: the device itself, or the route recorded on a simulated run. */
@@ -241,7 +249,8 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
   const [reading, setReading] = useState<Reading>(NOTHING)
   const [scene, setScene] = useState<TrailScene | null>(null)
   const [following, setFollowing] = useState(true)
-  const [collapsed, setCollapsed] = useState(false)
+  // the act opens on its headline metric and the scene, and the rows are one tap away
+  const [collapsed, setCollapsed] = useState(true)
   // the panel's own height, measured, because what it says decides it and the viewport does not
   const [panelHeight, setPanelHeight] = useState(0)
   const [basemap, setBasemap] = useState<Basemap | null>(null)
@@ -268,11 +277,15 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
   const held = useRef<TrailStep[]>([])
   const anchored = useRef<LatLng>(BERLIN)
   // the resolution and the stretch the act last framed for, and `null` until it framed anything
-  const framed = useRef<string | null>(null)
+  const framed = useRef<{ res: number; pace: number; across: number } | null>(null)
   const started = useRef<number | null>(null)
   const played = useRef(0)
-  // when the next replay fix is due, so a return to the act waits out the rest of that interval
-  const due = useRef(0)
+  // the replay's own clock, re-based whenever it is set going so time away is not ridden through
+  const clock = useRef<ReplayClock>({ at: 0, t: 0 })
+  // the zoom the map last reported, which a change of resolution decides against
+  const viewed = useRef<number | null>(null)
+  // the wait for the standing glide to land, after which the frame is cut for where it landed
+  const landing = useRef<ReturnType<typeof setTimeout> | null>(null)
   // the ground and the viewport the standing image was cut for, so a settle that moved nothing
   // rebuilds nothing
   const cut = useRef('')
@@ -292,6 +305,7 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
 
   const reframe = useCallback(
     (view: ViewState): void => {
+      viewed.current = view.zoom
       const [west, south, east, north] = view.bounds
       const key = `${west},${south},${east},${north}/${width}x${height}`
       if (key === cut.current) return
@@ -337,6 +351,7 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
   // Android, and the fix that comes while the act is away frames the camera again on its return
   useEffect(() => {
     if (active) return
+    if (landing.current !== null) clearTimeout(landing.current)
     cut.current = ''
     framed.current = null
     setFrame(null)
@@ -362,9 +377,23 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
   const centreOn = useCallback(
     (cell: bigint, zoom: number | undefined, duration: number): void => {
       const centre = cellToLatLng(cell)
-      move({ center: [centre.lng, centre.lat], zoom, duration, padding })
+      // a stop with a duration and no easing is a jump on iOS, which is what a follow must not be.
+      // A re-frame can cross seven zoom levels between the ends of the resolution ladder, which a
+      // straight interpolation leaves the map unable to draw; that is the flight `fly` is for
+      const easing = zoom === undefined ? 'linear' : 'fly'
+      move({
+        center: [centre.lng, centre.lat],
+        zoom,
+        duration,
+        easing: duration > 0 ? easing : undefined,
+        padding,
+      })
+      // the map reports no region change while it is gliding, so the frame the image is cut for is
+      // asked for again once the stop it was given is due to have landed
+      if (landing.current !== null) clearTimeout(landing.current)
+      landing.current = setTimeout(refit, duration + FRAME_SETTLE_MS)
     },
-    [move, padding],
+    [move, padding, refit],
   )
 
   // the two sources reach for the standing resolution rather than depend on it, so a change of it
@@ -460,36 +489,25 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
     }
   }, [active, source, take])
 
-  // the replay runs the recorded gaps divided by the pace, and holds where it stands while the act
-  // is away; a tick carries every fix due inside it, which is one at the recorded pace
+  // the replay rides its own clock: a tick delivers every fix the wall clock says is due, so a tick
+  // the image render held up hands over a bigger batch rather than playing the ride slower than the
+  // pace says. The clock is re-based here, which keeps the position across a pace change and holds
+  // the ride where it stands while the act is away
   useEffect(() => {
     if (!active || source !== 'replay') return
-    let timer: ReturnType<typeof setTimeout> | null = null
-    const schedule = (delay: number) => {
-      due.current = Date.now() + delay
-      timer = setTimeout(play, delay)
-    }
-    const play = () => {
+    clock.current = { at: Date.now(), t: clock.current.t }
+    const tick = () => {
+      const now = Date.now()
+      clock.current = { at: now, t: routeTimeAt(clock.current, now, pace) }
       const index = played.current
-      const first = REPLAY_ROUTE[index]
-      if (first === undefined) return
-      const batch = fixesInTick(REPLAY_ROUTE, index, pace, REPLAY_TICK_MS)
+      const batch = fixesDue(REPLAY_ROUTE, index, clock.current.t)
+      if (batch === 0) return
       played.current = index + batch
       take(REPLAY_ROUTE.slice(index, index + batch))
-      const next = REPLAY_ROUTE[index + batch]
-      // the batch is delivered at the first fix's own moment, so the next tick is measured from it
-      if (next !== undefined) schedule(replayDelayMs(first, next, pace))
     }
-    const standing = REPLAY_ROUTE[played.current]
-    const before = REPLAY_ROUTE[played.current - 1]
-    // an act that comes back mid-interval waits out the rest of it rather than jumping a fix ahead,
-    // and a pace changed mid-interval cuts that wait to what the new pace holds
-    const whole =
-      standing === undefined || before === undefined ? 0 : replayDelayMs(before, standing, pace)
-    schedule(Math.min(Math.max(0, due.current - Date.now()), whole))
-    return () => {
-      if (timer !== null) clearTimeout(timer)
-    }
+    tick()
+    const timer = setInterval(tick, REPLAY_TICK_MS)
+    return () => clearInterval(timer)
   }, [active, source, pace, take])
 
   useEffect(() => {
@@ -504,28 +522,63 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
   }, [])
 
   // a time lapse outruns a frame that holds twenty cells, so it pulls the camera back far enough
-  // for the head to take about three seconds across it and the fading tail to stand behind it
-  const across = pace === RECORDED_PACE ? TRAIL_CELLS_ACROSS : TIME_LAPSE_CELLS_ACROSS
+  // for the head to take about three seconds across it and the fading tail to stand behind it, and
+  // no further than the trail standing, which at a coarse resolution is a handful of cells
+  const across = pace === RECORDED_PACE ? TRAIL_CELLS_ACROSS : timeLapseCellsAcross(trail.length)
   // a time lapse leads the head on its own steps rather than being put on it fix by fix
   const leading = source === 'replay' && pace !== RECORDED_PACE
 
-  // the opening fix and a change of resolution or pace all re-frame, so a cell keeps reading at the
-  // size the act opened on, unless the visitor is holding the camera
+  // the opening fix frames the act, a pace change frames the time lapse, and a resolution change
+  // keeps the view unless the new cells no longer read on it; the visitor holding the camera keeps
+  // it either way
   useEffect(() => {
     const head = trail[trail.length - 1]
     if (head === undefined) return
-    const frame = `${res}/${across}`
-    const opening = framed.current === null
-    if (opening || (following && framed.current !== frame)) {
-      framed.current = frame
-      const zoom =
-        zoomForTrail(width, height, anchored.current.lat, getHexagonEdgeLengthAvgM, res, across) -
-        ZOOM_OFFSET
-      centreOn(head.cell, zoom, opening ? 0 : FOLLOW_MS)
+    const was = framed.current
+    // both answers count against the projection's 256 point tile grid, which the map takes a step
+    // lower
+    const fit = () =>
+      zoomForTrail(width, height, anchored.current.lat, getHexagonEdgeLengthAvgM, res, across)
+    /** Answers the zoom the change asks for, or `null` where the view the visitor sees stands. */
+    const framedZoom = (was: { res: number; pace: number }, standing: number | null) => {
+      // a pace change is a re-frame of its own, and so is anything before the map has reported a view
+      if (was.pace !== pace || standing === null) return fit()
+      // the resolution is the privacy dial rather than a zoom, so it keeps the view of its own
+      if (was.res !== res) {
+        return zoomForResolution(
+          standing + ZOOM_OFFSET,
+          width,
+          height,
+          anchored.current.lat,
+          getHexagonEdgeLengthAvgM,
+          res,
+        )
+      }
+      // the trail grew past what the frame held: the cap only ever pulls the camera back
+      const wider = fit()
+      return wider - ZOOM_OFFSET < standing ? wider : null
+    }
+    if (was === null) {
+      framed.current = { res, pace, across }
+      centreOn(head.cell, fit() - ZOOM_OFFSET, 0)
+      return
+    }
+    if (following && (was.res !== res || was.pace !== pace || was.across !== across)) {
+      framed.current = { res, pace, across }
+      const standing = viewed.current
+      const next = framedZoom(was, standing)
+      if (next === null) {
+        centreOn(head.cell, undefined, FOLLOW_MS)
+        return
+      }
+      // the ladder spans seven zoom levels, and a flight over more than a few of them leaves the
+      // map with no tiles drawn when it lands, so a long re-frame is a cut rather than a glide
+      const far = standing === null || Math.abs(next - ZOOM_OFFSET - standing) > ZOOM_CUT_LEVELS
+      centreOn(head.cell, next - ZOOM_OFFSET, far ? 0 : FOLLOW_MS)
       return
     }
     if (following && !leading) centreOn(head.cell, undefined, FOLLOW_MS)
-  }, [trail, following, leading, res, across, width, height, centreOn])
+  }, [trail, following, leading, res, pace, across, width, height, centreOn])
 
   // at sixty times the pace the trail grows ten times a second, and a camera put on each new head
   // cuts the glide it was running short: the map lands on the stop and stands there until the next
@@ -625,6 +678,21 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
 
   const highlight = useMemo(() => (inspected === null ? null : highlightOf(inspected)), [inspected])
   const edgeM = useMemo(() => getHexagonEdgeLengthAvgM(res), [res])
+  // the ground one fix stands for, measured on the cell the rider is in rather than on the average
+  // of its resolution; a cell spans nine orders of magnitude over the ladder, so the fine end of it
+  // reads in square metres
+  const area = useMemo(() => {
+    const cell = trail[trail.length - 1]?.cell
+    if (cell === undefined) return null
+    const measured = timed('cellAreaKm2', () => cellAreaKm2(cell))
+    return {
+      text:
+        res > KM2_FLOOR_RES
+          ? `${formatCount(Math.round(measured.value * 1e6))} m²`
+          : formatAreaKm2(measured.value),
+      ms: measured.ms,
+    }
+  }, [trail, res])
   const filled = useMemo(() => filledCells(trail), [trail])
 
   return (
@@ -632,7 +700,7 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
       {basemap === null || !active ? null : (
         <MapLibreMap
           ref={map}
-          style={StyleSheet.absoluteFill}
+          style={styles.map}
           mapStyle={basemap.style}
           attribution={false}
           logo={false}
@@ -686,6 +754,11 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
                 call="getHexagonEdgeLengthAvgM"
               />
               <Row
+                label="cell area"
+                value={area === null ? '-' : `${area.text} / ${formatUs(area.ms)}`}
+                call="cellAreaKm2"
+              />
+              <Row
                 label="locate"
                 value={reading.fixes === 0 ? '-' : formatUs(reading.locateMs)}
                 call="latLngToCell"
@@ -720,7 +793,15 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
           </View>
           <View style={styles.control}>
             <Panel align="right">
-              <Choice label="resolution" options={RES_OPTIONS} value={res} onChange={setRes} />
+              <Row label="resolution" value={`${res}`} />
+              <Slider
+                min={MIN_TRAIL_RES}
+                max={MAX_TRAIL_RES}
+                value={res}
+                width={SLIDER_WIDTH}
+                onChange={setRes}
+                onSettle={setRes}
+              />
               {/* a live feed arrives at the pace the visitor moves, so only a replay has one to set */}
               {source !== 'replay' ? null : (
                 <Choice label="pace" options={PACE_OPTIONS} value={pace} onChange={setPace} />
@@ -747,6 +828,15 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
+    backgroundColor: colours.ground,
+  },
+  // a style that will not load, or a renderer that draws nothing, shows the ground rather than white
+  map: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     backgroundColor: colours.ground,
   },
   panel: {
