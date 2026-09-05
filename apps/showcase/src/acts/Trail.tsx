@@ -1,46 +1,80 @@
+import {
+  Camera,
+  type CameraRef,
+  type CameraStop,
+  GeoJSONSource,
+  type InitialViewState,
+  Layer,
+  Map as MapLibreMap,
+  type MapRef,
+  type PressEvent,
+  type PressEventWithFeatures,
+  type ViewState,
+  type ViewStateChangeEvent,
+} from '@maplibre/maplibre-react-native'
+import { type SkCanvas, Skia } from '@shopify/react-native-skia'
 import * as Location from 'expo-location'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
+import {
+  type NativeSyntheticEvent,
+  PixelRatio,
+  Pressable,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native'
 import {
   areNeighborCells,
   cellToLatLng,
   getHexagonEdgeLengthAvgM,
   H3Error,
+  type LatLng,
   latLngToCell,
 } from 'react-native-nitro-h3'
-import { runOnJS, useAnimatedReaction, useSharedValue, withTiming } from 'react-native-reanimated'
 import { pathBetween, timed } from '../engine/cells'
-import { mercatorX, mercatorY } from '../engine/projection'
+import {
+  frameMatrix,
+  type ImageFrame,
+  imageFrameOf,
+  MAX_IMAGE_PIXELS,
+  projectPoints,
+} from '../engine/imageLayer'
 import { formatCount, formatMs, formatUs } from '../engine/stats'
 import {
   AGE_SPAN,
-  type CameraPlacement,
-  cameraTaken,
   capFixes,
   capTrail,
   extendTrail,
   FIX_HISTORY,
   filledCells,
-  headHeight,
   MAX_TRAIL_RES,
   MIN_TRAIL_RES,
   pathOrJump,
-  scaleForTrail,
   TRAIL_RES,
   type TrailFix,
   type TrailStep,
+  zoomForTrail,
 } from '../engine/trail'
-import { BLOCKED_READOUT_BAND, resetWorstGap } from '../render/BlockedReadout'
-import { CellPictures } from '../render/CellPictures'
-import { EngineCanvas } from '../render/EngineCanvas'
+import { BLOCKED_READOUT_BAND, BlockedReadout, resetWorstGap } from '../render/BlockedReadout'
+import { type Basemap, loadBasemap, PLAIN_BASEMAP } from '../render/basemap'
+import { drawCellScene } from '../render/CellPictures'
+import { Attribution } from '../render/hud/Attribution'
 import { Choice, type ChoiceOption } from '../render/hud/Choice'
 import { FinePrint } from '../render/hud/FinePrint'
 import { Metric } from '../render/hud/Metric'
 import { Panel } from '../render/hud/Panel'
 import { Row } from '../render/hud/Row'
-import { InspectHighlight } from '../render/InspectHighlight'
+import {
+  CHILD_FILL,
+  EMPTY_COLLECTION,
+  GHOST_LINE,
+  highlightOf,
+  NEIGHBOUR_FILL,
+  NEIGHBOUR_LINE,
+} from '../render/inspectSources'
+import { SceneImage } from '../render/SceneImage'
 import { buildTrailScene, type TrailScene } from '../render/trailScene'
-import { type CameraAnchor, sceneToLatLng, screenToScene, useCamera } from '../render/useCamera'
 import { colours, glass, type } from '../theme/tokens'
 import { REPLAY_ROUTE } from './replayRoute'
 import type { ActProps } from './types'
@@ -59,10 +93,13 @@ export {
 const RECORDING = process.env.EXPO_PUBLIC_TRAIL_RECORD === '1'
 
 // where the act stands until the first fix says where the visitor is
-const BERLIN: CameraAnchor = { lat: 52.52, lng: 13.405 }
+const BERLIN: LatLng = { lat: 52.52, lng: 13.405 }
 
 /** Milliseconds the camera takes to glide onto a new head cell. */
 const FOLLOW_MS = 400
+
+// MapLibre counts zoom against a 512 point tile, the projection helpers against a 256 point one
+const ZOOM_OFFSET = 1
 
 const RES_OPTIONS: readonly ChoiceOption<number>[] = [
   { value: MIN_TRAIL_RES, label: `${MIN_TRAIL_RES}` },
@@ -72,18 +109,19 @@ const RES_OPTIONS: readonly ChoiceOption<number>[] = [
 
 const PANEL_TOP = 104
 const PRINT_WIDTH = 268
-// clears the blocked readout, which stands on the same line at the other edge
-const CONTROL_BOTTOM = 118
-// the head stands left of the controls, and its height comes from the panel the act measures
-const HEAD_X = 0.32
+// clears the licence line, which stands over the blocked readout at the other edge
+const CONTROL_BOTTOM = 136
+// the head is a dot the size of a fingertip's centre, in points
+const HEAD_RADIUS_PT = 5
+
+const PIXEL_RATIO = PixelRatio.get()
 
 const NOTES = [
   'a fix that is not a neighbour of the head is joined with gridPathCells',
-  'a fix a second at resolution 11 lands in the same cell or a neighbour, so the grid path only ' +
-    'answers a gap in the feed',
-  'those filled cells draw on the lower half of the ramp, the measured ones on the whole of it',
-  `the trail keeps its last ${formatCount(AGE_SPAN)} cells, and fades over what it holds`,
+  'a fix a second lands in the same cell or a neighbour, so only a gap asks',
+  'those filled cells take the lower half of the ramp, measured ones all of it',
   'without a live location, a recorded route plays at the pace it was walked',
+  'the trail is one image, redrawn on every fix',
 ]
 
 /** Names where the fixes come from: the device itself, or the route recorded on a simulated run. */
@@ -112,6 +150,10 @@ interface Walk {
   locateMs: number
   gap: Gap | null
 }
+
+const headPaint = Skia.Paint()
+headPaint.setColor(Skia.Color(colours.contrast))
+headPaint.setAntiAlias(true)
 
 /** Walks one fix onto the trail, timing the two calls the HUD names. */
 function walkFix(trail: TrailStep[], fix: TrailFix, res: number): Walk {
@@ -149,8 +191,9 @@ function walkRoute(fixes: readonly TrailFix[], res: number): Walk {
  * Every fix becomes one cell through `latLngToCell`, and a fix that is not a neighbour of the head
  * is joined to it with `gridPathCells`, whose cells draw on the lower half of the ramp: what was
  * measured and what was inferred are told apart on screen. The trail keeps its last
- * {@linkcode AGE_SPAN} cells and fades over them, the camera follows the head until the visitor
- * takes it over and the recentre control gives it back, and refusing the location plays
+ * {@linkcode AGE_SPAN} cells and fades over them, it rides the basemap as one image the map warps
+ * under a pinch and every settle redraws, the camera follows the head until the visitor takes it
+ * over and the recentre control gives it back, and refusing the location plays
  * {@linkcode REPLAY_ROUTE} at the pace it was recorded.
  */
 export function Trail({ active, inspected, onInspect }: ActProps) {
@@ -164,121 +207,146 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
   const [collapsed, setCollapsed] = useState(false)
   // the panel's own height, measured, because what it says decides it and the viewport does not
   const [panelHeight, setPanelHeight] = useState(0)
-  // set when a fix arrived during a gesture, where the rebuild waits for the camera to settle
-  const [pending, setPending] = useState(false)
+  const [basemap, setBasemap] = useState<Basemap | null>(null)
+  const [frame, setFrame] = useState<ImageFrame | null>(null)
+  const [imageMs, setImageMs] = useState<number | null>(null)
+  // the coordinate the scene's metre space is measured from, which the first fix sets
+  const [anchor, setAnchor] = useState<LatLng>(BERLIN)
+  // the opening frame is written once; every frame after it comes from a camera stop
+  const [opening] = useState<InitialViewState>(() => ({
+    center: [BERLIN.lng, BERLIN.lat],
+    zoom:
+      zoomForTrail(width, height, BERLIN.lat, getHexagonEdgeLengthAvgM, TRAIL_RES) - ZOOM_OFFSET,
+  }))
 
+  const map = useRef<MapRef>(null)
+  const camera = useRef<CameraRef>(null)
   // the fixes the act still holds, which a change of resolution walks again
   const fixes = useRef<TrailFix[]>([])
   // every fix the act has taken, which the row counts and the bounded history no longer can
   const counted = useRef(0)
   // the standing trail, so a fix extends what is drawn without waiting for a render
   const held = useRef<TrailStep[]>([])
-  const anchored = useRef<CameraAnchor>(BERLIN)
+  const anchored = useRef<LatLng>(BERLIN)
   // the resolution the act last framed for, and `null` until it has framed anything
   const framed = useRef<number | null>(null)
   const started = useRef<number | null>(null)
   const played = useRef(0)
   // when the next replay fix is due, so a return to the act waits out the rest of that interval
   const due = useRef(0)
-  // counts the glides, so the callback of one that was interrupted knows it is no longer the last
-  const glides = useRef(0)
-  // what the standing scene was built from, which a second effect run over the same pair skips
-  const drawn = useRef<{ trail: TrailStep[]; anchor: CameraAnchor } | null>(null)
+  // the ground and the viewport the standing image was cut for, so a settle that moved nothing
+  // rebuilds nothing
+  const cut = useRef('')
 
-  // a settle can re-anchor the camera in the same turn, so it only clears the debt and leaves the
-  // build to the effect below, which stands in the frame the act holds by then
-  const rebuild = useCallback(() => {
-    setPending(false)
+  // the act reaches for the basemap only once it has been opened, and keeps it afterwards
+  useEffect(() => {
+    if (!active || basemap !== null) return
+    loadBasemap()
+      .then(setBasemap)
+      .catch(() => {
+        // a style that will not load leaves the map on the plain URL and the known licence line
+        setBasemap(PLAIN_BASEMAP)
+      })
+  }, [active, basemap])
+
+  const reframe = useCallback(
+    (view: ViewState): void => {
+      const [west, south, east, north] = view.bounds
+      const key = `${west},${south},${east},${north}/${width}x${height}`
+      if (key === cut.current) return
+      cut.current = key
+      setFrame(
+        imageFrameOf(
+          { ne: [east, north], sw: [west, south] },
+          { width, height },
+          PIXEL_RATIO,
+          MAX_IMAGE_PIXELS,
+        ),
+      )
+    },
+    [width, height],
+  )
+
+  const settle = useCallback(
+    (event: NativeSyntheticEvent<ViewStateChangeEvent>): void => {
+      reframe(event.nativeEvent)
+    },
+    [reframe],
+  )
+
+  const loaded = useCallback((): void => {
+    map.current
+      ?.getViewState()
+      .then(reframe)
+      .catch(() => {
+        // a view state the map will not answer leaves the first frame to the next settle
+      })
+  }, [reframe])
+
+  const rendered = useCallback((ms: number): void => setImageMs(ms), [])
+
+  // an act off screen gives its map back: a third live one costs the Skia acts their canvas on
+  // Android, and the fix that comes while the act is away frames the camera again on its return
+  useEffect(() => {
+    if (active) return
+    cut.current = ''
+    framed.current = null
+    setFrame(null)
+  }, [active])
+
+  // the head stands in the band the panel and the readout leave open, which the camera pads for
+  const padding = useMemo(
+    () => ({ top: PANEL_TOP + panelHeight, bottom: BLOCKED_READOUT_BAND, left: 0, right: 0 }),
+    [panelHeight],
+  )
+
+  /** Moves the camera, and says nothing where the map has not mounted one yet. */
+  const move = useCallback((stop: CameraStop): void => {
+    try {
+      void camera.current?.setStop(stop).catch(() => {
+        // a stop the camera refuses leaves the view where the visitor last left it
+      })
+    } catch {
+      // a camera the map has not mounted stands on the opening view state instead
+    }
   }, [])
 
-  const camera = useCamera({ anchor: BERLIN, onSettle: rebuild })
-  const { anchor, setAnchor, translateX, translateY, scale, interacting } = camera
-
-  // where the act itself last put the camera; a camera found anywhere else was moved by a gesture
-  const placed = useSharedValue<CameraPlacement>({ x: 0, y: 0, scale: 0 })
-  // true while the act's own glide is running, where a camera away from `placed` is the animation
-  const gliding = useSharedValue(false)
-  // the glide the flag belongs to, so a glide cut short by a newer one does not clear it
-  const glideAt = useSharedValue(0)
-  // set once a gesture has taken the camera, so the crossing to JS happens once and not per frame
-  const taken = useSharedValue(false)
-
-  useEffect(() => {
-    const from = anchored.current
-    anchored.current = anchor
-    // a re-anchor moves the camera to hold the view, and where the act placed it moves with it
-    if (from === anchor || placed.value.scale <= 0) return
-    placed.value = {
-      x: placed.value.x - (mercatorX(from.lng) - mercatorX(anchor.lng)) * scale.value,
-      y: placed.value.y - (mercatorY(anchor.lat) - mercatorY(from.lat)) * scale.value,
-      scale: placed.value.scale,
-    }
-  }, [anchor, placed, scale])
-
-  /** Puts a cell in the band the panel and the readout leave open, where the head belongs. */
   const centreOn = useCallback(
-    (cell: bigint, animated: boolean) => {
+    (cell: bigint, zoom: number | undefined, duration: number): void => {
       const centre = cellToLatLng(cell)
-      const frame = anchored.current
-      const x = mercatorX(centre.lng) - mercatorX(frame.lng)
-      const y = mercatorY(frame.lat) - mercatorY(centre.lat)
-      const toX = width * HEAD_X - x * scale.value
-      const toY =
-        headHeight(height, PANEL_TOP + panelHeight, BLOCKED_READOUT_BAND) - y * scale.value
-      if (!animated) {
-        placed.value = { x: toX, y: toY, scale: scale.value }
-        translateX.value = toX
-        translateY.value = toY
-        return
-      }
-      // the glide is the act's own, so the placement is recorded where the camera lands rather
-      // than where it is headed, and until then a moving camera is this animation and not a pan
-      glides.current += 1
-      const generation = glides.current
-      gliding.value = true
-      glideAt.value = generation
-      translateX.value = withTiming(toX, { duration: FOLLOW_MS })
-      translateY.value = withTiming(toY, { duration: FOLLOW_MS }, (finished) => {
-        'worklet'
-        if (glideAt.value !== generation) return
-        gliding.value = false
-        if (finished === true) placed.value = { x: toX, y: toY, scale: scale.value }
-      })
+      move({ center: [centre.lng, centre.lat], zoom, duration, padding })
     },
-    [width, height, panelHeight, translateX, translateY, scale, placed, gliding, glideAt],
+    [move, padding],
   )
 
-  const take = useCallback(
-    (fix: TrailFix) => {
-      fixes.current.push(fix)
-      capFixes(fixes.current, FIX_HISTORY)
-      counted.current += 1
-      if (RECORDING) console.log('trail fix', JSON.stringify(fix))
-      // the first fix says where the act stands, and the metre frame is measured from there
-      if (counted.current === 1) {
-        anchored.current = { lat: fix.lat, lng: fix.lng }
-        setAnchor(anchored.current)
-        // the permission dialog and the first fix both hold the app, and neither gap is the act's
-        resetWorstGap()
-      }
-      const walked = walkFix(held.current, fix, res)
-      held.current = walked.trail
-      setTrail(walked.trail)
-      setReading((before) => ({
-        fixes: counted.current,
-        locateMs: walked.locateMs,
-        gap: walked.gap ?? before.gap,
-      }))
-    },
-    [res, setAnchor],
-  )
-
-  // the two sources reach for the standing rule rather than depend on it, so a change of
-  // resolution neither resubscribes the watcher nor knocks the replay off its pace
-  const taking = useRef(take)
+  // the two sources reach for the standing resolution rather than depend on it, so a change of it
+  // neither resubscribes the watcher nor knocks the replay off its pace
+  const resolution = useRef(res)
   useEffect(() => {
-    taking.current = take
-  }, [take])
+    resolution.current = res
+  }, [res])
+
+  const take = useCallback((fix: TrailFix) => {
+    fixes.current.push(fix)
+    capFixes(fixes.current, FIX_HISTORY)
+    counted.current += 1
+    if (RECORDING) console.log('trail fix', JSON.stringify(fix))
+    // the first fix says where the act stands, and the metre frame is measured from there
+    if (counted.current === 1) {
+      anchored.current = { lat: fix.lat, lng: fix.lng }
+      setAnchor(anchored.current)
+      // the permission dialog and the first fix both hold the app, and neither gap is the act's
+      resetWorstGap()
+    }
+    const walked = walkFix(held.current, fix, resolution.current)
+    held.current = walked.trail
+    setTrail(walked.trail)
+    setReading((before) => ({
+      fixes: counted.current,
+      locateMs: walked.locateMs,
+      gap: walked.gap ?? before.gap,
+    }))
+  }, [])
 
   // a resolution is a tiling of its own, so the whole route is walked again at the new one
   useEffect(() => {
@@ -316,7 +384,7 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
       (position) => {
         if (cancelled) return
         started.current ??= position.timestamp
-        taking.current({
+        take({
           lat: position.coords.latitude,
           lng: position.coords.longitude,
           t: position.timestamp - started.current,
@@ -334,7 +402,7 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
       cancelled = true
       watcher?.remove()
     }
-  }, [active, source])
+  }, [active, source, take])
 
   // the replay keeps the pace it was recorded at, and holds where it stands while the act is away
   useEffect(() => {
@@ -349,7 +417,7 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
       const fix = REPLAY_ROUTE[index]
       if (fix === undefined) return
       played.current = index + 1
-      taking.current(fix)
+      take(fix)
       const next = REPLAY_ROUTE[index + 1]
       if (next !== undefined) schedule(Math.max(0, next.t - fix.t))
     }
@@ -358,7 +426,7 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
     return () => {
       if (timer !== null) clearTimeout(timer)
     }
-  }, [active, source])
+  }, [active, source, take])
 
   useEffect(() => {
     if (!active) return
@@ -366,23 +434,10 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
     resetWorstGap()
   }, [active])
 
-  // a pan begins on touch down, so it is the movement under the finger and not the touch itself
-  // that takes the camera away from the follow
-  useAnimatedReaction(
-    () => ({
-      now: { x: translateX.value, y: translateY.value, scale: scale.value },
-      touching: interacting.value,
-    }),
-    (state) => {
-      if (!state.touching) {
-        taken.value = false
-        return
-      }
-      if (taken.value || gliding.value || !cameraTaken(state.now, placed.value)) return
-      taken.value = true
-      runOnJS(setFollowing)(false)
-    },
-  )
+  // a gesture takes the camera off the head, and only the recentre control gives it back
+  const grabbed = useCallback((event: NativeSyntheticEvent<ViewStateChangeEvent>): void => {
+    if (event.nativeEvent.userInteraction) setFollowing(false)
+  }, [])
 
   // the opening fix and a change of resolution both re-frame, so a cell keeps reading at the size
   // the act opened on, unless the visitor is holding the camera
@@ -392,123 +447,167 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
     const opening = framed.current === null
     if (opening || (following && framed.current !== res)) {
       framed.current = res
-      scale.value = scaleForTrail(
-        width,
-        height,
-        anchored.current.lat,
-        getHexagonEdgeLengthAvgM,
-        res,
-      )
-      centreOn(head.cell, !opening)
+      const zoom =
+        zoomForTrail(width, height, anchored.current.lat, getHexagonEdgeLengthAvgM, res) -
+        ZOOM_OFFSET
+      centreOn(head.cell, zoom, opening ? 0 : FOLLOW_MS)
       return
     }
-    if (following) centreOn(head.cell, true)
-  }, [trail, following, res, width, height, centreOn, scale])
+    if (following) centreOn(head.cell, undefined, FOLLOW_MS)
+  }, [trail, following, res, width, height, centreOn])
 
-  // a rebuild during a pan would drop a frame under the finger, so it waits for the settle instead
   useEffect(() => {
     if (trail.length === 0) {
-      drawn.current = null
       setScene(null)
       return
     }
-    if (interacting.value) {
-      if (!pending) setPending(true)
-      return
-    }
-    // a settle that clears the debt after the trail was already drawn owes no second build
-    if (drawn.current?.trail === trail && drawn.current.anchor === anchor) return
-    drawn.current = { trail, anchor }
     setScene(buildTrailScene(trail, anchor))
-  }, [trail, anchor, interacting, pending])
+  }, [trail, anchor])
 
   // a tap opens the sheet on the cell under it, and lands on the ground where the trail is not
-  const inspect = useCallback(
-    (x: number, y: number) => {
-      const point = screenToScene(x, y, {
-        translateX: translateX.value,
-        translateY: translateY.value,
-        scale: scale.value,
-      })
-      const at = sceneToLatLng(point.x, point.y, anchored.current)
+  const press = useCallback(
+    (event: NativeSyntheticEvent<PressEvent | PressEventWithFeatures>): void => {
+      const [lng, lat] = event.nativeEvent.lngLat
       try {
-        const cell = latLngToCell(at.lat, at.lng, res)
+        const cell = latLngToCell(lat, lng, res)
         if (held.current.some((step) => step.cell === cell)) onInspect(cell)
       } catch (error) {
         // a tap that inverts to a coordinate off the projection has no cell to inspect
         if (!(error instanceof H3Error)) throw error
       }
     },
-    [res, onInspect, translateX, translateY, scale],
+    [res, onInspect],
   )
 
+  const head = useMemo<LatLng | null>(() => {
+    const last = trail[trail.length - 1]
+    return last === undefined ? null : cellToLatLng(last.cell)
+  }, [trail])
+
+  const draw = useCallback(
+    (canvas: SkCanvas): void => {
+      if (frame === null) return
+      if (scene !== null) {
+        const [scaleX, scaleY, translateX, translateY] = frameMatrix(frame, anchor)
+        canvas.save()
+        canvas.translate(translateX, translateY)
+        canvas.scale(scaleX, scaleY)
+        drawCellScene(canvas, scene.scene)
+        canvas.restore()
+      }
+      if (head === null) return
+      // the head is a dot in the image's own pixels, so the fix reads wherever the cells are dim
+      const at = new Float32Array(2)
+      if (projectPoints(Float64Array.of(head.lat, head.lng), frame, at) === 0) return
+      canvas.drawCircle(at[0], at[1], (HEAD_RADIUS_PT * frame.width) / width, headPaint)
+    },
+    [frame, scene, anchor, head, width],
+  )
+
+  const highlight = useMemo(() => (inspected === null ? null : highlightOf(inspected)), [inspected])
   const edgeM = useMemo(() => getHexagonEdgeLengthAvgM(res), [res])
   const filled = useMemo(() => filledCells(trail), [trail])
 
-  // an act off screen keeps its trail, holds its source and draws nothing
-  if (!active) return <View style={styles.root} />
-
   return (
     <View style={styles.root}>
-      <EngineCanvas camera={camera} onTap={inspect}>
-        <CellPictures scene={scene?.scene ?? null} />
-        <InspectHighlight cell={inspected} anchor={anchor} scale={scale} />
-      </EngineCanvas>
-      {/* box-none leaves the scene every touch the panel head does not take */}
-      <View
-        style={styles.panel}
-        pointerEvents="box-none"
-        onLayout={(event) => setPanelHeight(event.nativeEvent.layout.height)}
-      >
-        <Panel collapsible collapsed={collapsed} onToggle={() => setCollapsed((was) => !was)}>
-          <Metric value={formatCount(trail.length)} caption="cells on the trail" />
-          <Row label="fixes" value={formatCount(reading.fixes)} />
-          <Row label="source" value={source ?? 'asking'} />
-          <Row label="resolution" value={`${res}`} />
-          <Row
-            label="average edge"
-            value={`${edgeM.toFixed(1)} m`}
-            call="getHexagonEdgeLengthAvgM"
-          />
-          <Row
-            label="locate"
-            value={reading.fixes === 0 ? '-' : formatUs(reading.locateMs)}
-            call="latLngToCell"
-          />
-          <Row
-            label="grid path, last gap"
-            value={
-              reading.gap === null
-                ? '-'
-                : `${formatCount(reading.gap.cells)} / ${formatUs(reading.gap.ms)}`
-            }
-            call="gridPathCells"
-          />
-          <Row label="grid path cells" value={formatCount(filled)} tone="muted" />
-          <Row
-            label="boundaries"
-            value={scene === null ? '-' : formatMs(scene.boundariesMs)}
-            call="cellsToBoundaries"
-          />
-          <Row label="mesh" value={scene === null ? '-' : formatMs(scene.meshMs)} />
-          <Row label="camera" value={following ? 'on the head' : 'yours'} tone="muted" />
-          <View style={styles.print}>
-            <FinePrint notes={NOTES} />
-          </View>
-        </Panel>
-      </View>
-      <View style={styles.control}>
-        <Panel align="right">
-          <Choice label="resolution" options={RES_OPTIONS} value={res} onChange={setRes} />
-          <Pressable
-            style={[styles.button, following ? null : styles.away]}
-            onPress={() => setFollowing(true)}
-            accessibilityRole="button"
+      {basemap === null || !active ? null : (
+        <MapLibreMap
+          ref={map}
+          style={StyleSheet.absoluteFill}
+          mapStyle={basemap.style}
+          attribution={false}
+          logo={false}
+          compass={false}
+          touchRotate={false}
+          touchPitch={false}
+          onPress={press}
+          onRegionWillChange={grabbed}
+          onRegionDidChange={settle}
+          onDidFinishLoadingMap={loaded}
+        >
+          <Camera ref={camera} initialViewState={opening} />
+          {frame === null ? null : (
+            <SceneImage id="trail-scene" frame={frame} draw={draw} onRendered={rendered} />
+          )}
+          {/* what the inspected cell stands between, in the order the Skia acts draw them */}
+          <GeoJSONSource id="trail-neighbours" data={highlight?.neighbours ?? EMPTY_COLLECTION}>
+            <Layer id="trail-neighbours-fill" type="fill" paint={NEIGHBOUR_FILL} />
+            <Layer id="trail-neighbours-line" type="line" paint={NEIGHBOUR_LINE} />
+          </GeoJSONSource>
+          <GeoJSONSource id="trail-children" data={highlight?.children ?? EMPTY_COLLECTION}>
+            <Layer id="trail-children-fill" type="fill" paint={CHILD_FILL} />
+          </GeoJSONSource>
+          <GeoJSONSource id="trail-parent" data={highlight?.parent ?? EMPTY_COLLECTION}>
+            <Layer id="trail-parent-line" type="line" paint={GHOST_LINE} />
+          </GeoJSONSource>
+        </MapLibreMap>
+      )}
+      {!active ? null : (
+        <>
+          {/* box-none leaves the map every touch the panel head does not take */}
+          <View
+            style={styles.panel}
+            pointerEvents="box-none"
+            onLayout={(event) => setPanelHeight(event.nativeEvent.layout.height)}
           >
-            <Text style={following ? styles.buttonLabel : styles.awayLabel}>recentre</Text>
-          </Pressable>
-        </Panel>
-      </View>
+            <Panel collapsible collapsed={collapsed} onToggle={() => setCollapsed((was) => !was)}>
+              <Metric value={formatCount(trail.length)} caption="cells on the trail" />
+              <Row label="fixes" value={formatCount(reading.fixes)} />
+              <Row label="source" value={source ?? 'asking'} />
+              <Row label="resolution" value={`${res}`} />
+              <Row
+                label="average edge"
+                value={`${edgeM.toFixed(1)} m`}
+                call="getHexagonEdgeLengthAvgM"
+              />
+              <Row
+                label="locate"
+                value={reading.fixes === 0 ? '-' : formatUs(reading.locateMs)}
+                call="latLngToCell"
+              />
+              <Row
+                label="grid path, last gap"
+                value={
+                  reading.gap === null
+                    ? '-'
+                    : `${formatCount(reading.gap.cells)} / ${formatUs(reading.gap.ms)}`
+                }
+                call="gridPathCells"
+              />
+              <Row label="grid path cells" value={formatCount(filled)} tone="muted" />
+              <Row
+                label="boundaries"
+                value={scene === null ? '-' : formatMs(scene.boundariesMs)}
+                call="cellsToBoundaries"
+              />
+              <Row label="mesh" value={scene === null ? '-' : formatMs(scene.meshMs)} />
+              <Row
+                label="image"
+                call="Skia offscreen + encode"
+                value={imageMs === null ? '-' : formatMs(imageMs)}
+              />
+              <Row label="camera" value={following ? 'on the head' : 'yours'} tone="muted" />
+              <View style={styles.print}>
+                <FinePrint notes={NOTES} />
+              </View>
+            </Panel>
+          </View>
+          <View style={styles.control}>
+            <Panel align="right">
+              <Choice label="resolution" options={RES_OPTIONS} value={res} onChange={setRes} />
+              <Pressable
+                style={[styles.button, following ? null : styles.away]}
+                onPress={() => setFollowing(true)}
+                accessibilityRole="button"
+              >
+                <Text style={following ? styles.buttonLabel : styles.awayLabel}>recentre</Text>
+              </Pressable>
+            </Panel>
+          </View>
+          <BlockedReadout />
+          {basemap === null ? null : <Attribution text={basemap.attribution} />}
+        </>
+      )}
     </View>
   )
 }

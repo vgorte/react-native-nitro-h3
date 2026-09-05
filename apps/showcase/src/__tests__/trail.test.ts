@@ -1,22 +1,21 @@
 import { describe, expect, test } from 'bun:test'
+import { metresPerPixel } from '../engine/projection'
 import {
   AGE_SPAN,
   bucketOfAge,
   bucketsOfTrail,
-  cameraTaken,
   capFixes,
   capTrail,
   cellsOfTrail,
   extendTrail,
   FIX_HISTORY,
   filledCells,
-  headHeight,
   MAX_TRAIL_RES,
   MIN_TRAIL_RES,
   pathOrJump,
-  scaleForTrail,
   TRAIL_RES,
   type TrailStep,
+  zoomForTrail,
 } from '../engine/trail'
 
 const BUCKETS = 16
@@ -100,50 +99,6 @@ describe('pathOrJump', () => {
     }
 
     expect(() => pathOrJump(5n, 900n, broken, refuses)).toThrow(TypeError)
-  })
-})
-
-describe('headHeight', () => {
-  test('stands midway between the panel and the readout', () => {
-    // a panel ending at 600 of an 874 point viewport leaves a band from 600 to 768
-    expect(headHeight(874, 600, 106)).toBe(684)
-  })
-
-  test('follows a panel that grows', () => {
-    expect(headHeight(874, 700, 106)).toBeGreaterThan(headHeight(874, 600, 106))
-  })
-
-  test('follows the viewport at the same panel height', () => {
-    expect(headHeight(1000, 600, 106)).toBeGreaterThan(headHeight(874, 600, 106))
-  })
-
-  test('stands on the readout where the panel reaches it', () => {
-    expect(headHeight(874, 800, 106)).toBe(768)
-  })
-})
-
-describe('cameraTaken', () => {
-  const placed = { x: 100, y: 200, scale: 0.5 }
-
-  test('leaves the camera where a tap moved nothing', () => {
-    expect(cameraTaken({ ...placed }, placed)).toBe(false)
-  })
-
-  test('leaves the camera inside the slop of a finger that barely moved', () => {
-    expect(cameraTaken({ x: 104, y: 203, scale: 0.5 }, placed)).toBe(false)
-  })
-
-  test('takes the camera on a pan past the slop', () => {
-    expect(cameraTaken({ x: 130, y: 200, scale: 0.5 }, placed)).toBe(true)
-    expect(cameraTaken({ x: 100, y: 160, scale: 0.5 }, placed)).toBe(true)
-  })
-
-  test('takes the camera on a pinch past the tolerance', () => {
-    expect(cameraTaken({ x: 100, y: 200, scale: 0.55 }, placed)).toBe(true)
-  })
-
-  test('leaves the camera alone before the act has framed anything', () => {
-    expect(cameraTaken({ x: 900, y: 900, scale: 3 }, { x: 0, y: 0, scale: 0 })).toBe(false)
   })
 })
 
@@ -287,19 +242,27 @@ describe('bucketsOfTrail', () => {
   })
 })
 
-describe('scaleForTrail', () => {
+describe('zoomForTrail', () => {
   test('fits the asked-for cells across the narrow side, less the margin', () => {
-    const spacing = (Math.sqrt(3) * EDGE_M(TRAIL_RES)) / Math.cos((LAT * Math.PI) / 180)
-    const scale = scaleForTrail(WIDTH, HEIGHT, LAT, EDGE_M, TRAIL_RES, 20)
+    const across = 20 * Math.sqrt(3) * EDGE_M(TRAIL_RES)
+    const zoom = zoomForTrail(WIDTH, HEIGHT, LAT, EDGE_M, TRAIL_RES, 20)
 
-    expect(20 * spacing * scale).toBeCloseTo(WIDTH * 0.9, 6)
+    expect(metresPerPixel(zoom, LAT) * WIDTH * 0.9).toBeCloseTo(across, 6)
   })
 
-  test('answers a finer resolution a larger scale, cell for cell', () => {
-    const coarse = scaleForTrail(WIDTH, HEIGHT, LAT, EDGE_M, MIN_TRAIL_RES)
-    const fine = scaleForTrail(WIDTH, HEIGHT, LAT, EDGE_M, MAX_TRAIL_RES)
+  test('answers a finer resolution a higher zoom, cell for cell', () => {
+    const coarse = zoomForTrail(WIDTH, HEIGHT, LAT, EDGE_M, MIN_TRAIL_RES)
+    const fine = zoomForTrail(WIDTH, HEIGHT, LAT, EDGE_M, MAX_TRAIL_RES)
 
     expect(fine).toBeGreaterThan(coarse)
+    // a resolution is an aperture of seven, which is half a step of zoom either way
+    expect(fine - coarse).toBeCloseTo(Math.log2(7), 6)
+  })
+
+  test('fits the narrow side, so a viewport turned on its side frames the same stretch', () => {
+    expect(zoomForTrail(HEIGHT, WIDTH, LAT, EDGE_M, TRAIL_RES)).toBe(
+      zoomForTrail(WIDTH, HEIGHT, LAT, EDGE_M, TRAIL_RES),
+    )
   })
 })
 

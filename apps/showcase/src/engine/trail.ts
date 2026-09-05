@@ -1,3 +1,5 @@
+import { zoomForMetresPerPixel } from './projection'
+
 /** The resolution the trail opens at, a cell about 57 m across. */
 export const TRAIL_RES = 11
 
@@ -19,7 +21,6 @@ const FILLED_BAND = 0.5
 // the framed stretch keeps a tenth of the narrow side free
 const FIT_MARGIN = 0.9
 const CELL_SPACING = Math.sqrt(3)
-const DEG_TO_RAD = Math.PI / 180
 
 /** Holds one fix of a route: where it was taken and how long after the first one. */
 export interface TrailFix {
@@ -143,11 +144,11 @@ export function bucketsOfTrail(trail: readonly TrailStep[], buckets: number): Ui
 }
 
 /**
- * Answers the pixel scale at which `cells` cells of a resolution span the narrow side of the view.
+ * Answers the zoom at which `cells` cells of a resolution span the narrow side of the view.
  *
- * The scene is measured in Web Mercator metres, of which a ground metre at `lat` spans one over the
- * cosine, which is why the latitude appears here at all. The edge length is passed in rather than
- * imported so the frame stays testable without the native module.
+ * The answer counts against a 256 point tile grid, the one the projection helpers measure in, so a
+ * map that counts against a 512 point one takes it one step lower. The edge length is passed in
+ * rather than imported so the frame stays testable without the native module.
  *
  * @param width The viewport width in points.
  * @param height The viewport height in points.
@@ -156,7 +157,7 @@ export function bucketsOfTrail(trail: readonly TrailStep[], buckets: number): Ui
  * @param res The resolution the trail is walked at.
  * @param cells Cells the frame fits, {@linkcode TRAIL_CELLS_ACROSS} when the act opens.
  */
-export function scaleForTrail(
+export function zoomForTrail(
   width: number,
   height: number,
   lat: number,
@@ -164,55 +165,8 @@ export function scaleForTrail(
   res: number,
   cells = TRAIL_CELLS_ACROSS,
 ): number {
-  const spacing = (CELL_SPACING * edgeLengthM(res)) / Math.cos(lat * DEG_TO_RAD)
-  return (Math.min(width, height) * FIT_MARGIN) / (cells * spacing)
-}
-
-/**
- * Answers the height the camera holds the head at, midway between the panel and the readout.
- *
- * The expanded panel's height is set by what it says rather than by the viewport, so the point is
- * measured rather than taken as a fraction of the screen: the same panel leaves more room under it
- * on a tall phone than on a short one, and a folded panel leaves more again.
- *
- * @param height The viewport height in points.
- * @param panelBottom The lower edge of the HUD panel, in points from the top.
- * @param readoutBand Points the blocked readout takes along the bottom edge.
- */
-export function headHeight(height: number, panelBottom: number, readoutBand: number): number {
-  const readoutTop = height - readoutBand
-  // a panel that reaches the readout leaves no band, and the head stands on the readout's edge
-  if (panelBottom >= readoutTop) return readoutTop
-  return (panelBottom + readoutTop) / 2
-}
-
-/** Holds where the camera stands: its offset in points and its pixel scale. */
-export interface CameraPlacement {
-  x: number
-  y: number
-  scale: number
-}
-
-/** Points a finger may travel before it counts as a pan rather than a tap. */
-export const TAP_SLOP = 6
-
-/** The fraction of the scale a pinch has to change before it counts as one. */
-export const PINCH_TOLERANCE = 0.002
-
-/**
- * Answers whether the camera under the finger has left where the act last placed it.
- *
- * A pan begins on touch down, so a plain tap on the scene reaches the act as a gesture that has
- * moved nothing; only a camera that has actually travelled or zoomed takes the follow away.
- *
- * @param now Where the camera stands.
- * @param placed Where the act last put it, `scale` of `0` before it has framed anything.
- */
-export function cameraTaken(now: CameraPlacement, placed: CameraPlacement): boolean {
-  'worklet'
-  if (placed.scale <= 0) return false
-  if (Math.abs(now.x - placed.x) > TAP_SLOP || Math.abs(now.y - placed.y) > TAP_SLOP) return true
-  return Math.abs(now.scale - placed.scale) > placed.scale * PINCH_TOLERANCE
+  const across = cells * CELL_SPACING * edgeLengthM(res)
+  return zoomForMetresPerPixel(across / (Math.min(width, height) * FIT_MARGIN), lat)
 }
 
 /** Answers the cells of a trail as the buffer the batch calls take. */
