@@ -4,7 +4,7 @@ import { buildMesh, buildOutlinePath } from '../engine/mesh'
 import { projectCells } from '../engine/projection'
 import { bucketOfRing } from '../engine/rings'
 import { BUCKETS } from '../theme/tokens'
-import { type CellScene, recordCellScene } from './CellPictures'
+import { type CellScene, disposeCellScene, recordCellScene } from './CellPictures'
 import type { CameraAnchor } from './useCamera'
 
 const CHUNK_SIZE = 10_000
@@ -25,6 +25,8 @@ export interface RingLayer {
    * projected points are held for that first build, which is the deliberate cost of waiting.
    */
   outlineOf(): SkPath | null
+  /** Frees the ring's pictures and the outline if one was ever built; it is not drawn again. */
+  dispose(): void
   /** What `gridRing` took. */
   ringMs: number
   /** What `cellsToBoundaries` took. */
@@ -56,15 +58,20 @@ export function buildRing(centre: bigint, ring: number, anchor: CameraAnchor): R
     bucketOf: buckets,
   })
   let outline: SkPath | null | undefined
+  const scene = recordCellScene(mesh, projected.bounds, null)
   return {
     ring,
     cells: cells.value.length,
-    scene: recordCellScene(mesh, projected.bounds, null),
+    scene,
     outlineOf() {
       if (outline === undefined) {
         outline = Skia.Path.MakeFromSVGString(buildOutlinePath(projected, OUTLINE_EDGES))
       }
       return outline
+    },
+    dispose() {
+      disposeCellScene(scene)
+      outline?.dispose()
     },
     ringMs: cells.ms,
     boundariesMs: boundaries.ms,

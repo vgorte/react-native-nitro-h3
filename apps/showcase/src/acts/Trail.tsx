@@ -59,7 +59,7 @@ import {
 } from '../engine/trail'
 import { BLOCKED_READOUT_BAND, BlockedReadout, resetWorstGap } from '../render/BlockedReadout'
 import { type Basemap, loadBasemap, PLAIN_BASEMAP } from '../render/basemap'
-import { drawCellScene } from '../render/CellPictures'
+import { disposeCellScene, drawCellScene } from '../render/CellPictures'
 import { Attribution } from '../render/hud/Attribution'
 import { Choice, type ChoiceOption } from '../render/hud/Choice'
 import { FinePrint } from '../render/hud/FinePrint'
@@ -76,6 +76,7 @@ import {
 } from '../render/inspectSources'
 import { SceneImage } from '../render/SceneImage'
 import { buildTrailScene, type TrailScene } from '../render/trailScene'
+import { useDisposed } from '../render/useDisposed'
 import { colours, glass, type } from '../theme/tokens'
 import { REPLAY_ROUTE } from './replayRoute'
 import type { ActProps } from './types'
@@ -89,6 +90,11 @@ export {
   TRAIL_RES,
   type TrailStep,
 } from '../engine/trail'
+
+/** Frees the trail the walker has grown past; the recording is never drawn again. */
+function disposeTrailScene(held: TrailScene | null): void {
+  disposeCellScene(held?.scene ?? null)
+}
 
 /** Set on a build that logs every fix it takes, which is how `replayRoute.ts` was recorded. */
 const RECORDING = process.env.EXPO_PUBLIC_TRAIL_RECORD === '1'
@@ -486,6 +492,8 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
     },
     [res, onInspect],
   )
+
+  useDisposed(scene, disposeTrailScene)
 
   const head = useMemo<LatLng | null>(() => {
     const last = trail[trail.length - 1]

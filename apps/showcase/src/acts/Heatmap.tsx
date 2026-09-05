@@ -69,7 +69,7 @@ import { formatCount, formatMs } from '../engine/stats'
 import { yieldToLoop } from '../engine/yield'
 import { BlockedReadout, resetWorstGap } from '../render/BlockedReadout'
 import { type Basemap, loadBasemap, PLAIN_BASEMAP } from '../render/basemap'
-import { type CellScene, drawCellScene } from '../render/CellPictures'
+import { type CellScene, disposeCellScene, drawCellScene } from '../render/CellPictures'
 import { bucketsOfCounts } from '../render/heatColours'
 import { buildEmptyScene, buildHeatScene, type HeatScene } from '../render/heatScene'
 import { Attribution } from '../render/hud/Attribution'
@@ -81,6 +81,7 @@ import { Row } from '../render/hud/Row'
 import { EMPTY_COLLECTION } from '../render/inspectSources'
 import { drawPoints, POINT_ALPHA, POINT_COLOUR, pointsPaint } from '../render/pointsPicture'
 import { SceneImage } from '../render/SceneImage'
+import { useDisposed } from '../render/useDisposed'
 import { BUCKETS, colours, glass, type } from '../theme/tokens'
 import type { ActProps } from './types'
 
@@ -151,6 +152,16 @@ const POINTS_MAX = 80_000
 
 // the scene stands in the frame of the box's own centre, which is where the run is anchored
 const CENTRE = centreOf(BERLIN)
+
+/** Frees the heat scene a run has replaced. */
+function disposeHeat(held: HeatScene | null): void {
+  disposeCellScene(held?.scene ?? null)
+}
+
+/** Frees the empty cells of the settle before this one. */
+function disposeCovered(held: Covered | null): void {
+  disposeCellScene(held?.scene ?? null)
+}
 
 /** The camera the act opens on: the whole sample box, whatever the viewport is shaped like. */
 const OPENING: InitialViewState = {
@@ -585,6 +596,9 @@ export function Heatmap({ active }: ActProps) {
       scene: built?.scene ?? null,
     }
   }, [active, view, frame, busy, scene, res])
+
+  useDisposed(scene, disposeHeat)
+  useDisposed(covered, disposeCovered)
 
   // the projection stands in the frame's own pixels, so every settle places the points again
   const projected = useMemo<Projected | null>(() => {

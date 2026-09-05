@@ -4,7 +4,7 @@ import { type Highlight, neighbourhoodOf } from '../engine/inspect'
 import { buildMesh } from '../engine/mesh'
 import { projectCells } from '../engine/projection'
 import { BUCKETS } from '../theme/tokens'
-import { type CellScene, recordCellScene } from './CellPictures'
+import { type CellScene, disposeCellScene, recordCellScene } from './CellPictures'
 import { outlinePath } from './fractalScene'
 import type { CameraAnchor } from './useCamera'
 
@@ -34,6 +34,14 @@ function fillOf(cells: BigUint64Array, anchor: CameraAnchor): CellScene {
 /** Answers the closed rings of a cell set in the scene's own metre frame. */
 function ringsOf(cells: BigUint64Array, anchor: CameraAnchor): SkPath {
   return outlinePath(projectCells(boundariesOf(cells).value, anchor))
+}
+
+/** Frees a highlight the sheet has moved off, its two outlines and the fill of the children. */
+export function disposeHighlight(highlight: SkiaHighlight | null): void {
+  if (highlight === null) return
+  highlight.neighbours.dispose()
+  disposeCellScene(highlight.children)
+  highlight.parent?.dispose()
 }
 
 /**

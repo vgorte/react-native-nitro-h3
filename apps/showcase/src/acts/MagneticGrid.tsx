@@ -36,11 +36,15 @@ import { Row } from '../render/hud/Row'
 import { Slider } from '../render/hud/Slider'
 import { buildRing, type RingLayer } from '../render/ringScene'
 import { type CameraAnchor, useCamera } from '../render/useCamera'
+import { useDisposedList } from '../render/useDisposed'
 import { colours } from '../theme/tokens'
 import type { ActProps } from './types'
 
 // the act's published contract names these; the rules that use them live in engine/rings.ts
 export { GRID_RES, MAX_K, MIN_K, RING_FADE_MS, ringsToKeep } from '../engine/rings'
+
+/** Frees a ring the step has dropped; the layer is never in a later list. */
+const disposeRing = (layer: RingLayer): void => layer.dispose()
 
 const BERLIN: CameraAnchor = { lat: 52.52, lng: 13.405 }
 const PANEL_TOP = 104
@@ -280,6 +284,8 @@ export function MagneticGrid({ active }: ActProps) {
     },
     [centre],
   )
+
+  useDisposedList(layers, disposeRing)
 
   const cells = useMemo(() => layers.reduce((total, layer) => total + layer.cells, 0), [layers])
   // the grid carries a tiling of one resolution, so it holds one point wide at any zoom

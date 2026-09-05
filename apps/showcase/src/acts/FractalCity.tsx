@@ -41,7 +41,7 @@ import {
 } from '../engine/fractal'
 import { formatAreaKm2, formatCount, formatMs } from '../engine/stats'
 import { resetWorstGap } from '../render/BlockedReadout'
-import { CellPictures, type CellScene } from '../render/CellPictures'
+import { CellPictures, type CellScene, disposeCellScene } from '../render/CellPictures'
 import { EngineCanvas } from '../render/EngineCanvas'
 import {
   bucketsOf,
@@ -49,6 +49,7 @@ import {
   inDepthOrder,
   outlinePath,
   record,
+  type Scene,
   sceneOf,
   shapeOf,
 } from '../render/fractalScene'
@@ -59,6 +60,7 @@ import { Panel } from '../render/hud/Panel'
 import { Row } from '../render/hud/Row'
 import { InspectHighlight } from '../render/InspectHighlight'
 import { type CameraAnchor, sceneToLatLng, screenToScene, useCamera } from '../render/useCamera'
+import { useDisposed } from '../render/useDisposed'
 import { BUCKETS, colours, glass, type } from '../theme/tokens'
 import { lastMapPosition } from './mapPosition'
 import type { ActProps } from './types'
@@ -71,6 +73,14 @@ export const GROWTH_MS = 300
 
 /** Milliseconds the parent outline stays as a ghost before it is gone. */
 export const GHOST_FADE_MS = 1_000
+
+/** Frees the scene a split or a merge has replaced: both layers and the grid over them. */
+function disposeScene(held: Scene | null): void {
+  if (held === null) return
+  disposeCellScene(held.cells)
+  disposeCellScene(held.under)
+  held.outline.dispose()
+}
 
 const BERLIN: CameraAnchor = { lat: 52.52, lng: 13.405 }
 // long enough that a fold is deliberate, short enough that a held finger answers
@@ -164,6 +174,7 @@ export function FractalCity({ active, inspected, onInspect }: ActProps) {
   const { anchor, setAnchor, translateX, translateY, scale } = camera
 
   const scene = useMemo(() => (tree === null ? null : buildScene(tree, anchor)), [tree, anchor])
+  useDisposed(scene, disposeScene)
 
   // the act reaches for the position store only once it is on screen, where Atlas has written it
   useEffect(() => {

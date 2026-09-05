@@ -96,6 +96,19 @@ export function recordCellScene(
   return { pictures, outline, bounds }
 }
 
+/**
+ * Frees the native memory of a scene that is about to be replaced or dropped.
+ *
+ * A picture and a path are JSI host objects, so without this their native buffers live until
+ * Hermes collects the wrappers, which makes the peak over a session of settles a question of GC
+ * timing rather than a bound. A disposed scene must not be drawn again.
+ */
+export function disposeCellScene(scene: CellScene | null): void {
+  if (scene === null) return
+  for (const picture of scene.pictures) picture.dispose()
+  scene.outline?.dispose()
+}
+
 // the grid strip holds one device pixel at any zoom, which is what a stroke width of zero means
 const hairline = Skia.Paint()
 hairline.setColor(Skia.Color(colours.hairline))

@@ -3,8 +3,9 @@ import { useMemo } from 'react'
 import { type SharedValue, useDerivedValue } from 'react-native-reanimated'
 import { colours } from '../theme/tokens'
 import { CellPictures } from './CellPictures'
-import { buildHighlight } from './inspectScene'
+import { buildHighlight, disposeHighlight } from './inspectScene'
 import type { CameraAnchor } from './useCamera'
+import { useDisposed } from './useDisposed'
 
 /** Alpha the neighbours are filled at, low enough that the cells under them still read. */
 const NEIGHBOUR_ALPHA = 0.22
@@ -37,6 +38,7 @@ export function InspectHighlight({ cell, anchor, scale }: InspectHighlightProps)
     () => (cell === null ? null : buildHighlight(cell, anchor)),
     [cell, anchor],
   )
+  useDisposed(highlight, disposeHighlight)
   const parentWidth = useDerivedValue(() => PARENT_WIDTH_PX / scale.value)
   const neighbourWidth = useDerivedValue(() => NEIGHBOUR_WIDTH_PX / scale.value)
 
