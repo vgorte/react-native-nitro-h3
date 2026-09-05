@@ -45,7 +45,6 @@ import {
   blocksOf,
   centreOf,
   HOTSPOTS,
-  OUTLINE_MAX_CELLS,
   type PointCache,
   pointStream,
   servesRun,
@@ -171,16 +170,15 @@ const OPENING: InitialViewState = {
 const PANEL_TOP = 104
 // clears the blocked readout, which stands over the licence line at the bottom edge
 const CONTROL_BOTTOM = BLOCKED_READOUT_BAND + 12
+const PRINT_WIDTH = 268
 
 const PIXEL_RATIO = PixelRatio.get()
 
+// the panel's rows already reach the control panel, so only the notes that carry the act are kept
 const NOTES = [
   `${HOTSPOTS} weighted hotspots and ${Math.round(UNIFORM_SHARE * 100)} percent uniform noise`,
   'past 100,000 the run chunks; the sort and count do not',
-  `above ${formatCount(OUTLINE_MAX_CELLS)} cells: no empty grid, cells go inset`,
   'the cells and points are one image, redrawn on settle',
-  'the image reaches half a screen past the map',
-  `${formatCount(POINTS_MAX)} drawn; 34 ms of the image over the whole box`,
   'or the points draw as a circle layer of their own',
   'native at a million: a 115 MB string killed the emulator',
   PUSH_NOTE,
@@ -783,16 +781,10 @@ export function Heatmap({ active }: ActProps) {
                   <Row label="points applied" value={applied ?? '-'} />
                 </>
               )}
-            </Panel>
-            {/* the fine print stands where the rows do, so the folded panel is the one that
-                carries it; nothing in it is interactive, so it takes no touch at all */}
-            {!collapsed ? null : (
-              <View style={styles.print} pointerEvents="none">
-                <Panel align="right">
-                  <FinePrint notes={NOTES} />
-                </Panel>
+              <View style={styles.print}>
+                <FinePrint notes={NOTES} />
               </View>
-            )}
+            </Panel>
           </View>
           <View style={styles.control}>
             <Panel align="right">
@@ -864,7 +856,10 @@ const styles = StyleSheet.create({
     right: 16,
     bottom: CONTROL_BOTTOM,
   },
-  print: { marginTop: 8 },
+  print: {
+    width: PRINT_WIDTH,
+    marginTop: 4,
+  },
   buttons: { flexDirection: 'row', gap: 8 },
   button: {
     borderWidth: 1,
