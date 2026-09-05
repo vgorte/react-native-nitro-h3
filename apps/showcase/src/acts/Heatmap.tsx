@@ -682,7 +682,7 @@ export function Heatmap({ active }: ActProps) {
       )}
       {!active ? null : (
         <>
-          {/* box-none leaves the map every touch the head and the controls do not take */}
+          {/* box-none leaves the map every touch the head does not take */}
           <View style={styles.panel} pointerEvents="box-none">
             <Panel collapsible collapsed={collapsed} onToggle={() => setCollapsed((held) => !held)}>
               <Metric value={formatCount(run?.points ?? 0)} caption="points placed" />
