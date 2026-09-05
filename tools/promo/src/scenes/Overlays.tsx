@@ -1,7 +1,8 @@
 import type { CSSProperties } from 'react'
 import { interpolate } from 'remotion'
 import { colours } from '../theme'
-import type { Drag, Tap } from './scenes'
+import type { Tap } from './scenes'
+import type { Drag } from './track'
 
 /** The screen the takes were recorded on, in points; every overlay size is given against it. */
 const PHONE_POINTS = 874
