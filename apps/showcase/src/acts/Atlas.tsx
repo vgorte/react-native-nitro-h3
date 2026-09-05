@@ -155,7 +155,7 @@ export function Atlas({ active, inspected, onInspect }: ActProps) {
   const [appliedMs, setAppliedMs] = useState<number | null>(null)
   const [highlightMs, setHighlightMs] = useState<number | null>(null)
   const [picked, setPicked] = useState<Picked | null>(null)
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsed, setCollapsed] = useState(true)
 
   // the act reaches for the map only once it has been opened, and keeps it afterwards
   useEffect(() => {

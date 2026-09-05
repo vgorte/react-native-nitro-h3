@@ -291,7 +291,7 @@ export function Heatmap({ active }: ActProps) {
   const [native, setNative] = useState<Native | null>(null)
   // what the native path answered: the time the map took, or why it has no time to answer
   const [applied, setApplied] = useState<string | null>(null)
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsed, setCollapsed] = useState(true)
   const [basemap, setBasemap] = useState<Basemap | null>(null)
   const [frame, setFrame] = useState<ImageFrame | null>(null)
   // the distinct cells of the run, kept so a settle can tell a covered cell of points from an empty

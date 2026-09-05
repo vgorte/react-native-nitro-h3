@@ -163,7 +163,7 @@ export function FractalCity({ active, inspected, onInspect }: ActProps) {
   const [ghost, setGhost] = useState<SkPath | null>(null)
   const [focus, setFocus] = useState<Focus | null>(null)
   const [refusal, setRefusal] = useState<string | null>(null)
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsed, setCollapsed] = useState(true)
 
   const merged = useRef<Tree | null>(null)
   const fading = useRef<ReturnType<typeof setTimeout> | null>(null)

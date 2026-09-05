@@ -104,7 +104,7 @@ export function MagneticGrid({ active }: ActProps) {
   const [append, setAppend] = useState<Append | null>(null)
   const [walk, setWalk] = useState<Walk | null>(null)
   const [grid, setGrid] = useState(false)
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsed, setCollapsed] = useState(true)
   // the panel's own height, measured, because what it says decides it and the viewport does not
   const [panelHeight, setPanelHeight] = useState(0)
 
