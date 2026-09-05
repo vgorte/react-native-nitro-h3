@@ -9,7 +9,7 @@ import {
   type Settings,
 } from '../engine/settings'
 
-const PUSHED: Settings = { seed: 1, points: PUSH_POINTS, res: PUSH_RES }
+const PUSHED: Settings = { ...OPEN_SETTINGS, points: PUSH_POINTS, res: PUSH_RES }
 
 describe('nextSettings', () => {
   test('bumps the seed and leaves the run it describes alone', () => {
@@ -18,7 +18,7 @@ describe('nextSettings', () => {
 
   test('sets both values of the push-it step', () => {
     expect(nextSettings(OPEN_SETTINGS, { control: 'push' })).toEqual({
-      seed: OPEN_SETTINGS.seed,
+      ...OPEN_SETTINGS,
       points: PUSH_POINTS,
       res: PUSH_RES,
     })
@@ -27,7 +27,7 @@ describe('nextSettings', () => {
   test('takes the resolution back to the opening one when the point count leaves the step', () => {
     const left = nextSettings(PUSHED, { control: 'points', value: 100_000 })
 
-    expect(left).toEqual({ seed: 1, points: 100_000, res: OPEN_SETTINGS.res })
+    expect(left).toEqual({ ...PUSHED, points: 100_000, res: OPEN_SETTINGS.res })
     expect(isPushed(left)).toBe(false)
   })
 
@@ -38,26 +38,57 @@ describe('nextSettings', () => {
   test('leaves the step by a resolution and keeps the count, which the row still lights', () => {
     const left = nextSettings(PUSHED, { control: 'res', value: 8 })
 
-    expect(left).toEqual({ seed: 1, points: PUSH_POINTS, res: 8 })
+    expect(left).toEqual({ ...PUSHED, res: 8 })
     expect(isPushed(left)).toBe(false)
   })
 
   test('changes the point count of a plain run without touching its resolution', () => {
-    const plain: Settings = { seed: 1, points: 100_000, res: 7 }
+    const plain: Settings = { ...OPEN_SETTINGS, res: 7 }
 
     expect(nextSettings(plain, { control: 'points', value: PUSH_POINTS })).toEqual({
-      seed: 1,
+      ...plain,
       points: PUSH_POINTS,
-      res: 7,
     })
   })
 
   test('takes the push-it resolution to stand for the whole step, wherever it is asked for', () => {
-    const plain: Settings = { seed: 1, points: 100_000, res: 9 }
-    const entered = nextSettings(plain, { control: 'res', value: PUSH_RES })
+    const entered = nextSettings(OPEN_SETTINGS, { control: 'res', value: PUSH_RES })
 
-    expect(entered).toEqual({ seed: 1, points: PUSH_POINTS, res: PUSH_RES })
+    expect(entered).toEqual({ ...OPEN_SETTINGS, points: PUSH_POINTS, res: PUSH_RES })
     expect(isPushed(entered)).toBe(true)
+  })
+
+  test('opens on the points alone, which is the cloud the heatmap is switched on over', () => {
+    expect(OPEN_SETTINGS.view).toBe('points')
+    expect(OPEN_SETTINGS.path).toBe('image')
+  })
+
+  test('switches the view without touching the run the settings describe', () => {
+    for (const value of ['points', 'heatmap', 'both'] as const) {
+      expect(nextSettings(PUSHED, { control: 'view', value })).toEqual({ ...PUSHED, view: value })
+    }
+  })
+
+  test('brings the points back with a path picked while the hexagons stand alone', () => {
+    const heat: Settings = { ...OPEN_SETTINGS, view: 'heatmap' }
+
+    expect(nextSettings(heat, { control: 'path', value: 'native' })).toEqual({
+      ...heat,
+      view: 'both',
+      path: 'native',
+    })
+  })
+
+  test('leaves the view alone where the points already draw', () => {
+    expect(nextSettings(OPEN_SETTINGS, { control: 'path', value: 'native' })).toEqual({
+      ...OPEN_SETTINGS,
+      path: 'native',
+    })
+    const both: Settings = { ...OPEN_SETTINGS, view: 'both', path: 'native' }
+    expect(nextSettings(both, { control: 'path', value: 'image' })).toEqual({
+      ...both,
+      path: 'image',
+    })
   })
 
   test('never leaves a state the resolution row cannot light', () => {
@@ -70,6 +101,11 @@ describe('nextSettings', () => {
       { control: 'res', value: 8 },
       { control: 'res', value: 9 },
       { control: 'res', value: PUSH_RES },
+      { control: 'view', value: 'points' },
+      { control: 'view', value: 'heatmap' },
+      { control: 'view', value: 'both' },
+      { control: 'path', value: 'image' },
+      { control: 'path', value: 'native' },
     ] as const
 
     let states: Settings[] = [OPEN_SETTINGS]
@@ -79,6 +115,8 @@ describe('nextSettings', () => {
         for (const change of changes) {
           const answer = nextSettings(state, change)
           expect(isPushed(answer) || RES_CHOICES.includes(answer.res)).toBe(true)
+          // a path only ever stands where the points it draws stand with it
+          expect(answer.view !== 'heatmap' || answer.path === state.path).toBe(true)
           reached.push(answer)
         }
       }

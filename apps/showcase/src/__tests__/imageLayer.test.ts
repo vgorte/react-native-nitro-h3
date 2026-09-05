@@ -103,7 +103,7 @@ describe('frameExtent', () => {
 })
 
 describe('frameMatrix and projectPoints', () => {
-  test('puts the north-west corner at the origin and the south-east corner at the far pixel', () => {
+  test('puts the north-west corner at the origin and the south-east at the far pixel', () => {
     const frame = imageFrameOf(BERLIN_BOUNDS, VIEWPORT, 2, 4_000_000, 0)
     const out = new Float32Array(4)
     const drawn = projectPoints(Float64Array.from([52.6755, 13.0884, 52.3383, 13.7612]), frame, out)

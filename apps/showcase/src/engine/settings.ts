@@ -1,8 +1,18 @@
-/** Holds what one run is asked for: the seed of its points, how many there are, and how big. */
+/** Names what the act draws: the raw cloud, the hexagons it aggregates into, or both at once. */
+export type ViewMode = 'points' | 'heatmap' | 'both'
+
+/** Names how the raw points reach the map: the scene image, or a circle layer of its own. */
+export type PointsPath = 'image' | 'native'
+
+/** Holds what one run is asked for and what of it is drawn. */
 export interface Settings {
   seed: number
   points: number
   res: number
+  /** What is drawn of the run; it costs no run of its own, so it never rebuilds one. */
+  view: ViewMode
+  /** How the raw points are drawn, which only stands where they are drawn at all. */
+  path: PointsPath
 }
 
 /** Names what one control asks for; the act hands these to {@linkcode nextSettings}. */
@@ -11,9 +21,22 @@ export type Change =
   | { control: 'points'; value: number }
   | { control: 'res'; value: number }
   | { control: 'push' }
+  | { control: 'view'; value: ViewMode }
+  | { control: 'path'; value: PointsPath }
 
-/** The settings the act opens on: one unchunked block at a city block's resolution. */
-export const OPEN_SETTINGS: Settings = { seed: 1, points: 100_000, res: 9 }
+/**
+ * The settings the act opens on: one unchunked block at a city block's resolution, points alone.
+ *
+ * The act opens on the cloud rather than on the hexagons, because the switch between them is what
+ * it has to show: a scatter that reads as noise until the cells are counted.
+ */
+export const OPEN_SETTINGS: Settings = {
+  seed: 1,
+  points: 100_000,
+  res: 9,
+  view: 'points',
+  path: 'image',
+}
 
 /** The point counts the control offers. */
 export const POINT_CHOICES: readonly number[] = [100_000, 1_000_000]
@@ -49,6 +72,9 @@ export function isPushed(settings: Settings): boolean {
  * The resolution row therefore always lights one of the items it offers, and no run is ever asked
  * for a size the step alone describes; leaving it by one of the plain resolutions keeps the million
  * points, which is a state the row can light and the act can build.
+ *
+ * The two display choices leave the run alone, and the points path brings the points back with it:
+ * a path picked while the hexagons stand on their own would otherwise change nothing on screen.
  */
 export function nextSettings(current: Settings, change: Change): Settings {
   switch (change.control) {
@@ -64,5 +90,13 @@ export function nextSettings(current: Settings, change: Change): Settings {
       return isPushed(current) && change.value !== PUSH_POINTS
         ? { ...current, points: change.value, res: OPEN_SETTINGS.res }
         : { ...current, points: change.value }
+    case 'view':
+      return { ...current, view: change.value }
+    case 'path':
+      return {
+        ...current,
+        path: change.value,
+        view: current.view === 'heatmap' ? 'both' : current.view,
+      }
   }
 }

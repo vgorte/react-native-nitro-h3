@@ -49,11 +49,13 @@ import {
   nextSettings,
   OPEN_SETTINGS,
   POINT_CHOICES,
+  type PointsPath,
   PUSH_CELLS,
   PUSH_POINTS,
   PUSH_RES,
   RES_CHOICES,
   type Settings,
+  type ViewMode,
 } from '../engine/settings'
 import { formatCount, formatMs } from '../engine/stats'
 import { yieldToLoop } from '../engine/yield'
@@ -69,7 +71,13 @@ import { Metric } from '../render/hud/Metric'
 import { Panel } from '../render/hud/Panel'
 import { Row } from '../render/hud/Row'
 import { EMPTY_COLLECTION } from '../render/inspectSources'
-import { drawPoints, POINT_ALPHA, pointsPaint } from '../render/pointsPicture'
+import {
+  drawPoints,
+  POINT_ALPHA,
+  POINT_COLOUR,
+  POINT_RADIUS_PT,
+  pointsPaint,
+} from '../render/pointsPicture'
 import { SceneImage } from '../render/SceneImage'
 import { BUCKETS, colours, glass, type } from '../theme/tokens'
 import type { ActProps } from './types'
@@ -102,21 +110,22 @@ const PUSH_OPTIONS: readonly ChoiceOption<number>[] = [
   { value: PUSH_RES, label: `${PUSH_RES}` },
 ]
 
-/** Names how the raw points are drawn: not at all, into the scene image, or as map circles. */
-type PointsMode = 'off' | 'image' | 'native'
+// the switch the act is built around: the cloud, what it aggregates into, and the two together
+const VIEW_OPTIONS: readonly ChoiceOption<ViewMode>[] = [
+  { value: 'points', label: 'points' },
+  { value: 'heatmap', label: 'heatmap' },
+  { value: 'both', label: 'both' },
+]
 
-const RAW_OPTIONS: readonly ChoiceOption<PointsMode>[] = [
-  { value: 'off', label: 'off' },
+const PATH_OPTIONS: readonly ChoiceOption<PointsPath>[] = [
   { value: 'image', label: 'image' },
   { value: 'native', label: 'native' },
 ]
 
-const POINT_RADIUS = 1.5
-
-// the two paths draw the same speck, so the circle layer takes the alpha the image points carry
+// the two paths draw the same speck, so the circle layer takes the size and alpha of the image
 const POINT_CIRCLE: NonNullable<CircleLayerSpecification['paint']> = {
-  'circle-radius': POINT_RADIUS,
-  'circle-color': colours.contrast,
+  'circle-radius': POINT_RADIUS_PT,
+  'circle-color': POINT_COLOUR,
   'circle-opacity': POINT_ALPHA,
 }
 
@@ -201,6 +210,9 @@ function gridOf(scene: HeatScene | null): string {
   return scene.outlined ? 'outline strip' : 'inset cells'
 }
 
+/** Names the part of the settings a run is built from; the rest only decides what is drawn. */
+type RunSettings = Pick<Settings, 'seed' | 'points' | 'res'>
+
 /** Carries a run's cancellation, and whether it got far enough to leave a scene standing. */
 interface Signal {
   aborted: boolean
@@ -243,7 +255,6 @@ export function Heatmap({ active }: ActProps) {
   const [scene, setScene] = useState<HeatScene | null>(null)
   // names the points the cache holds, and `null` while a run is placing new ones
   const [placed, setPlaced] = useState<string | null>(null)
-  const [raw, setRaw] = useState<PointsMode>('image')
   const [native, setNative] = useState<Native | null>(null)
   // what the native path answered: the time the map took, or why it has no time to answer
   const [applied, setApplied] = useState<string | null>(null)
@@ -270,6 +281,21 @@ export function Heatmap({ active }: ActProps) {
   const nativeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   // the wait on the map drawing the scene image, which stands beside the native one
   const imageWait = useRef<Wait>(noWait())
+
+  const { seed, points, res, view, path } = settings
+  const pushed = isPushed(settings)
+  // the two paths are one control each, and neither of them draws where the points do not
+  const imageDrawn = view !== 'heatmap' && path === 'image'
+  const nativeDrawn = view !== 'heatmap' && path === 'native'
+
+  // every control answers through the one rule, so no control can leave a state the rows cannot
+  // show, and the two that only decide what is drawn leave the run they are read against alone
+  const change = useCallback((made: Change) => setSettings((held) => nextSettings(held, made)), [])
+  // a path the device cannot carry hands the points back to the image, through the same rule
+  const fallBack = useCallback(
+    () => setSettings((held) => nextSettings(held, { control: 'path', value: 'image' })),
+    [],
+  )
 
   // the act reaches for the basemap only once it has been opened, and keeps it afterwards
   useEffect(() => {
@@ -346,7 +372,7 @@ export function Heatmap({ active }: ActProps) {
   // turn between them and a map that never draws them falls back to the image
   useEffect(() => {
     const cache = drawn.current
-    if (!active || raw !== 'native' || placed === null || cache === null) return
+    if (!active || !nativeDrawn || placed === null || cache === null) return
     let cancelled = false
 
     const write = async (): Promise<void> => {
@@ -373,7 +399,7 @@ export function Heatmap({ active }: ActProps) {
         nativeTimer.current = null
         closeWait(nativeWait.current)
         setApplied(`nothing drawn in ${NATIVE_WAIT_S} s`)
-        setRaw('image')
+        fallBack()
       }, NATIVE_WAIT_S * 1000)
     }
 
@@ -381,13 +407,13 @@ export function Heatmap({ active }: ActProps) {
       if (cancelled) return
       // a string the device cannot hold is the measurement this mode was asked for, so it is said
       setApplied(error instanceof Error ? error.message : 'the string could not be written')
-      setRaw('image')
+      fallBack()
     })
 
     return () => {
       cancelled = true
     }
-  }, [active, raw, placed, stopGuard])
+  }, [active, nativeDrawn, placed, stopGuard, fallBack])
 
   // the act leaves no guard and no open wait behind for its return to report
   useEffect(() => {
@@ -412,7 +438,7 @@ export function Heatmap({ active }: ActProps) {
   }, [active])
 
   /** Runs one whole pipeline, reporting the stages as they finish and stopping where cancelled. */
-  const execute = useCallback(async (wanted: Settings, signal: Signal): Promise<void> => {
+  const execute = useCallback(async (wanted: RunSettings, signal: Signal): Promise<void> => {
     // the gaps that follow belong to this run, and the sort is the one it is measured by
     resetWorstGap()
     setScene(null)
@@ -493,7 +519,6 @@ export function Heatmap({ active }: ActProps) {
     signal.finished = true
   }, [])
 
-  const { seed, points, res } = settings
   const key = `${seed}/${points}/${res}`
 
   useEffect(() => {
@@ -510,7 +535,7 @@ export function Heatmap({ active }: ActProps) {
   // the projection stands in the frame's own pixels, so every settle places the points again
   const projected = useMemo<Projected | null>(() => {
     const cache = drawn.current
-    if (frame === null || raw !== 'image' || placed === null || cache === null) return null
+    if (frame === null || !imageDrawn || placed === null || cache === null) return null
     let total = 0
     for (const block of cache.blocks) total += block.length / 2
     if (xy.current.length < total * 2) xy.current = new Float32Array(total * 2)
@@ -525,7 +550,7 @@ export function Heatmap({ active }: ActProps) {
       stride: sampleStride(count, POINTS_MAX),
       ms: performance.now() - started,
     }
-  }, [frame, raw, placed])
+  }, [frame, imageDrawn, placed])
 
   // the points are one point wide on screen, whatever the image is drawn at
   const paint = useMemo(() => pointsPaint(frame === null ? 1 : frame.width / width), [frame, width])
@@ -533,7 +558,7 @@ export function Heatmap({ active }: ActProps) {
   const draw = useCallback(
     (canvas: SkCanvas): void => {
       if (frame === null) return
-      if (scene !== null) {
+      if (scene !== null && view !== 'points') {
         const [scaleX, scaleY, translateX, translateY] = frameMatrix(frame, CENTRE)
         canvas.save()
         canvas.translate(translateX, translateY)
@@ -546,16 +571,11 @@ export function Heatmap({ active }: ActProps) {
         drawPoints(canvas, projected.xy, projected.count, projected.stride, paint)
       }
     },
-    [frame, scene, projected, paint],
+    [frame, scene, view, projected, paint],
   )
 
-  // every control of the run answers through the one rule, so none of them can leave a state the
-  // rows cannot show; the two display choices carry no run of their own and stand outside it
-  const change = useCallback((made: Change) => setSettings((held) => nextSettings(held, made)), [])
-  const pushed = isPushed(settings)
-
   // a fallback takes the mode back to the image, so the rows the attempt filled stay with it
-  const nativeShown = raw === 'native' || native !== null || applied !== null
+  const nativeShown = nativeDrawn || native !== null || applied !== null
 
   /** Reads a stage off the run, which only a finished run has measured. */
   const stage = (of: (run: Run) => string): string => (run?.done === true ? of(run) : '-')
@@ -589,7 +609,7 @@ export function Heatmap({ active }: ActProps) {
           {/* the same points the classic way: one feature each, drawn by the map itself */}
           <GeoJSONSource
             id="heat-points"
-            data={raw === 'native' ? (native?.data ?? EMPTY_COLLECTION) : EMPTY_COLLECTION}
+            data={nativeDrawn ? (native?.data ?? EMPTY_COLLECTION) : EMPTY_COLLECTION}
           >
             <Layer id="heat-points-circle" type="circle" paint={POINT_CIRCLE} />
           </GeoJSONSource>
@@ -630,7 +650,7 @@ export function Heatmap({ active }: ActProps) {
               />
               <Row label="grid" value={gridOf(scene)} tone="muted" />
               {/* each path answers its own rows, so no row of the other one stands empty */}
-              {raw === 'native' ? null : (
+              {nativeDrawn ? null : (
                 <Row
                   label="points"
                   call="projectPoints"
@@ -639,7 +659,7 @@ export function Heatmap({ active }: ActProps) {
                       ? '-'
                       : `${formatCount(projected.count)} / ${formatMs(projected.ms)}`
                   }
-                  tone={raw === 'image' ? 'text' : 'muted'}
+                  tone={imageDrawn ? 'text' : 'muted'}
                 />
               )}
               <Row
@@ -649,7 +669,7 @@ export function Heatmap({ active }: ActProps) {
                 tone={imageFailed === null ? 'text' : 'contrast'}
               />
               <Row label="image applied" value={handoverMs === null ? '-' : formatMs(handoverMs)} />
-              {/* the last native attempt keeps its rows after a fallback, which is its measurement */}
+              {/* a fallback keeps the rows the attempt filled, which is what it was asked for */}
               {!nativeShown ? null : (
                 <>
                   <Row
@@ -671,6 +691,12 @@ export function Heatmap({ active }: ActProps) {
           <View style={styles.control}>
             <Panel align="right">
               <Choice
+                label="draw"
+                options={VIEW_OPTIONS}
+                value={view}
+                onChange={(value) => change({ control: 'view', value })}
+              />
+              <Choice
                 label="points"
                 options={POINT_OPTIONS}
                 value={points}
@@ -683,7 +709,12 @@ export function Heatmap({ active }: ActProps) {
                 value={res}
                 onChange={(value) => change({ control: 'res', value })}
               />
-              <Choice label="raw points" options={RAW_OPTIONS} value={raw} onChange={setRaw} />
+              <Choice
+                label="raw points"
+                options={PATH_OPTIONS}
+                value={path}
+                onChange={(value) => change({ control: 'path', value })}
+              />
               <Text style={styles.hint}>{PUSH_NOTE}</Text>
               <View style={styles.buttons}>
                 <Pressable
