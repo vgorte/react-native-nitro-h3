@@ -105,6 +105,9 @@ const BERLIN: LatLng = { lat: 52.52, lng: 13.405 }
 /** Milliseconds the camera takes to glide onto a new head cell. */
 const FOLLOW_MS = 400
 
+/** Least time between two images of the trail, so a fast route cannot flood the JS thread. */
+const REDRAW_MS = 300
+
 // MapLibre counts zoom against a 512 point tile, the projection helpers against a 256 point one
 const ZOOM_OFFSET = 1
 
@@ -128,7 +131,7 @@ const NOTES = [
   'a fix a second lands in the same cell or a neighbour, so only a gap asks',
   'those filled cells take the lower half of the ramp, measured ones all of it',
   'without a live location, a recorded route plays at the pace it was walked',
-  'the trail is one image, redrawn on every fix',
+  'the trail is one image, redrawn when the trail gains a cell',
 ]
 
 /** Names where the fixes come from: the device itself, or the route recorded on a simulated run. */
@@ -246,6 +249,8 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
   // the ground and the viewport the standing image was cut for, so a settle that moved nothing
   // rebuilds nothing
   const cut = useRef('')
+  // when the standing scene was recorded and the frame it stands in, which paces the next one
+  const drawn = useRef<{ at: number; anchor: LatLng }>({ at: 0, anchor: BERLIN })
 
   // the act reaches for the basemap only once it has been opened, and keeps it afterwards
   useEffect(() => {
@@ -470,12 +475,25 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
     if (following) centreOn(head.cell, undefined, FOLLOW_MS)
   }, [trail, following, res, width, height, centreOn])
 
+  // the offscreen draw, the PNG encode and the write are one block of the JS thread, so a walk
+  // that crosses a cell a second gets one image every REDRAW_MS carrying the trail it ended on; a
+  // re-anchor moves the metre frame under the image and is drawn at once
   useEffect(() => {
     if (trail.length === 0) {
       setScene(null)
       return
     }
-    setScene(buildTrailScene(trail, anchor))
+    const build = (): void => {
+      drawn.current = { at: performance.now(), anchor }
+      setScene(buildTrailScene(trail, anchor))
+    }
+    const waited = performance.now() - drawn.current.at
+    if (drawn.current.anchor !== anchor || waited >= REDRAW_MS) {
+      build()
+      return
+    }
+    const timer = setTimeout(build, REDRAW_MS - waited)
+    return () => clearTimeout(timer)
   }, [trail, anchor])
 
   // a tap opens the sheet on the cell under it, and lands on the ground where the trail is not
