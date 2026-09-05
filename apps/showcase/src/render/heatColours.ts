@@ -1,4 +1,20 @@
-import { bucketOfCount } from '../theme/tokens'
+import { BUCKETS, bucketOfCount, colours, rampColours } from '../theme/tokens'
+
+/**
+ * The colours a busy cell is drawn in, the theme ramp with the contrast colour at its hot end.
+ *
+ * The ramp runs cold blue to white, which reads as intensity but not as heat; the amber the theme
+ * already keeps for the hot end takes the last step, so the busiest cells stand out of the field.
+ */
+export const heatPalette: readonly string[] = rampColours(BUCKETS).map((colour, bucket) =>
+  bucket === BUCKETS - 1 ? colours.contrast : colour,
+)
+
+/** The colour a covered cell no point landed in is drawn in, under the grid strip. */
+export const EMPTY_COLOUR = colours.hairline
+
+/** Alpha the empty cells are drawn at, low enough that the basemap still reads through them. */
+export const EMPTY_ALPHA = 0.18
 
 /**
  * Answers the ramp bucket of every cell from the points that landed in it.

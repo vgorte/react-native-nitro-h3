@@ -5,6 +5,7 @@ import {
   Picture,
   type SkCanvas,
   Skia,
+  type SkPaint,
   type SkPath,
   type SkPicture,
   type SkPoint,
@@ -29,12 +30,19 @@ export interface CellPicturesProps {
   scene: CellScene | null
 }
 
-const paints = rampColours(BUCKETS).map((colour) => {
-  const paint = Skia.Paint()
-  paint.setColor(Skia.Color(colour))
-  paint.setAntiAlias(true)
-  return paint
-})
+/** The colours a scene is drawn in unless its caller names others: the theme ramp, one a bucket. */
+const RAMP_PALETTE = rampColours(BUCKETS)
+
+/** Answers one paint per colour of a palette, at the alpha the whole scene is drawn at. */
+function fillsOf(palette: readonly string[], opacity: number): SkPaint[] {
+  return palette.map((colour) => {
+    const paint = Skia.Paint()
+    paint.setColor(Skia.Color(colour))
+    paint.setAlphaf(opacity)
+    paint.setAntiAlias(true)
+    return paint
+  })
+}
 
 /**
  * Records one picture per colour bucket plus the outline, in scene coordinates.
@@ -44,12 +52,14 @@ const paints = rampColours(BUCKETS).map((colour) => {
  * opacity is a paint property and `drawPicture` ignores the paint it is drawn under.
  *
  * @param opacity Alpha of the filled cells, `1` for solid; the outline always draws solid.
+ * @param palette The colour of every bucket the mesh was built with, the theme ramp by default.
  */
 export function recordCellScene(
   mesh: MeshBuild,
   bounds: Bounds,
   outlinePath: string | null,
   opacity = 1,
+  palette: readonly string[] = RAMP_PALETTE,
 ): CellScene {
   const rect = Skia.XYWHRect(
     bounds.minX,
@@ -57,16 +67,9 @@ export function recordCellScene(
     bounds.maxX - bounds.minX,
     bounds.maxY - bounds.minY,
   )
-  const fills =
-    opacity === 1
-      ? paints
-      : paints.map((paint) => {
-          const faded = paint.copy()
-          faded.setAlphaf(opacity)
-          return faded
-        })
+  const fills = fillsOf(palette, opacity)
   const pictures: SkPicture[] = []
-  for (let bucket = 0; bucket < BUCKETS; bucket++) {
+  for (let bucket = 0; bucket < fills.length; bucket++) {
     const batches = bucketBatches(mesh, bucket)
     if (batches.length === 0) continue
     const recorder = Skia.PictureRecorder()

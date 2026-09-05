@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { aggregateCells } from '../engine/aggregate'
+import { aggregateCells, emptyCells } from '../engine/aggregate'
 
 /** Counts occurrences the obvious way, as the reference the fast path is checked against. */
 function naive(cells: BigUint64Array): Map<bigint, number> {
@@ -41,5 +41,39 @@ describe('aggregateCells', () => {
 
     expect(result.cells.length).toBe(0)
     expect(result.max).toBe(0)
+  })
+})
+
+describe('emptyCells', () => {
+  test('keeps the covered cells no point landed in, in the order they were walked', () => {
+    const covered = BigUint64Array.from([9n, 4n, 7n, 1n])
+    const busy = BigUint64Array.from([4n, 9n])
+
+    expect(Array.from(emptyCells(covered, busy))).toEqual([7n, 1n])
+  })
+
+  test('hands the ramp no cell of no points, whatever the run counted', () => {
+    const covered = BigUint64Array.from([1n, 2n, 3n, 4n, 5n])
+    const busy = BigUint64Array.from([2n, 4n])
+
+    for (const cell of emptyCells(covered, busy)) {
+      expect(busy.includes(cell)).toBe(false)
+    }
+  })
+
+  test('answers every covered cell where the run counted none of them', () => {
+    const covered = BigUint64Array.from([5n, 6n])
+
+    expect(Array.from(emptyCells(covered, new BigUint64Array(0)))).toEqual([5n, 6n])
+  })
+
+  test('answers nothing where every covered cell is busy', () => {
+    const cells = BigUint64Array.from([1n, 2n, 3n])
+
+    expect(emptyCells(cells, cells)).toHaveLength(0)
+  })
+
+  test('answers nothing where nothing was covered', () => {
+    expect(emptyCells(new BigUint64Array(0), BigUint64Array.from([1n]))).toHaveLength(0)
   })
 })

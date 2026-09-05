@@ -20,12 +20,14 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native'
+import { getHexagonEdgeLengthAvgM, latLngToCell } from 'react-native-nitro-h3'
 import type { Aggregate } from '../engine/aggregate'
-import { aggregateCells } from '../engine/aggregate'
-import { closeWait, noteFrame, noWait, openWait, type Wait } from '../engine/atlas'
-import { cellsFromPoints } from '../engine/cells'
+import { aggregateCells, emptyCells } from '../engine/aggregate'
+import { closeWait, coverage, noteFrame, noWait, openWait, type Wait } from '../engine/atlas'
+import { cellsFromPoints, diskAround } from '../engine/cells'
 import { featureCollection, pointFeatures, utf8Length } from '../engine/geojson'
 import {
+  frameExtent,
   frameMatrix,
   type ImageFrame,
   imageFrameOf,
@@ -38,6 +40,7 @@ import {
   blocksOf,
   centreOf,
   HOTSPOTS,
+  OUTLINE_MAX_CELLS,
   type PointCache,
   pointStream,
   servesRun,
@@ -61,9 +64,9 @@ import { formatCount, formatMs } from '../engine/stats'
 import { yieldToLoop } from '../engine/yield'
 import { BlockedReadout, resetWorstGap } from '../render/BlockedReadout'
 import { type Basemap, loadBasemap, PLAIN_BASEMAP } from '../render/basemap'
-import { drawCellScene } from '../render/CellPictures'
+import { type CellScene, drawCellScene } from '../render/CellPictures'
 import { bucketsOfCounts } from '../render/heatColours'
-import { buildHeatScene, type HeatScene } from '../render/heatScene'
+import { buildEmptyScene, buildHeatScene, type HeatScene } from '../render/heatScene'
 import { Attribution } from '../render/hud/Attribution'
 import { Choice, type ChoiceOption } from '../render/hud/Choice'
 import { FinePrint } from '../render/hud/FinePrint'
@@ -161,11 +164,11 @@ const CONTROL_BOTTOM = 136
 const PIXEL_RATIO = PixelRatio.get()
 
 const NOTES = [
-  `the points are synthetic: ${HOTSPOTS} weighted hotspots`,
-  `and ${Math.round(UNIFORM_SHARE * 100)} percent of them uniform over the box`,
+  `${HOTSPOTS} weighted hotspots and ${Math.round(UNIFORM_SHARE * 100)} percent uniform noise`,
   'past 100,000 the run chunks; the sort and count do not',
-  'above 20,000 cells the grid comes off, cells go inset',
+  `above ${formatCount(OUTLINE_MAX_CELLS)} cells the empty grid comes off, cells go inset`,
   'the cells and points are one image, redrawn on settle',
+  'which reaches half a screen past the map on every side',
   `${formatCount(POINTS_MAX)} drawn; all 915,000 cost 429 ms`,
   'or the points draw as a circle layer of their own',
   'native at a million: a 115 MB string killed the emulator',
@@ -227,6 +230,19 @@ interface Native {
   bytes: number
 }
 
+/** Holds the hexagons the frame is covered in beside the busy ones, and what walking them took. */
+interface Covered {
+  /** Cells the disk walked over the padded frame. */
+  cells: number
+  /** Cells of the walk the run counted points in, which the ramp draws. */
+  busy: number
+  diskMs: number
+  /** Cells of the walk no point landed in, which are drawn as the empty step. */
+  empty: number
+  emptyMs: number
+  scene: CellScene | null
+}
+
 /** Holds the run's points on the image: how many landed on it and what placing them took. */
 interface Projected {
   xy: Float32Array
@@ -247,6 +263,10 @@ interface Projected {
  * answering while a million points are placed; the sort that follows is one unchunked pass, and the
  * readout beside it says what that costs. The cells and the raw points are drawn into one image the
  * basemap carries, which every settle redraws for the ground the map has come to stand over.
+ *
+ * The act opens on the raw cloud, which reads as noise, and the switch to the hexagons is what it
+ * has to show: `gridDisk` covers the frame in cells at the run's resolution, the ones the run
+ * counted carry the ramp, and every other one is drawn as the quiet empty step under the same grid.
  */
 export function Heatmap({ active }: ActProps) {
   const { width, height } = useWindowDimensions()
@@ -261,6 +281,9 @@ export function Heatmap({ active }: ActProps) {
   const [collapsed, setCollapsed] = useState(false)
   const [basemap, setBasemap] = useState<Basemap | null>(null)
   const [frame, setFrame] = useState<ImageFrame | null>(null)
+  // the distinct cells of the run, kept so a settle can tell a covered cell of points from an empty
+  const [busy, setBusy] = useState<BigUint64Array | null>(null)
+  const [covered, setCovered] = useState<Covered | null>(null)
   const [imageMs, setImageMs] = useState<number | null>(null)
   // what a render that answered no image said, which stands in the row the time would have taken
   const [imageFailed, setImageFailed] = useState<string | null>(null)
@@ -442,6 +465,7 @@ export function Heatmap({ active }: ActProps) {
     // the gaps that follow belong to this run, and the sort is the one it is measured by
     resetWorstGap()
     setScene(null)
+    setBusy(null)
     setPlaced(null)
     setNative(null)
     setApplied(null)
@@ -495,6 +519,8 @@ export function Heatmap({ active }: ActProps) {
     const coloursMs = performance.now() - coloured
 
     const heat = buildHeatScene(aggregate.cells, buckets, CENTRE)
+    // a copy of its own, because the aggregate's own view holds a buffer as long as the run
+    setBusy(aggregate.cells.slice())
 
     // the distinct cells, their counts and their colours are dead once the mesh is recorded: the
     // scene holds its own copies, and only the drawn points are kept for the next resolution
@@ -532,6 +558,35 @@ export function Heatmap({ active }: ActProps) {
     }
   }, [active, key, seed, points, res, execute])
 
+  // the hexagons stand over the whole padded frame, so every settle walks the ground it moved onto
+  useEffect(() => {
+    if (!active || view === 'points' || frame === null || busy === null || scene === null) {
+      setCovered(null)
+      return
+    }
+    // above the ceiling the strip is off and the busy cells are inset, which leaves no empty step
+    if (!scene.outlined) {
+      setCovered(null)
+      return
+    }
+    const extent = frameExtent(frame)
+    const [lng, lat] = extent.center
+    const disk = diskAround(
+      latLngToCell(lat, lng, res),
+      coverage(extent, res, getHexagonEdgeLengthAvgM),
+    )
+    const blank = emptyCells(disk.value, busy)
+    const built = blank.length === 0 ? null : buildEmptyScene(blank, CENTRE)
+    setCovered({
+      cells: disk.value.length,
+      busy: disk.value.length - blank.length,
+      diskMs: disk.ms,
+      empty: blank.length,
+      emptyMs: built?.ms ?? 0,
+      scene: built?.scene ?? null,
+    })
+  }, [active, view, frame, busy, scene, res])
+
   // the projection stands in the frame's own pixels, so every settle places the points again
   const projected = useMemo<Projected | null>(() => {
     const cache = drawn.current
@@ -563,6 +618,8 @@ export function Heatmap({ active }: ActProps) {
         canvas.save()
         canvas.translate(translateX, translateY)
         canvas.scale(scaleX, scaleY)
+        // the empty step first, so the cells the run counted stand over the field of the others
+        if (covered?.scene != null) drawCellScene(canvas, covered.scene)
         drawCellScene(canvas, scene.scene)
         canvas.restore()
       }
@@ -571,7 +628,7 @@ export function Heatmap({ active }: ActProps) {
         drawPoints(canvas, projected.xy, projected.count, projected.stride, paint)
       }
     },
-    [frame, scene, view, projected, paint],
+    [frame, scene, view, covered, projected, paint],
   )
 
   // a fallback takes the mode back to the image, so the rows the attempt filled stay with it
@@ -649,6 +706,27 @@ export function Heatmap({ active }: ActProps) {
                 value={stage((of) => `${formatCount(of.busiest)} points`)}
               />
               <Row label="grid" value={gridOf(scene)} tone="muted" />
+              <Row
+                label="coverage"
+                call="gridDisk"
+                value={
+                  covered === null
+                    ? '-'
+                    : `${formatCount(covered.cells)} / ${formatMs(covered.diskMs)}`
+                }
+              />
+              <Row
+                label="empty cells, boundaries plus mesh"
+                value={
+                  covered === null
+                    ? '-'
+                    : `${formatCount(covered.empty)} / ${formatMs(covered.emptyMs)}`
+                }
+              />
+              <Row
+                label="busy cells in the coverage"
+                value={covered === null ? '-' : formatCount(covered.busy)}
+              />
               {/* each path answers its own rows, so no row of the other one stands empty */}
               {nativeDrawn ? null : (
                 <Row

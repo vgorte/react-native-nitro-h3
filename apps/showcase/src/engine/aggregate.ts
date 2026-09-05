@@ -47,3 +47,37 @@ export function aggregateCells(cells: BigUint64Array): Aggregate {
 
   return { cells: unique.subarray(0, distinct), counts: counts.subarray(0, distinct), max }
 }
+
+/** Answers whether a cell stands in an ascending set, by halving the range it could be in. */
+function holds(sorted: BigUint64Array, cell: bigint): boolean {
+  let low = 0
+  let high = sorted.length - 1
+  while (low <= high) {
+    const middle = (low + high) >> 1
+    if (sorted[middle] === cell) return true
+    if (sorted[middle] < cell) low = middle + 1
+    else high = middle - 1
+  }
+  return false
+}
+
+/**
+ * Answers the covered cells that no point of the run landed in, in the order they were walked.
+ *
+ * The two sets are what the heat scene is cut along: a cell of the walk that the run counted is
+ * drawn on the ramp, and every other one is drawn as the empty step, so no cell of no points is
+ * ever handed a colour that stands for a count.
+ *
+ * @param covered The cells the coverage walked, in any order.
+ * @param busy The distinct cells of the run, ascending, as {@linkcode aggregateCells} leaves them.
+ */
+export function emptyCells(covered: BigUint64Array, busy: BigUint64Array): BigUint64Array {
+  const empty = new BigUint64Array(covered.length)
+  let kept = 0
+  for (const cell of covered) {
+    if (holds(busy, cell)) continue
+    empty[kept] = cell
+    kept += 1
+  }
+  return empty.subarray(0, kept)
+}

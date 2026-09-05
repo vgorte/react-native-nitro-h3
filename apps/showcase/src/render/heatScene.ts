@@ -5,6 +5,7 @@ import { OUTLINE_MAX_CELLS } from '../engine/points'
 import { type ProjectedCells, projectCells } from '../engine/projection'
 import { BUCKETS } from '../theme/tokens'
 import { type CellScene, recordCellScene } from './CellPictures'
+import { EMPTY_ALPHA, EMPTY_COLOUR, heatPalette } from './heatColours'
 import type { CameraAnchor } from './useCamera'
 
 const CHUNK_SIZE = 10_000
@@ -62,9 +63,42 @@ export function buildHeatScene(
   projected = null
 
   return {
-    scene: recordCellScene(mesh, bounds, outline),
+    scene: recordCellScene(mesh, bounds, outline, 1, heatPalette),
     outlined,
     boundariesMs,
     meshMs: performance.now() - started,
+  }
+}
+
+/** Holds the recorded coverage of the cells no point landed in, and what building it took. */
+export interface EmptyScene {
+  scene: CellScene
+  /** What the boundaries, the projection, the mesh and the recording took together. */
+  ms: number
+}
+
+/**
+ * Records the covered cells no point of the run landed in, as the empty step under the grid strip.
+ *
+ * They are one colour rather than a step of the ramp, because a cell of no points stands for no
+ * count at all; the strip over them is what carries the tiling where the fills are this quiet.
+ *
+ * @param cells The covered cells the run counted nothing in, from `emptyCells`.
+ * @param anchor The coordinate the scene's metre space is measured from.
+ */
+export function buildEmptyScene(cells: BigUint64Array, anchor: CameraAnchor): EmptyScene {
+  const started = performance.now()
+  let boundaries: Timed<CellBoundaries> | null = boundariesOf(cells)
+  let projected: ProjectedCells | null = projectCells(boundaries.value, anchor)
+  boundaries = null
+
+  const mesh = buildMesh(projected, { chunkSize: CHUNK_SIZE, buckets: 1, inset: 0 })
+  const outline = buildOutlinePath(projected, OUTLINE_EDGES)
+  const { bounds } = projected
+  projected = null
+
+  return {
+    scene: recordCellScene(mesh, bounds, outline, EMPTY_ALPHA, [EMPTY_COLOUR]),
+    ms: performance.now() - started,
   }
 }
