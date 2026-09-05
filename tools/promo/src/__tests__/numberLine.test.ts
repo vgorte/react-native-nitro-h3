@@ -40,7 +40,7 @@ describe('numberLine', () => {
     const heatmap = sceneOf('heatmap')
     expect(numberLine(heatmap, readingAt(heatmap, 0)).unit).toBe('points placed')
     const after = numberLine(heatmap, readingAt(heatmap, heatmap.keys[0].at + 1))
-    expect(after.number).toBe('3,454')
+    expect(after.number).toBe('547')
     expect(after.unit).toBe('cells from 1M points')
   })
 

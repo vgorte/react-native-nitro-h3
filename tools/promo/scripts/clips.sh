@@ -27,7 +27,7 @@ cut atlas-ios.mp4 11.45 5.00 "$clips/atlas.mp4"
 cut engine-ios.mp4 10.75 4.30 "$clips/engine.mp4"
 cut fractal-ios.mp4 7.70 4.20 "$clips/fractal.mp4"
 cut grid-ios.mp4 8.50 4.60 "$clips/grid.mp4"
-cut heatmap8-ios.mp4 6.95 4.20 "$clips/heatmap.mp4"
+cut heatmap7-ios.mp4 28.65 4.20 "$clips/heatmap.mp4"
 cut trail-ios.mp4 15.00 4.50 "$clips/trail.mp4"
 
 ls -l "$clips"

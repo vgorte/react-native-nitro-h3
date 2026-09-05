@@ -175,7 +175,7 @@ export const SCENES: readonly Scene[] = [
     suffix: '',
     unit: 'points placed',
     call: 'latLngsToCells',
-    keys: [{ at: 0.85, value: 3454, unit: 'cells from 1M points' }],
+    keys: [{ at: 0.85, value: 547, unit: 'cells from 1M points' }],
     taps: [{ at: 0.68, x: 0.7811, y: 0.706 }],
     heroSkip: 0,
     portrait: { skip: 0.2, seconds: 3.4 },
