@@ -16,8 +16,6 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 takes="$root/takes"
 pidfile="$takes/.recording.pid"
-serial="${ANDROID_SERIAL:-RFCW714M49L}"
-
 mkdir -p "$takes"
 
 case "${1:-}" in
@@ -40,6 +38,8 @@ case "${1:-}" in
     rm -f "$pidfile"
     ;;
   android)
+    # a device serial belongs to whoever records, so the script asks for one rather than carrying it
+    serial="${ANDROID_SERIAL:?set ANDROID_SERIAL to the device to record on}"
     act="${2:?act name}"
     seconds="${3:-20}"
     adb -s "$serial" shell screenrecord --bit-rate 16000000 --time-limit "$seconds" \
