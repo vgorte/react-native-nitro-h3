@@ -1,10 +1,10 @@
+import { PANEL_BORDER, PANEL_GAP, PANEL_PADDING } from './panelMetrics'
+
 /** Points a panel keeps clear of whatever stands below it. */
 export const CLEARANCE = 12
 
 /** The glass a panel spends on itself: the border and padding of one edge. */
-const EDGE = 13
-/** Points between the head and the body that folds under it. */
-const GAP = 8
+const EDGE = PANEL_BORDER + PANEL_PADDING
 
 /**
  * Returns the height a panel starting at `top` has before it reaches what stands at the foot.
@@ -23,6 +23,6 @@ export function panelRoom(windowHeight: number, top: number, foot: number): numb
  * ends up with.
  */
 export function bodyRoom(maxHeight: number, headHeight: number): number {
-  const spent = 2 * EDGE + (headHeight === 0 ? 0 : headHeight + GAP)
+  const spent = 2 * EDGE + (headHeight === 0 ? 0 : headHeight + PANEL_GAP)
   return Math.max(0, maxHeight - spent)
 }

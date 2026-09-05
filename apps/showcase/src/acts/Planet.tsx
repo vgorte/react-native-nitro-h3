@@ -67,7 +67,7 @@ import {
   visibleTiles,
 } from '../engine/tiles'
 import { timed } from '../engine/timed'
-import { resetWorstGap } from '../render/BlockedReadout'
+import { BLOCKED_READOUT_BAND, resetWorstGap } from '../render/BlockedReadout'
 import { CellPictures, type CellScene, recordCellScene } from '../render/CellPictures'
 import { EngineCanvas } from '../render/EngineCanvas'
 import { Attribution } from '../render/hud/Attribution'
@@ -113,8 +113,6 @@ const PANEL_TOP = 104
 const PANEL_GAP = 16
 // the panel is measured, and this is what it takes before the first layout
 const PANEL_HEIGHT = 268
-// clears the blocked readout, which stands 58 pt tall 48 pt off the bottom
-const READOUT_GAP = 122
 const CHUNK_SIZE = 10_000
 const INSET = 0.08
 const OUTLINE_EDGES = 3
@@ -462,7 +460,7 @@ export function Planet({ active }: ActProps) {
   const [panelHeight, setPanelHeight] = useState(PANEL_HEIGHT)
   // the globe takes the space the HUD leaves, so no reading sits over a cell
   const globeTop = PANEL_TOP + panelHeight + PANEL_GAP
-  const globeBottom = height - READOUT_GAP
+  const globeBottom = height - BLOCKED_READOUT_BAND
   const cx = width / 2
   const cy = (globeTop + globeBottom) / 2
   const baseRadius = Math.min(width / 2, (globeBottom - globeTop) / 2) * GLOBE_MARGIN

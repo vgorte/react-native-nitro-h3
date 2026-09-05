@@ -532,8 +532,7 @@ export function Heatmap({ active }: ActProps) {
     cells = null
 
     const coloured = performance.now()
-    // the anchors are quantiles of this run's own counts, so the window holds the histogram that
-    // finds them as well as the ramp it spreads between them
+    // the window covers the quantile pass, not just the ramp it feeds
     let buckets: Uint8Array | null = bucketsOfCounts(aggregate.counts, busiest, BUCKETS)
     const coloursMs = performance.now() - coloured
 

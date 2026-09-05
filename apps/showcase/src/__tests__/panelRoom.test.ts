@@ -1,6 +1,9 @@
 import { describe, expect, test } from 'bun:test'
 import { bodyRoom, CLEARANCE, panelRoom } from '../render/hud/panelRoom'
 
+// the smallest foot an act hands over: unmeasured controls on iOS
+const CONTROL_BOTTOM = 134
+
 describe('panelRoom', () => {
   test('leaves the clearance between the panel and the foot', () => {
     expect(panelRoom(874, 104, 277)).toBe(874 - 277 - CLEARANCE - 104)
@@ -10,8 +13,8 @@ describe('panelRoom', () => {
     expect(panelRoom(874, 104, 300)).toBeLessThan(panelRoom(874, 104, 200))
   })
 
-  test('gives the panel the rest of the window while the foot is unmeasured', () => {
-    expect(panelRoom(874, 104, 0)).toBe(758)
+  test('gives the panel the window the unmeasured controls leave', () => {
+    expect(panelRoom(874, 104, CONTROL_BOTTOM)).toBe(624)
   })
 
   test('never answers a negative height', () => {
