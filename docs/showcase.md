@@ -8,14 +8,14 @@
 
 [Watch the video](../img/showcase.mp4) (25.6 seconds, no sound).
 
-The showcase is not a benchmark. It puts the package where it will actually run, under a map, inside
-a gesture, on a JS thread that also has to animate, and shows what a hexagonal grid buys you once it
+The showcase is not a benchmark. It puts the package where it will actually run: under a map, inside
+a gesture, on a JS thread that also has to animate. It shows what a hexagonal grid buys you once it
 is cheap: a grid that follows the viewport, a drill-down that costs one call, a neighbourhood that
-grows ring by ring, a million points folded into a few hundred cells, a track stored as cells
+grows ring by ring, a million points folded into a few hundred cells, and a track stored as cells
 instead of coordinates.
 
-A readout in every act watches the JS thread and reports the longest block of the run, so the cost
-of each step is visible while you use it.
+A readout in every act watches the JS thread and reports the longest block of the run, making the
+true cost of every step visible.
 
 ## The five acts
 
@@ -66,10 +66,10 @@ counts are what the map shows, and a few hundred cells draw where a million poin
 
 ### Trail
 
-`latLngToCell`
+`latLngToCell · gridPathCells`
 
-A 16 km ride through Berlin replays at 60x. Every fix becomes a cell, the trail keeps the distinct
-cells and the camera leads the head. The resolution slider runs from 7 to 12 independently of the
+A 16 km ride through Berlin replays at 60x. Every fix becomes a cell, a gap in the fixes is bridged
+with the grid path, and the camera leads the head. The resolution slider runs from 7 to 12 independently of the
 zoom.
 
 **Useful for** movement analytics and visited-area tracking, and for data minimisation: storing the
