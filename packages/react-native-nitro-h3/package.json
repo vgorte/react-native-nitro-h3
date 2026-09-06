@@ -1,7 +1,7 @@
 {
   "name": "react-native-nitro-h3",
   "version": "0.4.0",
-  "description": "Native H3 geospatial indexing for React Native. H3's C library exposed through Nitro Modules, with bigint cell indexes, typed-array results, and batch operations.",
+  "description": "Native H3 geospatial indexing for React Native, up to 862x faster than h3-js. Uber's H3 C library exposed through Nitro Modules, with bigint cell indexes, typed-array results and batch operations.",
   "main": "lib/index",
   "module": "lib/index",
   "types": "lib/index.d.ts",
@@ -19,12 +19,24 @@
   },
   "keywords": [
     "react-native",
+    "react-native-h3",
+    "react-native-nitro-h3",
     "nitro-modules",
+    "nitro",
     "h3",
+    "uber-h3",
     "geospatial",
+    "spatial-index",
     "hexagon",
+    "hexagonal-grid",
+    "hex-grid",
+    "maps",
+    "expo",
+    "jsi",
     "ios",
-    "android"
+    "android",
+    "typescript",
+    "high-performance"
   ],
   "scripts": {
     "lint": "biome check .",
