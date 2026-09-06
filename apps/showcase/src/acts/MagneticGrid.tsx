@@ -32,6 +32,7 @@ import { EngineCanvas } from '../render/EngineCanvas'
 import { FinePrint } from '../render/hud/FinePrint'
 import { Metric } from '../render/hud/Metric'
 import { Panel } from '../render/hud/Panel'
+import { panelRoom } from '../render/hud/panelRoom'
 import { Row } from '../render/hud/Row'
 import { Slider } from '../render/hud/Slider'
 import { buildRing, type RingLayer } from '../render/ringScene'
@@ -107,6 +108,8 @@ export function MagneticGrid({ active }: ActProps) {
   const [collapsed, setCollapsed] = useState(true)
   // the panel's own height, measured, because what it says decides it and the viewport does not
   const [panelHeight, setPanelHeight] = useState(0)
+  // the control panel is what the expanded panel has to stop above, and only it knows its height
+  const [controlHeight, setControlHeight] = useState(0)
 
   // the rings already built, held outside the render so a rebuild of the act rebuilds no geometry
   const built = useRef<RingLayer[]>([])
@@ -313,7 +316,12 @@ export function MagneticGrid({ active }: ActProps) {
         pointerEvents="box-none"
         onLayout={(event) => setPanelHeight(event.nativeEvent.layout.height)}
       >
-        <Panel collapsible collapsed={collapsed} onToggle={() => setCollapsed((held) => !held)}>
+        <Panel
+          collapsible
+          collapsed={collapsed}
+          onToggle={() => setCollapsed((held) => !held)}
+          maxHeight={panelRoom(height, PANEL_TOP, CONTROL_BOTTOM + controlHeight)}
+        >
           <Metric value={formatCount(cells)} caption="cells drawn" />
           <Row label="k" value={`${k}`} />
           <Row
@@ -337,7 +345,10 @@ export function MagneticGrid({ active }: ActProps) {
           </View>
         </Panel>
       </View>
-      <View style={styles.control}>
+      <View
+        style={styles.control}
+        onLayout={(event) => setControlHeight(event.nativeEvent.layout.height)}
+      >
         <Panel align="right">
           <Row label="rings from the centre" value={`${k}`} />
           <Slider

@@ -109,7 +109,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 16,
   },
-  scroll: { flexGrow: 0 },
+  // the rows line up on the panel, not on the widest child of the body
+  scroll: { alignSelf: 'stretch', flexGrow: 0 },
   body: { gap: 8 },
   toggle: { ...type.label, color: colours.muted, marginTop: 6 },
 })

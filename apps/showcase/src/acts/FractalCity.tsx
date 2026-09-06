@@ -57,6 +57,7 @@ import { growthTransform } from '../render/growth'
 import { FinePrint } from '../render/hud/FinePrint'
 import { Metric } from '../render/hud/Metric'
 import { Panel } from '../render/hud/Panel'
+import { panelRoom } from '../render/hud/panelRoom'
 import { Row } from '../render/hud/Row'
 import { InspectHighlight } from '../render/InspectHighlight'
 import { type CameraAnchor, sceneToLatLng, screenToScene, useCamera } from '../render/useCamera'
@@ -164,6 +165,8 @@ export function FractalCity({ active, inspected, onInspect }: ActProps) {
   const [focus, setFocus] = useState<Focus | null>(null)
   const [refusal, setRefusal] = useState<string | null>(null)
   const [collapsed, setCollapsed] = useState(true)
+  // the control panel is what the expanded panel has to stop above, and only it knows its height
+  const [controlHeight, setControlHeight] = useState(0)
 
   const merged = useRef<Tree | null>(null)
   const fading = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -446,7 +449,12 @@ export function FractalCity({ active, inspected, onInspect }: ActProps) {
       </EngineCanvas>
       {/* box-none leaves the scene every touch the panel head does not take */}
       <View style={styles.panel} pointerEvents="box-none">
-        <Panel collapsible collapsed={collapsed} onToggle={() => setCollapsed((held) => !held)}>
+        <Panel
+          collapsible
+          collapsed={collapsed}
+          onToggle={() => setCollapsed((held) => !held)}
+          maxHeight={panelRoom(height, PANEL_TOP, CONTROL_BOTTOM + controlHeight)}
+        >
           <Metric value={formatCount(scene?.leafCount ?? 0)} caption="leaf cells" />
           <Row
             label="resolution"
@@ -484,7 +492,10 @@ export function FractalCity({ active, inspected, onInspect }: ActProps) {
           </View>
         </Panel>
       </View>
-      <View style={styles.control}>
+      <View
+        style={styles.control}
+        onLayout={(event) => setControlHeight(event.nativeEvent.layout.height)}
+      >
         <Panel align="right">
           <Pressable
             style={[styles.button, focus === null ? styles.disabled : null]}
