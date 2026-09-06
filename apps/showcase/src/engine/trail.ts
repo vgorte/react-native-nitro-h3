@@ -50,9 +50,9 @@ const CELLS_ACROSS_STEP = 10
 /**
  * Milliseconds a replay lets pass between two renders, which is what one timer tick is worth.
  *
- * At the recorded pace a fix arrives every second and a tick holds one of them. A time lapse packs
- * a tick full instead, and the whole batch reaches the trail in a single pass. The tick paces the
- * renders only; the ride itself runs off the wall clock, so a tick that came late catches up.
+ * A time lapse packs a tick full, and the whole batch reaches the trail in a single pass. The tick
+ * paces the renders only; the ride itself runs off the wall clock, so a tick that came late catches
+ * up.
  */
 export const REPLAY_TICK_MS = 100
 
@@ -289,10 +289,9 @@ export function fixAhead(
  * Answers the ramp bucket of a trail cell from its age, filled cells on their own lower band.
  *
  * The fade is normalised to the span the caller frames: the head takes the brightest step, a cell
- * that old takes the darkest, and anything older takes the darkest too. A walk frames the trail
- * standing, so the ramp reads on the first minute as well as on an hour of one; a time lapse frames
- * the stretch it can show instead. A cell the grid path filled in was never measured, and stays
- * under the measured cell of the same age by taking {@linkcode FILLED_BAND} of the ramp.
+ * that old takes the darkest, and anything older takes the darkest too. A cell the grid path filled
+ * in was never measured, and stays under the measured cell of the same age by taking
+ * {@linkcode FILLED_BAND} of the ramp.
  *
  * @param age Cells between this one and the head, `0` for the head itself.
  * @param filled Whether the grid path filled the cell in.

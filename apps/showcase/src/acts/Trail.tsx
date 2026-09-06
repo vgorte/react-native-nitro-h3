@@ -239,7 +239,7 @@ function walkFixes(trail: TrailStep[], fixes: readonly TrailFix[], res: number):
  * under a pinch and every settle redraws, the camera follows the head until the visitor takes it
  * over and the recentre control gives it back, and refusing the location plays
  * {@linkcode REPLAY_ROUTE} at the pace it was ridden or at {@linkcode TIME_LAPSE_PACE}, which
- * pulls the camera back to {@linkcode TIME_LAPSE_CELLS_ACROSS} cells.
+ * pulls the camera back to the stretch `timeLapseCellsAcross` answers.
  */
 export function Trail({ active, inspected, onInspect }: ActProps) {
   const { width, height } = useWindowDimensions()
@@ -346,8 +346,7 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
   )
 
   // every change of the ground under the image goes through the one build below, so the trail is
-  // encoded once a redraw interval and always into the frame it is georeferenced by; a settle, a
-  // glide that has landed and a map that has just loaded all only say that the ground moved
+  // encoded once a redraw interval and always into the frame it is georeferenced by
   const land = useCallback((): void => setLanded((count) => count + 1), [])
 
   const settle = useCallback((): void => land(), [land])
@@ -366,6 +365,8 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
     if (landing.current !== null) clearTimeout(landing.current)
     cut.current = ''
     framed.current = null
+    // a build the map is still answering would otherwise put the ground it left back on screen
+    building.current += 1
     setFrame(null)
   }, [active])
 
@@ -522,8 +523,7 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
 
   // the replay rides its own clock: a tick delivers every fix the wall clock says is due, so a tick
   // the image render held up hands over a bigger batch rather than playing the ride slower than the
-  // pace says. The clock is re-based here, which keeps the position across a pace change and holds
-  // the ride where it stands while the act is away
+  // pace says
   useEffect(() => {
     if (!active || source !== 'replay') return
     clock.current = { at: Date.now(), t: clock.current.t }
@@ -560,8 +560,7 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
   }, [])
 
   // a time lapse outruns a frame that holds twenty cells, so it pulls the camera back far enough
-  // for the head to take about three seconds across it and the fading tail to stand behind it, and
-  // no further than the trail standing, which at a coarse resolution is a handful of cells
+  // for the head to take about three seconds across it and the fading tail to stand behind it
   const across = pace === RECORDED_PACE ? TRAIL_CELLS_ACROSS : timeLapseCellsAcross(trail.length)
   // a time lapse leads the head on its own steps rather than being put on it fix by fix
   const leading = source === 'replay' && pace !== RECORDED_PACE
@@ -631,9 +630,7 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
 
   // at sixty times the pace the trail grows ten times a second, and a camera put on each new head
   // cuts the glide it was running short: the map lands on the stop and stands there until the next
-  // one, which reads as a stutter. The time lapse runs one glide at a time instead, linear over
-  // `CAMERA_STEP_MS` onto the fix the replay will have reached by the end of it, and the step after
-  // it is issued before it lands so the camera holds its velocity across an image render
+  // one, which reads as a stutter
   useEffect(() => {
     if (!active || !leading || !following) return
     let timer: ReturnType<typeof setTimeout> | null = null
@@ -667,8 +664,7 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
 
   // the offscreen draw, the PNG encode and the write are one block of the JS thread, so a walk
   // that crosses a cell a second gets one image every `REDRAW_MS` carrying the trail it ended on,
-  // and a time lapse one every `TIME_LAPSE_REDRAW_MS`; a re-anchor moves the metre frame under the
-  // image and is drawn at once
+  // and a time lapse one every `TIME_LAPSE_REDRAW_MS`
   useEffect(() => {
     if (trail.length === 0) {
       setScene(null)

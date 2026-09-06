@@ -38,8 +38,13 @@ export interface SceneImageProps {
 // the counter stands outside the component, so a remount never writes over a url the map has seen
 let renders = 0
 
-/** Files kept on disk, so the map is never handed a url whose file the next render has removed. */
-const KEPT_FILES = 2
+/**
+ * Files kept on disk, so the map is never handed a url whose file the next render has removed.
+ *
+ * The map reads the url through its own file source and off the JS thread, so every file kept is
+ * one redraw interval of grace it has to finish in.
+ */
+const KEPT_FILES = 4
 
 const RASTER: NonNullable<RasterLayerSpecification['paint']> = {
   // the image is the act's own scene, which has no business fading in over the one it replaces
