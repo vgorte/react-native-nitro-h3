@@ -1,6 +1,7 @@
 import starlight from '@astrojs/starlight'
 import { defineConfig } from 'astro/config'
 import starlightLinksValidator from 'starlight-links-validator'
+import starlightLlmsTxt from 'starlight-llms-txt'
 import { BASE, REPO, SITE, sidebar } from './pages'
 
 export default defineConfig({
@@ -30,7 +31,14 @@ export default defineConfig({
         },
       ],
       sidebar: sidebar(),
-      plugins: [starlightLinksValidator()],
+      plugins: [
+        starlightLinksValidator(),
+        starlightLlmsTxt({
+          projectName: 'react-native-nitro-h3',
+          description:
+            'react-native-nitro-h3 is a native H3 geospatial indexing binding for React Native, vendoring the H3 C library and calling it through Nitro Modules.',
+        }),
+      ],
     }),
   ],
 })

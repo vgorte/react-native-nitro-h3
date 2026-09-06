@@ -31,6 +31,14 @@ export const PAGES: readonly Page[] = [
     group: 'Start here',
   },
   {
+    route: '/showcase/',
+    label: 'Showcase',
+    source: 'docs/showcase.md',
+    description:
+      'The showcase app: five acts that put react-native-nitro-h3 under a map, inside a gesture and on a busy JS thread, with the video and the pattern behind each act.',
+    group: 'Start here',
+  },
+  {
     route: '/migrating-from-h3-js/',
     label: 'Migrating from h3-js',
     source: 'docs/migrating-from-h3-js.md',
