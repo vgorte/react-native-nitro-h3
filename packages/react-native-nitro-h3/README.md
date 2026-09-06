@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="https://raw.githubusercontent.com/vgorte/react-native-nitro-h3/main/img/logo.svg" alt="react-native-nitro-h3" width="132" height="132" />
+  <img src="https://raw.githubusercontent.com/vgorte/react-native-nitro-h3/main/img/logo-tile.svg" alt="react-native-nitro-h3" width="132" />
   <h1>react-native-nitro-h3</h1>
   <p><b>Fast H3 geospatial indexing for React Native, powered by Nitro Modules.</b></p>
   <p>
