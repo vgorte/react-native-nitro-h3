@@ -14,12 +14,12 @@ PODS:
   - hermes-engine (250829098.0.16):
     - hermes-engine/Pre-built (= 250829098.0.16)
   - hermes-engine/Pre-built (250829098.0.16)
-  - NitroH3 (0.3.0):
-    - NitroH3/h3 (= 0.3.0)
+  - NitroH3 (0.4.0):
+    - NitroH3/h3 (= 0.4.0)
     - NitroModules
     - React-callinvoker
     - React-jsi
-  - NitroH3/h3 (0.3.0):
+  - NitroH3/h3 (0.4.0):
     - NitroModules
     - React-callinvoker
     - React-jsi
@@ -1988,7 +1988,7 @@ SPEC CHECKSUMS:
   fmt: ba0886e864ebb21d14c98b2e12e164b8002f5b93
   glog: 3cf7cb46f743c4bc758ae3e6d9c15bd1b4cfd6d4
   hermes-engine: d086b06086bf58f1e75767ae70bff12f3d7a7e86
-  NitroH3: cd66947e4c03fc9ecd180c803f4651294de47083
+  NitroH3: 9cb4466cd230fadbc0b48db610564bfe481268a9
   NitroModules: bc0fc666f20b2ec140d276087e8ade17ad541985
   RCT-Folly: 82921e585c0400eda46fac1068297aa9dfb035e4
   RCTDeprecation: 6d66040b74f4be203495adda55b49c1a25190291

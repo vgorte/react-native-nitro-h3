@@ -1,6 +1,6 @@
 {
   "name": "react-native-nitro-h3",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Native H3 geospatial indexing for React Native. H3's C library exposed through Nitro Modules, with bigint cell indexes, typed-array results, and batch operations.",
   "main": "lib/index",
   "module": "lib/index",
