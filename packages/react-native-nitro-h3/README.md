@@ -29,7 +29,7 @@ The result is a native H3 binding designed for performance-sensitive React Nativ
 
 ⏱️ Async variants on a background thread
 
-🔁 The `h3-js` names and a migration guide
+🔁 The `h3-js` names and a [migration guide](https://vgorte.github.io/react-native-nitro-h3/migrating-from-h3-js/)
 
 > 📚 **[Read the documentation](https://vgorte.github.io/react-native-nitro-h3/)** for the guides, the API reference and the migration from `h3-js`.
 
