@@ -19,17 +19,17 @@ The result is a native H3 binding designed for performance-sensitive React Nativ
 
 ⚡ Up to **862×** faster than `h3-js`. [See the benchmark →](https://vgorte.github.io/react-native-nitro-h3/benchmark/)
 
-🧬 H3 4.5.0 as compiled C++ on iOS and Android, called directly through Nitro Modules.
+🧬 H3 4.5.0 as compiled C++, called through Nitro Modules
 
-🔢 `bigint` cell indexes: the 64-bit indexes stay numeric, no hexadecimal strings cross the JavaScript boundary.
+🔢 `bigint` cell indexes, no hexadecimal strings
 
-📦 Typed-array results: a cell set arrives as one `BigUint64Array` over the buffer C++ produced.
+📦 Typed-array results over the native buffer
 
-🧵 Batch calls: `latLngsToCells` and `cellsToLatLngs` process a whole array in a single native call.
+🧵 Batch calls for whole coordinate and cell arrays
 
-⏱️ Async variants move the expensive calls to a background thread and resolve with the same typed arrays.
+⏱️ Async variants on a background thread
 
-🔁 The `h3-js` names, with unit suffixes instead of a unit argument, and a migration guide.
+🔁 The `h3-js` names and a migration guide
 
 > 📚 **[Read the documentation](https://vgorte.github.io/react-native-nitro-h3/)** for the guides, the API reference and the migration from `h3-js`.
 
