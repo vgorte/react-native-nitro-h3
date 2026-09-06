@@ -14,11 +14,8 @@ export const HERO_FPS = 30
 /** Frames the closing card stands for, at the wide cut's frame rate. */
 export const CLOSING_FRAMES = 180
 
-/** Seconds a portrait card stands before the act it names. */
-export const CARD_SECONDS = 0.7
-
-/** Seconds a card of the portrait loop stands, which is shorter so the loop keeps its length. */
-export const HERO_CARD_SECONDS = 0.5
+/** Seconds a portrait card stands before the act it names, long enough to read it twice. */
+export const CARD_SECONDS = 2.5
 
 const frames = (seconds: number, fps: number): number => Math.round(seconds * fps)
 
@@ -47,7 +44,7 @@ export const PORTRAIT_FRAMES =
 
 export const PORTRAIT_HERO_FRAMES = portraitFrames(
   HERO_SCENES,
-  HERO_CARD_SECONDS,
+  CARD_SECONDS,
   (scene) => scene.hero.seconds,
 )
 
@@ -125,5 +122,5 @@ export function ShowcasePortrait() {
 
 /** The portrait loop: the same three acts the wide hero plays, with their cards. */
 export function ShowcasePortraitHero() {
-  return <Portrait scenes={HERO_SCENES} window={(scene) => scene.hero} card={HERO_CARD_SECONDS} />
+  return <Portrait scenes={HERO_SCENES} window={(scene) => scene.hero} card={CARD_SECONDS} />
 }

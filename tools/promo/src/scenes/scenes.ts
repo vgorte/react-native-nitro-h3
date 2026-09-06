@@ -120,7 +120,7 @@ export const SCENES: readonly Scene[] = [
   {
     // the leaf count stays on the phone's own panel, so the line can say what the act is doing
     id: 'fractal',
-    headline: 'Explore 6 levels deep',
+    headline: 'Every tap splits a cell into seven',
     seconds: 4.2,
     value: null,
     decimals: 0,

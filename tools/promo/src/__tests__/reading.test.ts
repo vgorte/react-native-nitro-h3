@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import { CARD_SECONDS } from '../Showcase'
 import { type Reading, readingAt } from '../scenes/reading'
 import { EASE_SECONDS, HERO_SCENES, SCENES, type Scene } from '../scenes/scenes'
 
@@ -99,6 +100,12 @@ describe('readingAt', () => {
     const total = HERO_SCENES.reduce((sum, scene) => sum + scene.hero.seconds, 0)
     expect(total).toBeGreaterThan(14)
     expect(total).toBeLessThan(17)
+  })
+
+  test('a card stands long enough to read the line it carries', () => {
+    // about three words a second is a comfortable read, and the longest headline is six
+    const longest = Math.max(...SCENES.map((scene) => scene.headline.split(' ').length))
+    expect(CARD_SECONDS).toBeGreaterThanOrEqual(longest / 3)
   })
 
   test('every hero window stands inside the clip its act was cut from', () => {
