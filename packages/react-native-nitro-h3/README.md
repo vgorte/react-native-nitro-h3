@@ -11,35 +11,28 @@
   </p>
 </div>
 
+<table>
+<tr>
+<td>
+
 `react-native-nitro-h3` brings [H3](https://h3geo.org/) to native iOS and Android applications. It vendors the H3 C library (v4.5.0) and calls it directly from native code instead of running it through JavaScript or WebAssembly.
 
 The result is a native H3 binding designed for performance-sensitive React Native workloads.
 
+⚡ Up to **862×** faster than `h3-js`. [See the benchmark →](https://vgorte.github.io/react-native-nitro-h3/benchmark/)
+
+Measured for `compactCells` on a `k=20` disk of 1,261 cells against `h3-js` 4.5.0, on an iPhone XS running iOS 18.7.9, Release build, React Native 0.87.0 on Hermes, median of 20 passes, 2026-09-01.
+
+</td>
+<td width="300" align="center">
+<a href="https://vgorte.github.io/react-native-nitro-h3/showcase/"><img src="https://raw.githubusercontent.com/vgorte/react-native-nitro-h3/main/img/showcase-portrait-hero.gif" alt="The showcase app: a hexagon grid follows the map, a cell splits into its children, a million points fold into cells" width="280" /></a>
+</td>
+</tr>
+</table>
+
 > 📚 **[Read the documentation](https://vgorte.github.io/react-native-nitro-h3/)** for the guides, the API reference and the migration from `h3-js`.
 
 > **Native mobile only.** For web applications, use [`h3-js`](https://github.com/uber/h3-js).
-
----
-
-## ⚡ Performance
-
-`react-native-nitro-h3` is designed to minimize the overhead between JavaScript and native code.
-
-![react-native-nitro-h3 against h3-js, median milliseconds per workload](https://raw.githubusercontent.com/vgorte/react-native-nitro-h3/main/img/benchmark.svg)
-
-In this iPhone XS benchmark, the largest measured difference was:
-
-### **862× faster**
-
-for `compactCells` on a `k=20` disk containing 1,261 cells.
-
-All measured results were verified against `h3-js` 4.5.0 for equivalence.
-
-**Benchmark:** iPhone XS · Apple A12 · iOS 18.7.9 · Release build · React Native 0.87.0 · Hermes · 20-run median · 2026-09-01.
-
-> ⚠️ Benchmark numbers are workload- and device-dependent. They are representative measurements, not guaranteed speedups.
-
-👉 **[Full benchmark results & methodology](https://vgorte.github.io/react-native-nitro-h3/benchmark/)**
 
 ---
 
@@ -124,6 +117,7 @@ Full documentation lives at **[vgorte.github.io/react-native-nitro-h3](https://v
 **Start here**
 
 * 🚀 **[Getting started](https://vgorte.github.io/react-native-nitro-h3/getting-started/)**: install, first call, requirements.
+* 🎬 **[Showcase](https://vgorte.github.io/react-native-nitro-h3/showcase/)**: five acts of one app, every cell computed on the phone.
 * 🔄 **[Migrating from h3-js](https://vgorte.github.io/react-native-nitro-h3/migrating-from-h3-js/)**: every change at the call site, before and after.
 
 **Core concepts**

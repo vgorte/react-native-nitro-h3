@@ -32,6 +32,9 @@ tens of percent: across the two iPhone XS runs on record it landed at 807× and 
 is the stable large factor. Its 220.7 ms median sits far above clock resolution, and the same two
 runs put it at 337× and 341×.
 
+Every figure on this page is workload- and device-dependent. These are representative measurements
+from the runs named above, not guaranteed speedups on another device or another workload.
+
 The complete workload matrix is reported below.
 
 ## 🔬 Methodology
