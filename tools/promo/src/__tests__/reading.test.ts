@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { type Reading, readingAt } from '../scenes/reading'
-import { EASE_SECONDS, SCENES, type Scene } from '../scenes/scenes'
+import { EASE_SECONDS, HERO_SCENES, SCENES, type Scene } from '../scenes/scenes'
 
 /** The frame rate the wide cut is walked at; the hero's 30 fps samples a subset of these moments. */
 const FPS = 60
@@ -90,6 +90,23 @@ describe('readingAt', () => {
       expect(readingAt(scene, last.at + EASE_SECONDS).value).toBeCloseTo(last.value as number, 6)
     })
   }
+
+  test('the hero loops play every act once, around fifteen seconds in all', () => {
+    expect([...HERO_SCENES].map((scene) => scene.id).sort()).toEqual(
+      [...SCENES].map((scene) => scene.id).sort(),
+    )
+    expect(HERO_SCENES[0].id).toBe('heatmap')
+    const total = HERO_SCENES.reduce((sum, scene) => sum + scene.hero.seconds, 0)
+    expect(total).toBeGreaterThan(14)
+    expect(total).toBeLessThan(17)
+  })
+
+  test('every hero window stands inside the clip its act was cut from', () => {
+    for (const scene of SCENES) {
+      expect(scene.hero.skip).toBeGreaterThanOrEqual(0)
+      expect(scene.hero.skip + scene.hero.seconds).toBeLessThanOrEqual(scene.seconds + 1e-9)
+    }
+  })
 
   test('an act that has measured nothing shows nothing until its key', () => {
     const rising: Scene = { ...sceneOf('atlas'), value: null, keys: [{ at: 1, value: 900 }] }

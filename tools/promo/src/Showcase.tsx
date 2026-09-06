@@ -3,7 +3,7 @@ import { ActScene } from './scenes/ActScene'
 import { Card } from './scenes/Card'
 import { Closing } from './scenes/Closing'
 import { PortraitScene } from './scenes/PortraitScene'
-import { HERO_SCENES, SCENES, type Scene } from './scenes/scenes'
+import { HERO_SCENES, SCENES, type Scene, type Window } from './scenes/scenes'
 
 /** The frame rate of the wide cut, which is the frame rate the takes were recorded at. */
 export const SHOWCASE_FPS = 60
@@ -14,14 +14,11 @@ export const HERO_FPS = 30
 /** Frames the closing card stands for, at the wide cut's frame rate. */
 export const CLOSING_FRAMES = 180
 
-/** Seconds one hero scene stands for. */
-export const HERO_SCENE_SECONDS = 3
-
 /** Seconds a portrait card stands before the act it names. */
 export const CARD_SECONDS = 0.7
 
-/** Seconds one act of the portrait hero stands for, which is shorter than the full cut's core. */
-export const PORTRAIT_HERO_SECONDS = 2.6
+/** Seconds a card of the portrait loop stands, which is shorter so the loop keeps its length. */
+export const HERO_CARD_SECONDS = 0.5
 
 const frames = (seconds: number, fps: number): number => Math.round(seconds * fps)
 
@@ -29,19 +26,30 @@ const frames = (seconds: number, fps: number): number => Math.round(seconds * fp
 export const SHOWCASE_FRAMES =
   SCENES.reduce((total, scene) => total + frames(scene.seconds, SHOWCASE_FPS), 0) + CLOSING_FRAMES
 
-/** Counts the frames the hero loop runs for. */
-export const HERO_FRAMES = HERO_SCENES.length * HERO_SCENE_SECONDS * HERO_FPS
+/** Counts the frames the hero loop runs for, whose acts carry windows of their own. */
+export const HERO_FRAMES = HERO_SCENES.reduce(
+  (total, scene) => total + frames(scene.hero.seconds, HERO_FPS),
+  0,
+)
 
 /** Counts the frames a portrait cut runs for: a card and an act each, then the closing card. */
-function portraitFrames(scenes: readonly Scene[], seconds: (scene: Scene) => number): number {
-  const card = frames(CARD_SECONDS, SHOWCASE_FPS)
-  return scenes.reduce((total, scene) => total + card + frames(seconds(scene), SHOWCASE_FPS), 0)
+function portraitFrames(
+  scenes: readonly Scene[],
+  card: number,
+  seconds: (scene: Scene) => number,
+): number {
+  const held = frames(card, SHOWCASE_FPS)
+  return scenes.reduce((total, scene) => total + held + frames(seconds(scene), SHOWCASE_FPS), 0)
 }
 
 export const PORTRAIT_FRAMES =
-  portraitFrames(SCENES, (scene) => scene.portrait.seconds) + CLOSING_FRAMES
+  portraitFrames(SCENES, CARD_SECONDS, (scene) => scene.portrait.seconds) + CLOSING_FRAMES
 
-export const PORTRAIT_HERO_FRAMES = portraitFrames(HERO_SCENES, () => PORTRAIT_HERO_SECONDS)
+export const PORTRAIT_HERO_FRAMES = portraitFrames(
+  HERO_SCENES,
+  HERO_CARD_SECONDS,
+  (scene) => scene.hero.seconds,
+)
 
 /** The wide cut: every act in the order the app pages through them, then the closing card. */
 export function Showcase() {
@@ -59,12 +67,12 @@ export function Showcase() {
   )
 }
 
-/** The hero loop: three acts, three seconds each, the number and nothing else. */
+/** The hero loop: every act around its own interaction, the number line and nothing else. */
 export function ShowcaseHero() {
   return (
     <Series>
       {HERO_SCENES.map((scene) => (
-        <Series.Sequence key={scene.id} durationInFrames={HERO_SCENE_SECONDS * HERO_FPS}>
+        <Series.Sequence key={scene.id} durationInFrames={frames(scene.hero.seconds, HERO_FPS)}>
           <ActScene scene={scene} hero />
         </Series.Sequence>
       ))}
@@ -74,8 +82,10 @@ export function ShowcaseHero() {
 
 interface PortraitProps {
   scenes: readonly Scene[]
-  /** How long each act stands, which the hero cuts shorter than the full run. */
-  seconds: (scene: Scene) => number
+  /** The window each act plays, which the loop takes tighter than the full run. */
+  window: (scene: Scene) => Window
+  /** Seconds the card before an act stands for. */
+  card: number
   closing?: boolean
 }
 
@@ -85,18 +95,18 @@ interface PortraitProps {
  * Nothing is written over a scene, because the phone's own HUD already carries every number the
  * card's line refers to.
  */
-function Portrait({ scenes, seconds, closing = false }: PortraitProps) {
+function Portrait({ scenes, window, card, closing = false }: PortraitProps) {
   return (
     <Series>
       {scenes.flatMap((scene) => [
-        <Series.Sequence
-          key={`${scene.id}-card`}
-          durationInFrames={frames(CARD_SECONDS, SHOWCASE_FPS)}
-        >
+        <Series.Sequence key={`${scene.id}-card`} durationInFrames={frames(card, SHOWCASE_FPS)}>
           <Card scene={scene} />
         </Series.Sequence>,
-        <Series.Sequence key={scene.id} durationInFrames={frames(seconds(scene), SHOWCASE_FPS)}>
-          <PortraitScene scene={scene} window={{ ...scene.portrait, seconds: seconds(scene) }} />
+        <Series.Sequence
+          key={scene.id}
+          durationInFrames={frames(window(scene).seconds, SHOWCASE_FPS)}
+        >
+          <PortraitScene scene={scene} window={window(scene)} />
         </Series.Sequence>,
       ])}
       {closing ? (
@@ -110,10 +120,10 @@ function Portrait({ scenes, seconds, closing = false }: PortraitProps) {
 
 /** The portrait cut the README's side column plays. */
 export function ShowcasePortrait() {
-  return <Portrait scenes={SCENES} seconds={(scene) => scene.portrait.seconds} closing />
+  return <Portrait scenes={SCENES} window={(scene) => scene.portrait} card={CARD_SECONDS} closing />
 }
 
 /** The portrait loop: the same three acts the wide hero plays, with their cards. */
 export function ShowcasePortraitHero() {
-  return <Portrait scenes={HERO_SCENES} seconds={() => PORTRAIT_HERO_SECONDS} />
+  return <Portrait scenes={HERO_SCENES} window={(scene) => scene.hero} card={HERO_CARD_SECONDS} />
 }

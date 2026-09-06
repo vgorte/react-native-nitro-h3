@@ -8,7 +8,7 @@
     "studio": "remotion studio",
     "render": "bun run render:wide && bun run render:portrait",
     "render:wide": "remotion render Showcase out/showcase.mp4 --codec h264 --crf 18 && remotion render ShowcaseHero out/hero.mp4 --codec h264 --crf 18 && scripts/gif.sh",
-    "render:portrait": "remotion render ShowcasePortrait out/showcase-portrait.mp4 --codec h264 --crf 18 && remotion render ShowcasePortraitHero out/portrait-hero.mp4 --codec h264 --crf 18 && scripts/gif.sh out/portrait-hero.mp4 out/showcase-portrait-hero.gif 420",
+    "render:portrait": "remotion render ShowcasePortrait out/showcase-portrait.mp4 --codec h264 --crf 18 && remotion render ShowcasePortraitHero out/portrait-hero.mp4 --codec h264 --crf 18 && scripts/gif.sh out/portrait-hero.mp4 out/showcase-portrait-hero.gif 320 15",
     "test": "bun test ./src/__tests__",
     "typecheck": "tsc --noEmit"
   },

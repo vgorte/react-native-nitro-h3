@@ -61,8 +61,8 @@ export interface Scene {
   drag?: Drag
   /** Whether the phone is pushed in slowly over the scene. */
   pushIn?: boolean
-  /** Seconds of the clip the hero loop skips, so its three seconds hold the interaction. */
-  heroSkip: number
+  /** The window the hero loop plays, chosen so the act's one interaction reads inside it. */
+  hero: Window
   /** The core the portrait cut plays, trimmed to the interaction and nothing around it. */
   portrait: Window
 }
@@ -114,23 +114,8 @@ export const SCENES: readonly Scene[] = [
       { at: 0.65, value: 2791 },
       { at: 4.55, value: 3997 },
     ],
-    heroSkip: 0,
+    hero: { skip: 2.0, seconds: 3.0 },
     portrait: { skip: 1.4, seconds: 3.6 },
-  },
-  {
-    // both factors are the phone's own: the compactCells row's, then the finale's as it lands
-    id: 'engine',
-    headline: 'Milliseconds, not seconds',
-    seconds: 4.3,
-    value: 755.2,
-    decimals: 1,
-    suffix: '\u00d7',
-    lead: 'up to ',
-    unit: 'faster',
-    call: 'compactCells',
-    keys: [{ at: 2.05, value: 1104.9 }],
-    heroSkip: 0,
-    portrait: { skip: 0, seconds: 3.5 },
   },
   {
     // the leaf count stays on the phone's own panel, so the line can say what the act is doing
@@ -149,7 +134,7 @@ export const SCENES: readonly Scene[] = [
       { at: 3.61, x: 0.4975, y: 0.5492 },
     ],
     pushIn: true,
-    heroSkip: 0,
+    hero: { skip: 0.1, seconds: 3.7 },
     portrait: { skip: 0, seconds: 3.9 },
   },
   {
@@ -163,7 +148,7 @@ export const SCENES: readonly Scene[] = [
     call: 'gridRing',
     keys: RING_READINGS.slice(1).map(({ at, cells }) => ({ at, value: cells })),
     drag: cursorOn(RING_TRACK, 4.1, RING_READINGS),
-    heroSkip: 0,
+    hero: { skip: 0.4, seconds: 3.0 },
     portrait: { skip: 0.3, seconds: 3.6 },
   },
   {
@@ -177,7 +162,7 @@ export const SCENES: readonly Scene[] = [
     call: 'latLngsToCells',
     keys: [{ at: 0.85, value: 547, unit: 'cells from 1M points' }],
     taps: [{ at: 0.68, x: 0.7811, y: 0.706 }],
-    heroSkip: 0,
+    hero: { skip: 0.0, seconds: 3.0 },
     portrait: { skip: 0.2, seconds: 3.4 },
   },
   {
@@ -208,14 +193,16 @@ export const SCENES: readonly Scene[] = [
       { at: 4.0, value: 295 },
       { at: 4.25, value: 303 },
     ],
-    heroSkip: 0,
+    hero: { skip: 0.5, seconds: 2.8 },
     portrait: { skip: 0.4, seconds: 3.5 },
   },
 ]
 
-/** The three acts the hero loop plays, the switch first. */
-export const HERO_SCENES: readonly Scene[] = ['heatmap', 'grid', 'fractal'].map((id) => {
-  const scene = SCENES.find((candidate) => candidate.id === id)
-  if (scene === undefined) throw new Error(`no scene ${id}`)
-  return scene
-})
+/** The acts the hero loops play, the switch first and the rest in the order the video runs them. */
+export const HERO_SCENES: readonly Scene[] = ['heatmap', 'atlas', 'fractal', 'grid', 'trail'].map(
+  (id) => {
+    const scene = SCENES.find((candidate) => candidate.id === id)
+    if (scene === undefined) throw new Error(`no scene ${id}`)
+    return scene
+  },
+)

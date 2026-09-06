@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { numberLine } from '../scenes/numberLine'
 import { readingAt } from '../scenes/reading'
-import { SCENES } from '../scenes/scenes'
+import { SCENES, type Scene } from '../scenes/scenes'
 
 function sceneOf(id: string) {
   const scene = SCENES.find((candidate) => candidate.id === id)
@@ -18,19 +18,21 @@ describe('numberLine', () => {
     expect(line.unit).toBe('Recursive splitting')
   })
 
-  test('a claim keeps its lead in front of the number', () => {
-    const engine = sceneOf('engine')
-    const line = numberLine(engine, readingAt(engine, 1))
+  test('a claim keeps its lead in front of the number, ungrouped where it has decimals', () => {
+    const claim: Scene = {
+      ...sceneOf('atlas'),
+      value: 1104.9,
+      decimals: 1,
+      suffix: '×',
+      lead: 'up to ',
+      unit: 'faster',
+      keys: [],
+    }
+    const line = numberLine(claim, readingAt(claim, 1))
     expect(line.lead).toBe('up to ')
-    expect(line.number).toBe('755.2')
+    expect(line.number).toBe('1104.9')
     expect(line.suffix).toBe('×')
     expect(line.unit).toBe('faster')
-  })
-
-  test('a factor is written the way the panel writes it, ungrouped', () => {
-    const engine = sceneOf('engine')
-    const key = engine.keys[0]
-    expect(numberLine(engine, readingAt(engine, key.at + 1)).number).toBe('1104.9')
   })
 
   test('a disk names the ring count it was walked at', () => {

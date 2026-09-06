@@ -61,14 +61,16 @@ export function ActScene({ scene, hero = false }: ActSceneProps) {
   const frame = useCurrentFrame()
   const { fps } = useVideoConfig()
   const measures = hero ? HERO : WIDE
-  const skip = hero ? scene.heroSkip : 0
-  const seconds = frame / fps + skip
+  const window = hero ? scene.hero : { skip: 0, seconds: scene.seconds }
+  const seconds = frame / fps + window.skip
 
   const line = numberLine(scene, readingAt(scene, seconds))
   const height = measures.phone
   const width = Math.round(height * PHONE_ASPECT)
   const push =
-    scene.pushIn === true ? interpolate(seconds, [skip, skip + scene.seconds], [1, PUSH_IN]) : 1
+    scene.pushIn === true
+      ? interpolate(seconds, [window.skip, window.skip + window.seconds], [1, PUSH_IN])
+      : 1
 
   return (
     <div style={styles.stage}>
@@ -92,7 +94,7 @@ export function ActScene({ scene, hero = false }: ActSceneProps) {
         <div style={{ ...styles.phone, height, width, transform: `scale(${push})` }}>
           <Video
             src={staticFile(`clips/${scene.id}.mp4`)}
-            trimBefore={skip > 0 ? Math.round(skip * fps) : undefined}
+            trimBefore={window.skip > 0 ? Math.round(window.skip * fps) : undefined}
             muted
             style={styles.take}
           />
