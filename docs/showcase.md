@@ -75,16 +75,6 @@ zoom.
 **Useful for** movement analytics and visited-area tracking, and for data minimisation: storing the
 cell instead of the coordinate is a privacy decision you can make per resolution.
 
-### Engine
-
-`compactCells · gridDisk · latLngToCell · cellToBoundary`
-
-Not in the video, in the app: the same four workloads on the package and on `h3-js`, on the phone in
-your hand, with the JS thread readout beside them.
-
-**Useful for** checking the numbers of the [Benchmark report](benchmark.md) on your own device
-before you rely on them.
-
 > **Every number on screen is measured on the device**, in the run you are looking at. The
 > documented factors in the [Benchmark report](benchmark.md) come from a Release build; a
 > development build runs slower on both sides.
