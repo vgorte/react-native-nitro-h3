@@ -21,7 +21,6 @@ The result is a native H3 binding designed for performance-sensitive React Nativ
 
 ⚡ Up to **862×** faster than `h3-js`. [See the benchmark →](https://vgorte.github.io/react-native-nitro-h3/benchmark/)
 
-Measured for `compactCells` on a `k=20` disk of 1,261 cells against `h3-js` 4.5.0, on an iPhone XS running iOS 18.7.9, Release build, React Native 0.87.0 on Hermes, median of 20 passes, 2026-09-01.
 
 </td>
 <td width="300" align="center">
