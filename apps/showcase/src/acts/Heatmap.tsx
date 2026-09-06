@@ -533,7 +533,7 @@ export function Heatmap({ active }: ActProps) {
 
     const coloured = performance.now()
     // the window covers the quantile pass, not just the ramp it feeds
-    let buckets: Uint8Array | null = bucketsOfCounts(aggregate.counts, busiest, BUCKETS)
+    let buckets: Uint8Array | null = bucketsOfCounts(aggregate.counts, BUCKETS)
     const coloursMs = performance.now() - coloured
 
     const heat = buildHeatScene(aggregate.cells, buckets, CENTRE)

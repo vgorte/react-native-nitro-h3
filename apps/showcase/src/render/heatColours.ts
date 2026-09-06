@@ -23,7 +23,7 @@ const LOW_QUANTILE = 0.25
 const HIGH_QUANTILE = 0.99
 
 /** Holds the two counts one run's ramp is spread between. */
-interface Anchors {
+export interface Anchors {
   low: number
   high: number
 }
@@ -64,9 +64,8 @@ function countOfBin(bin: number): number {
  * anchors are `1`, which leaves every cell on the empty step.
  *
  * @param counts The points per cell, of which the cells of no points are left out.
- * @param max The busiest cell's count, past which no bin can hold anything.
  */
-function anchorsOfCounts(counts: Uint32Array, max: number): Anchors {
+export function anchorsOfCounts(counts: Uint32Array): Anchors {
   const histogram = new Uint32Array(BINS)
   let busy = 0
   for (let cell = 0; cell < counts.length; cell++) {
@@ -79,13 +78,12 @@ function anchorsOfCounts(counts: Uint32Array, max: number): Anchors {
 
   const lowRank = Math.max(1, Math.ceil(LOW_QUANTILE * busy))
   const highRank = Math.max(1, Math.ceil(HIGH_QUANTILE * busy))
-  const busiest = Math.max(1, max)
-  const top = busiest < EXACT_COUNTS ? busiest : coarseBin(busiest)
   let low = 1
   let high = 1
   let found = false
   let seen = 0
-  for (let bin = 0; bin <= top; bin++) {
+  // a bound taken from the caller's count would leave the tail bins uncounted
+  for (let bin = 0; bin < BINS; bin++) {
     seen += histogram[bin]
     if (!found && seen >= lowRank) {
       low = countOfBin(bin)
@@ -107,11 +105,10 @@ function anchorsOfCounts(counts: Uint32Array, max: number): Anchors {
  * the recording that can be tested without Skia.
  *
  * @param counts The points per cell, as `aggregateCells` counted them.
- * @param max The busiest cell's count, as `aggregateCells` answered it.
  * @param buckets Steps the ramp is cut into, which the caller takes from the theme.
  */
-export function bucketsOfCounts(counts: Uint32Array, max: number, buckets: number): Uint8Array {
-  const { low, high } = anchorsOfCounts(counts, max)
+export function bucketsOfCounts(counts: Uint32Array, buckets: number): Uint8Array {
+  const { low, high } = anchorsOfCounts(counts)
   const of = new Uint8Array(counts.length)
   for (let cell = 0; cell < counts.length; cell++) {
     of[cell] = bucketOfCount(counts[cell], low, high, buckets)

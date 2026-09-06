@@ -12,7 +12,7 @@ import {
   servesRun,
   UNIFORM_SHARE,
 } from '../engine/points'
-import { bucketsOfCounts, heatPalette } from '../render/heatColours'
+import { anchorsOfCounts, bucketsOfCounts, heatPalette } from '../render/heatColours'
 import { bucketOfCount, colours, ramp } from '../theme/tokens'
 
 const BUCKETS = 16
@@ -160,9 +160,17 @@ function resolution7Shape(): Uint32Array {
   return Uint32Array.from(counts)
 }
 
+describe('anchorsOfCounts', () => {
+  test('reads the anchors off the quarter and the busiest percent of the busy cells', () => {
+    const counts = Uint32Array.from({ length: 100 }, (_, cell) => cell + 1)
+
+    expect(anchorsOfCounts(counts)).toEqual({ low: 25, high: 99 })
+  })
+})
+
 describe('bucketsOfCounts', () => {
   test('takes the busiest cells to the brightest step and the quiet quarter to the first', () => {
-    const buckets = bucketsOfCounts(new Uint32Array([1, 200]), 200, BUCKETS)
+    const buckets = bucketsOfCounts(new Uint32Array([1, 200]), BUCKETS)
 
     expect(buckets[0]).toBe(0)
     expect(buckets[1]).toBe(BUCKETS - 1)
@@ -170,7 +178,7 @@ describe('bucketsOfCounts', () => {
 
   test('never falls as the count rises, and answers one bucket per cell', () => {
     const counts = new Uint32Array([1, 2, 5, 17, 60, 240, 1_000])
-    const buckets = bucketsOfCounts(counts, 1_000, BUCKETS)
+    const buckets = bucketsOfCounts(counts, BUCKETS)
 
     expect(buckets).toHaveLength(counts.length)
     for (let cell = 1; cell < buckets.length; cell++) {
@@ -179,17 +187,17 @@ describe('bucketsOfCounts', () => {
   })
 
   test('leaves every cell on the empty step where no cell is busy', () => {
-    expect(Array.from(bucketsOfCounts(new Uint32Array([0, 0, 0]), 0, BUCKETS))).toEqual([0, 0, 0])
+    expect(Array.from(bucketsOfCounts(new Uint32Array([0, 0, 0]), BUCKETS))).toEqual([0, 0, 0])
   })
 
   test('takes the one busy cell of a run to the top step', () => {
-    const buckets = bucketsOfCounts(new Uint32Array([0, 7, 0]), 7, BUCKETS)
+    const buckets = bucketsOfCounts(new Uint32Array([0, 7, 0]), BUCKETS)
 
     expect(Array.from(buckets)).toEqual([0, BUCKETS - 1, 0])
   })
 
   test('takes every cell to the top step where the two anchors meet', () => {
-    const buckets = bucketsOfCounts(new Uint32Array([550, 550, 550, 550]), 550, BUCKETS)
+    const buckets = bucketsOfCounts(new Uint32Array([550, 550, 550, 550]), BUCKETS)
 
     expect(Array.from(buckets)).toEqual(new Array(4).fill(BUCKETS - 1))
   })
@@ -201,7 +209,7 @@ describe('bucketsOfCounts', () => {
     counts[98] = 1_000
     counts[99] = 1_000
 
-    const buckets = bucketsOfCounts(counts, 1_000, BUCKETS)
+    const buckets = bucketsOfCounts(counts, BUCKETS)
 
     for (let cell = 0; cell < counts.length; cell++) {
       expect(
@@ -214,7 +222,7 @@ describe('bucketsOfCounts', () => {
     const counts = resolution7Shape()
     const max = counts.reduce((busiest, count) => Math.max(busiest, count), 0)
 
-    const buckets = bucketsOfCounts(counts, max, BUCKETS)
+    const buckets = bucketsOfCounts(counts, BUCKETS)
 
     // the tail on the first step, the busiest percent on the last
     expect(buckets[0]).toBe(0)
