@@ -13,7 +13,7 @@
 
 <a href="https://vgorte.github.io/react-native-nitro-h3/showcase/"><img align="right" src="https://raw.githubusercontent.com/vgorte/react-native-nitro-h3/showcase-video/img/showcase-portrait-hero.gif" alt="The showcase app: a hexagon grid follows the map, a cell splits into its children, a million points fold into cells" width="280" /></a>
 
-`react-native-nitro-h3` brings [H3](https://h3geo.org/) to native iOS and Android applications. It vendors the H3 C library (v4.5.0) and calls it directly from native code instead of running it through JavaScript or WebAssembly.
+Brings [H3](https://h3geo.org/) to native iOS and Android applications. It vendors the H3 C library (v4.5.0) and calls it directly from native code instead of running it through JavaScript or WebAssembly.
 
 The result is a native H3 binding designed for performance-sensitive React Native workloads.
 
