@@ -28,7 +28,7 @@ then once more where the map settles. Each cell is coloured by its ring distance
 This act takes the classic path, cell boundaries as a GeoJSON string for MapLibre, and the panel
 shows what that string costs next to the JS thread readout.
 
-<p class="use">🎯 <strong>Derive spatial layers directly from the viewport.</strong></p>
+<p class="use">🎯&nbsp;<strong>Derive spatial layers directly from the viewport.</strong></p>
 
 `coverage layers` `pricing zones` `service areas` `cells instead of polygons`
 
@@ -39,7 +39,7 @@ shows what that string costs next to the JS thread readout.
 Tap a cell and it splits into its seven children; long-press and they fold back into the parent.
 Every split is one call, so the detail follows your finger.
 
-<p class="use">🎯 <strong>Drill down where the data is dense.</strong></p>
+<p class="use">🎯&nbsp;<strong>Drill down where the data is dense.</strong></p>
 
 `drill-down analytics` `adaptive detail` `a resolution per region`
 
@@ -50,7 +50,7 @@ Every split is one call, so the detail follows your finger.
 Drag the slider to grow the neighbourhood up to 50 rings (7,651 cells). Each ring is computed once
 and kept, so the slider never waits for a ring it already has.
 
-<p class="use">🎯 <strong>Run proximity queries without heavy geometry.</strong></p>
+<p class="use">🎯&nbsp;<strong>Run proximity queries without heavy geometry.</strong></p>
 
 `everything within n cells` `widening search radius` `buffers`
 
@@ -61,7 +61,7 @@ and kept, so the slider never waits for a ring it already has.
 A million noisy points are binned into cells in a single batch call. The map draws a few hundred
 hexagons instead of a million overlapping markers.
 
-<p class="use">🎯 <strong>Aggregate heavy data before it hits the map.</strong></p>
+<p class="use">🎯&nbsp;<strong>Aggregate heavy data before it hits the map.</strong></p>
 
 `density maps` `hotspot detection` `event aggregation` `telemetry`
 
@@ -72,7 +72,7 @@ hexagons instead of a million overlapping markers.
 A fast-forwarded GPS track where every fix is snapped to a cell. If the signal drops, the package
 computes the missing cells and bridges the gap.
 
-<p class="use">🎯 <strong>Track continuous movement without storing raw coordinates.</strong></p>
+<p class="use">🎯&nbsp;<strong>Track continuous movement without storing raw coordinates.</strong></p>
 
 `movement analytics` `visited areas` `data minimisation` `privacy by resolution`
 
