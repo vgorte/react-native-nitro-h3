@@ -1,6 +1,6 @@
 import { Canvas, Rect, Text, useFont } from '@shopify/react-native-skia'
 import { BlurView } from 'expo-blur'
-import { useEffect } from 'react'
+import { memo, useEffect } from 'react'
 import { StyleSheet, View } from 'react-native'
 import {
   makeMutable,
@@ -10,7 +10,7 @@ import {
 } from 'react-native-reanimated'
 import { fontAssets, fontFamily } from '../theme/fonts'
 import { colours, glass, type } from '../theme/tokens'
-import { ATTRIBUTION_BAND } from './hud/Attribution'
+import { ATTRIBUTION_BAND, READOUT_WIDTH } from './hud/hudBands'
 
 /** The gap at which the JS thread has missed a frame and the readout says so. */
 export const BLOCKED_THRESHOLD_MS = 16
@@ -18,7 +18,6 @@ export const BLOCKED_THRESHOLD_MS = 16
 /** Milliseconds of one frame, which is how old a beat is at rest. */
 const FRAME_MS = 16
 
-const PANEL_WIDTH = 208
 const PANEL_HEIGHT = 58
 const PANEL_MARGIN = 16
 // the licence line owns the bottom edge, so the readout stands one gap above its band
@@ -44,12 +43,12 @@ export function resetWorstGap(): void {
 /**
  * Reports how far the JS thread is behind the wall clock, drawn entirely on the UI thread.
  *
- * A JS-side frame callback writes the clock into a shared value; the UI thread compares it with
- * its own clock every frame, so both the sweep and the numbers keep moving while the JS thread is blocked.
- * The panel owns its own small surface, because Skia replays a whole canvas whenever one shared
- * value in it changes and these two change every frame.
+ * A JS-side frame callback writes the clock into a shared value; the UI thread compares it with its
+ * own clock every frame, so both the sweep and the numbers keep moving while the JS thread is
+ * blocked. The panel owns its own small surface and takes no props, because Skia replays a whole
+ * canvas whenever one shared value in it changes and a render re-registers the frame callback.
  */
-export function BlockedReadout() {
+export const BlockedReadout = memo(function BlockedReadout() {
   const labelFont = useFont(fontAssets[fontFamily.regular], type.value.fontSize)
   const peakFont = useFont(fontAssets[fontFamily.regular], type.label.fontSize)
 
@@ -83,7 +82,7 @@ export function BlockedReadout() {
       : 'JS thread free',
   )
   const peak = useDerivedValue(() => `worst ${worst.value.toFixed(0)} ms`)
-  const sweepX = useDerivedValue(() => sweep.value * (PANEL_WIDTH - SWEEP_WIDTH))
+  const sweepX = useDerivedValue(() => sweep.value * (READOUT_WIDTH - SWEEP_WIDTH))
 
   return (
     <View style={styles.panel} pointerEvents="none">
@@ -104,14 +103,14 @@ export function BlockedReadout() {
       </Canvas>
     </View>
   )
-}
+})
 
 const styles = StyleSheet.create({
   panel: {
     position: 'absolute',
     left: PANEL_MARGIN,
     bottom: PANEL_BOTTOM,
-    width: PANEL_WIDTH,
+    width: READOUT_WIDTH,
     height: PANEL_HEIGHT,
     borderColor: glass.border,
     borderWidth: 1,

@@ -13,7 +13,7 @@ import {
   type ViewStateChangeEvent,
 } from '@maplibre/maplibre-react-native'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { type NativeSyntheticEvent, StyleSheet, View } from 'react-native'
+import { type NativeSyntheticEvent, StyleSheet, useWindowDimensions, View } from 'react-native'
 import { cellToString, getHexagonEdgeLengthAvgM, latLngToCell } from 'react-native-nitro-h3'
 import {
   ATLAS_CELL_CAP,
@@ -34,12 +34,13 @@ import { PATCH_BUCKETS, patchBuckets } from '../engine/patches'
 import { resolutionForZoom } from '../engine/projection'
 import { formatCount, formatMs } from '../engine/stats'
 import { timed } from '../engine/timed'
-import { BlockedReadout } from '../render/BlockedReadout'
+import { BLOCKED_READOUT_BAND, BlockedReadout } from '../render/BlockedReadout'
 import { type Basemap, loadBasemap, PLAIN_BASEMAP } from '../render/basemap'
 import { Attribution } from '../render/hud/Attribution'
 import { FinePrint } from '../render/hud/FinePrint'
 import { Metric } from '../render/hud/Metric'
 import { Panel } from '../render/hud/Panel'
+import { panelRoom } from '../render/hud/panelRoom'
 import { Row } from '../render/hud/Row'
 import {
   CHILD_FILL,
@@ -153,6 +154,7 @@ function movingView(view: ViewState): MovingView {
  * times. The HUD keeps the H3 calls and the two costs the classic path adds apart.
  */
 export function Atlas({ active, inspected, onInspect }: ActProps) {
+  const { height } = useWindowDimensions()
   const map = useRef<MapRef>(null)
   const scene = useRef<Scene | null>(null)
   const walked = useRef<BuiltScene | null>(null)
@@ -209,12 +211,15 @@ export function Atlas({ active, inspected, onInspect }: ActProps) {
       ringsMs: patched.ringsMs,
       boundariesMs: boundaries.ms,
       jsonMs: json.ms,
-      bytes: utf8Length(json.value),
+      // a second pass over a megabyte of string, for a row nobody reads while the map moves
+      bytes: live ? (scene.current?.bytes ?? 0) : utf8Length(json.value),
     }
     // a settle that lands on the same cells hands the map nothing, so it opens no wait
     const changed = scene.current === null || scene.current.data !== json.value
     scene.current = next
-    if (changed && !live) openWait(mapWait.current, performance.now())
+    // a gesture takes the map over, and its frames are not the settle's to report
+    if (live) closeWait(mapWait.current)
+    else if (changed) openWait(mapWait.current, performance.now())
     setBuilt(next)
     // the throttle is the JS thread's breather, so it runs from the end of a walk and not its start
     walked.current.at = performance.now()
@@ -347,6 +352,7 @@ export function Atlas({ active, inspected, onInspect }: ActProps) {
               collapsible
               collapsed={collapsed}
               onToggle={() => setCollapsed((folded) => !folded)}
+              maxHeight={panelRoom(height, PANEL_TOP, BLOCKED_READOUT_BAND)}
             >
               <Metric value={formatCount(built?.cells ?? 0)} caption="cells on the map" />
               <Row label="resolution" value={built === null ? '-' : `${built.res}`} />

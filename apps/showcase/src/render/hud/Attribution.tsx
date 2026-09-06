@@ -1,5 +1,6 @@
-import { Platform, StyleSheet, Text, View } from 'react-native'
+import { StyleSheet, Text, View } from 'react-native'
 import { colours, type } from '../../theme/tokens'
+import { LINE_BOTTOM, LINE_HEIGHT, READOUT_WIDTH } from './hudBands'
 
 /** Configures {@linkcode Attribution}. */
 export interface AttributionProps {
@@ -9,16 +10,8 @@ export interface AttributionProps {
   loaded?: boolean
 }
 
-// there is no safe-area provider, so the bottom inset is per platform: the home indicator on
-// iPhone, the gesture bar on Android
-const LINE_BOTTOM = Platform.select({ ios: 42, default: 34 })
-// the line has no leading of its own, and the band below has to be a number
-const LINE_HEIGHT = 14
-// the readout starts on this same margin and runs 208 pt wide, so the note reads clear of it
-const NOTE_INSET = 208 + 8
-
-/** Points the licence line takes along the bottom edge, which the rest of the stack sits above. */
-export const ATTRIBUTION_BAND = LINE_BOTTOM + LINE_HEIGHT
+// the readout starts on this same margin, so the note reads clear of it
+const NOTE_INSET = READOUT_WIDTH + 8
 
 /**
  * Draws the basemap's licence line along the very bottom edge, under the blocked readout.
