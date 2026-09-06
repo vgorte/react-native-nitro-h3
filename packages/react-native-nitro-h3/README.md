@@ -35,129 +35,49 @@ The result is a native H3 binding designed for performance-sensitive React Nativ
 
 ## 🚀 Installation
 
-Install the package together with Nitro Modules:
+Install from npm together with Nitro Modules:
 
-```bash
+```sh
 bun add react-native-nitro-h3 react-native-nitro-modules
-```
-
-Or:
-
-```bash
-npm install react-native-nitro-h3 react-native-nitro-modules
-```
-
-For iOS:
-
-```bash
 cd ios && pod install
 ```
 
-### Expo
-
-```bash
-npx expo install react-native-nitro-h3 react-native-nitro-modules
-npx expo prebuild
-```
-
-Expo Go cannot load native modules. Use a development build with `npx expo run:ios` or `npx expo run:android`.
+[Getting started](https://vgorte.github.io/react-native-nitro-h3/getting-started/) has the npm and Expo commands, the New Architecture note and the requirements.
 
 ---
 
 ## 👇 Usage
 
 ```ts
-import {
-  latLngToCell,
-  gridDisk,
-  cellToString,
-} from 'react-native-nitro-h3'
+import { latLngToCell, gridDisk, cellToString } from 'react-native-nitro-h3'
 
 // H3 cell for San Francisco at resolution 9
 const cell = latLngToCell(37.7749, -122.4194, 9)
-
-// Get neighboring cells
-const neighbours = gridDisk(cell, 1)
-
-console.log(neighbours.length) // 7
+console.log(cell) // 617700169957507071n
 console.log(cellToString(cell)) // "89283082803ffff"
+
+// The cell and its six neighbours, as one BigUint64Array
+const neighbours = gridDisk(cell, 1)
+console.log(neighbours.length) // 7
 ```
 
 Coming from `h3-js`? Read the **[migration guide](https://vgorte.github.io/react-native-nitro-h3/migrating-from-h3-js/)**: the `h3-js` names with unit suffixes instead of a unit argument, cells as `bigint`, cell sets as `BigUint64Array`.
 
 ---
 
-## 📱 Requirements
+### Links
 
-| Platform      | Requirement                    |
-| ------------- | ------------------------------ |
-| React Native  | **0.76+**                      |
-| Nitro Modules | **0.37.0 or newer**            |
-| C++           | C++20-compatible toolchain     |
-| iOS           | React Native deployment target |
-| Xcode         | recent stable release          |
-| Android       | **minSdk 24**                  |
-| Android SDK   | **compileSdk 36**              |
-| Android NDK   | **27.1.12297006**              |
-| H3 C library  | **4.5.0**, vendored            |
-
-The package requires the New Architecture, the default since React Native 0.76. The iOS and Android build workflows compile the example app against React Native 0.87.0.
-
-`react-native-nitro-h3` versions independently from H3. The exact vendored version is recorded in `third_party/h3/H3_VERSION`, which also ships in the published npm tarball.
-
----
-
-## 📚 Documentation
-
-Full documentation lives at **[vgorte.github.io/react-native-nitro-h3](https://vgorte.github.io/react-native-nitro-h3/)**.
-
-**Start here**
-
-* 🚀 **[Getting started](https://vgorte.github.io/react-native-nitro-h3/getting-started/)**: install, first call, requirements.
-* 🎬 **[Showcase](https://vgorte.github.io/react-native-nitro-h3/showcase/)**: five acts of one app, every cell computed on the phone.
-* 🔄 **[Migrating from h3-js](https://vgorte.github.io/react-native-nitro-h3/migrating-from-h3-js/)**: every change at the call site, before and after.
-
-**Core concepts**
-
-* 🔢 **[Cell indexes and bigint](https://vgorte.github.io/react-native-nitro-h3/concepts/cells-and-bigint/)**: why a cell is a `bigint` and how the surface matches `h3-js`.
-* 📦 **[Typed arrays and batch calls](https://vgorte.github.io/react-native-nitro-h3/concepts/typed-arrays-and-batch/)**: `BigUint64Array` results and the three batch calls.
-* 🧵 **[Sync and async](https://vgorte.github.io/react-native-nitro-h3/concepts/sync-and-async/)**: the four async variants and what the hop costs.
-* 🛡️ **[Errors and memory safety](https://vgorte.github.io/react-native-nitro-h3/concepts/errors-and-memory-safety/)**: `H3Error` and the optional cell ceiling.
-
-**Performance**
-
-* 🧮 **[Performance guide](https://vgorte.github.io/react-native-nitro-h3/performance/)**: where the speed comes from, when a batch call pays, and the cell ceiling.
-* 📊 **[Benchmark report](https://vgorte.github.io/react-native-nitro-h3/benchmark/)**: methodology, devices, measurements and complete results.
-
-**Reference**
-
-* 📖 **[API reference](https://vgorte.github.io/react-native-nitro-h3/api/)**: every exported function by category.
-* ⚙️ **[H3 function table](https://vgorte.github.io/react-native-nitro-h3/h3-function-table/)**: every parity export mapped to its H3 C counterpart.
-* 📖 **[h3-js divergences](https://vgorte.github.io/react-native-nitro-h3/h3-js-divergences/)**: compatibility differences, with the test or the vendored source that proves each one.
-
-**Repository**
-
-* 📱 **[Example app](https://github.com/vgorte/react-native-nitro-h3/tree/main/apps/example)**: the benchmark and harness app.
-* 🤝 **[Contributing](https://github.com/vgorte/react-native-nitro-h3/blob/main/CONTRIBUTING.md)**: build, test and add an operation.
-* 🚀 **[Releasing](https://github.com/vgorte/react-native-nitro-h3/blob/main/docs/releasing.md)**: the maintainer runbook.
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome!
-
-See [`CONTRIBUTING.md`](https://github.com/vgorte/react-native-nitro-h3/blob/main/CONTRIBUTING.md) for:
-
-* development setup
-* test commands
-* adding new H3 operations
-* native implementation details
+- [Documentation](https://vgorte.github.io/react-native-nitro-h3/)
+- [LLMs.txt](https://vgorte.github.io/react-native-nitro-h3/llms.txt): the docs site as one file
+- [Showcase](https://vgorte.github.io/react-native-nitro-h3/showcase/): five acts of one app
+- [Getting started](https://vgorte.github.io/react-native-nitro-h3/getting-started/): install, first call, requirements
+- [Migrating from h3-js](https://vgorte.github.io/react-native-nitro-h3/migrating-from-h3-js/)
+- [API reference](https://vgorte.github.io/react-native-nitro-h3/api/): every exported function
+- [Example app](https://github.com/vgorte/react-native-nitro-h3/tree/main/apps/example): the benchmark and harness app
+- [Contributing](https://github.com/vgorte/react-native-nitro-h3/blob/main/CONTRIBUTING.md): build, test, add an operation
 
 ---
 
 ## 📄 License
 
-`react-native-nitro-h3` is released under the **MIT License**.
-
-The vendored H3 C sources are released under the **Apache-2.0 License** and retain their original `LICENSE` and `NOTICE` files.
+`react-native-nitro-h3` is released under the **MIT License**. The vendored H3 C sources keep their **Apache-2.0** `LICENSE` and `NOTICE` files.
