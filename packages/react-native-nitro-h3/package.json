@@ -90,8 +90,8 @@
     "@types/react": "^19.2.0",
     "h3-js": "4.5.0",
     "nitrogen": "0.37.1",
-    "react": "19.2.3",
-    "react-native": "0.87.0",
+    "react": "19.2.8",
+    "react-native": "0.87.1",
     "react-native-nitro-modules": "0.37.1",
     "typescript": "^6.0.3"
   }
