@@ -61,8 +61,9 @@ equivalence.
     of copied per element.
   </Card>
   <Card title="Batch calls" icon="list-format">
-    `latLngsToCells` and `cellsToLatLngs` process a whole coordinate or cell array in a single
-    native call.
+    `latLngsToCells`, `cellsToLatLngs` and `cellsToBoundaries` process a whole coordinate or cell
+    array in a single native call, the last answering every cell's boundary as `[lat, lng]` pairs in
+    one flat buffer.
   </Card>
   <Card title="Async variants" icon="clock">
     Four async variants move the expensive calls to a background thread and resolve with the same
@@ -168,6 +169,11 @@ const ring = gridDisk(cell, 1) // BigUint64Array of 7 cells
     title="Getting started"
     description="Install the package and make the first call."
     href="/react-native-nitro-h3/getting-started/"
+  />
+  <LinkCard
+    title="Showcase"
+    description="One app, five acts, every cell computed on the phone."
+    href="/react-native-nitro-h3/showcase/"
   />
   <LinkCard
     title="Migrating from h3-js"
