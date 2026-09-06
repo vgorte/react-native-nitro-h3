@@ -68,7 +68,7 @@ Coming from `h3-js`? Read the **[migration guide](https://vgorte.github.io/react
 ### Links
 
 - [Documentation](https://vgorte.github.io/react-native-nitro-h3/)
-- [LLMs.txt](https://vgorte.github.io/react-native-nitro-h3/llms.txt): the docs site as one file
+- [LLMs.txt](https://vgorte.github.io/react-native-nitro-h3/llms.txt): the docs for agents and assistants
 - [Showcase](https://vgorte.github.io/react-native-nitro-h3/showcase/): five acts of one app
 - [Getting started](https://vgorte.github.io/react-native-nitro-h3/getting-started/): install, first call, requirements
 - [Migrating from h3-js](https://vgorte.github.io/react-native-nitro-h3/migrating-from-h3-js/)
