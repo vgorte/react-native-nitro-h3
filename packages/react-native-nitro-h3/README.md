@@ -17,19 +17,13 @@ Brings [H3](https://h3geo.org/) to native iOS and Android applications. It vendo
 
 The result is a native H3 binding designed for performance-sensitive React Native workloads.
 
-⚡ Up to **862×** faster than `h3-js`. [See the benchmark →](https://vgorte.github.io/react-native-nitro-h3/benchmark/)
-
-🧬 H3 as compiled C++, called through Nitro Modules
-
-🔢 `bigint` cell indexes, no hexadecimal strings
-
-📦 Typed-array results over the native buffer
-
-🧵 Batch calls for whole coordinate and cell arrays
-
-⏱️ Async variants on a background thread
-
-🔁 The `h3-js` names and a [migration guide](https://vgorte.github.io/react-native-nitro-h3/migrating-from-h3-js/)
+* ⚡ Up to **862×** faster than `h3-js`. [See the benchmark →](https://vgorte.github.io/react-native-nitro-h3/benchmark/)
+* 🧬 H3 as compiled C++, called through Nitro Modules
+* 🔢 `bigint` cell indexes, no hexadecimal strings
+* 📦 Typed-array results over the native buffer
+* 🧵 Batch calls for whole coordinate and cell arrays
+* ⏱️ Async variants on a background thread
+* 🔁 The `h3-js` names and a [migration guide](https://vgorte.github.io/react-native-nitro-h3/migrating-from-h3-js/)
 
 > 📚 **[Read the documentation](https://vgorte.github.io/react-native-nitro-h3/)** for the guides, the API reference and the migration from `h3-js`.
 
