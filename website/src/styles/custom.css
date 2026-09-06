@@ -39,12 +39,7 @@
   color: var(--sl-color-white);
 }
 
-/* The claim under an act's description carries the showcase app's highlight amber, darkened for light. */
+/* The claim under an act's description stands off by space and its mark alone, in the text colour. */
 .sl-markdown-content p.use {
   margin-top: 1.5rem;
-  color: #ffb454;
-}
-
-:root[data-theme="light"] .sl-markdown-content p.use {
-  color: hsl(35, 100%, 30%);
 }
