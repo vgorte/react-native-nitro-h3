@@ -300,8 +300,11 @@ async function main() {
     if (!entry.isFile()) continue
     await copyFile(join(ROOT, 'img', entry.name), join(WEBSITE, 'public', 'img', entry.name))
   }
-  await copyFile(join(ROOT, 'img', 'logo.svg'), join(WEBSITE, 'src', 'assets', 'logo.svg'))
-  await copyFile(join(ROOT, 'img', 'logo.svg'), join(WEBSITE, 'public', 'favicon.svg'))
+  await copyFile(
+    join(ROOT, 'img', 'logo-tile.svg'),
+    join(WEBSITE, 'src', 'assets', 'logo-tile.svg'),
+  )
+  await copyFile(join(ROOT, 'img', 'logo-tile.svg'), join(WEBSITE, 'public', 'favicon.svg'))
 
   console.log(`synced ${PAGES.length} pages into ${CONTENT}`)
 }

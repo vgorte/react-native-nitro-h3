@@ -1,13 +1,13 @@
 /**
- * Generates the example app's launcher icons from `img/logo.svg`.
+ * Generates the example app's launcher icons and `img/logo-tile.svg` from `img/logo.svg`.
  *
  * The logo is the single source of truth, so the icons are derived rather than drawn twice.
  * No SVG rasteriser is assumed to be installed: the mark is eight simple polygons, which a
  * supersampling scanline fill and a hand-rolled PNG encoder cover exactly.
  *
  * Usage:
- *   bun run icons           rewrite the icons from `img/logo.svg`
- *   bun run icons --check   fail if the committed icons differ from `img/logo.svg`
+ *   bun run icons           rewrite the generated files from `img/logo.svg`
+ *   bun run icons --check   fail if the committed files differ from `img/logo.svg`
  */
 
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
@@ -19,6 +19,7 @@ import { deflateSync, inflateSync } from 'node:zlib'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(HERE, '..')
 const LOGO = join(ROOT, 'img', 'logo.svg')
+const TILE = join('img', 'logo-tile.svg')
 const IOS_ICONSET = 'apps/example/ios/H3Example/Images.xcassets/AppIcon.appiconset'
 const ANDROID_RES = 'apps/example/android/app/src/main/res'
 
@@ -35,6 +36,12 @@ const LEGACY_DENSITIES = { mdpi: 48, hdpi: 72, xhdpi: 96, xxhdpi: 144, xxxhdpi: 
 
 // Share of the icon's width the mark's bounding circle spans on the pre-adaptive launcher icons.
 const LEGACY_FILL = 0.8
+
+// the public logo is the mark inside an app icon's outline, unfilled so it sits on any ground
+const TILE_STROKE = '#8A8F99'
+const TILE_STROKE_WIDTH = 8
+const TILE_CORNER = 56
+const TILE_SCALE = 0.78
 
 type Point = { x: number; y: number }
 type Polygon = { points: Point[]; fill: string }
@@ -83,6 +90,14 @@ function parseViewBox(svg: string): number {
     throw new Error('Expected a square viewBox anchored at the origin')
   }
   return Number(width)
+}
+
+function parseTitle(svg: string): string {
+  const title = svg.match(/<title>([^<]+)<\/title>/)?.[1]
+  if (title == null) {
+    throw new Error('The logo has no <title>; the tile takes its label from there')
+  }
+  return title
 }
 
 function parseColor(hex: string): [number, number, number] {
@@ -382,6 +397,48 @@ ${paths}
 `
 }
 
+/** Groups consecutive polygons of one fill, so the tile mirrors the source's `<g>` structure. */
+function runsByFill(polygons: Polygon[]): { fill: string; polygons: Polygon[] }[] {
+  const runs: { fill: string; polygons: Polygon[] }[] = []
+  for (const polygon of polygons) {
+    const last = runs[runs.length - 1]
+    if (last != null && last.fill === polygon.fill) last.polygons.push(polygon)
+    else runs.push({ fill: polygon.fill, polygons: [polygon] })
+  }
+  return runs
+}
+
+/** Emits the mark inside a rounded outline, unprojected: the coordinates carry a transform instead. */
+function tileSvg(polygons: Polygon[], viewBox: number, title: string): string {
+  const points = (polygon: Polygon) =>
+    polygon.points.map((p) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ')
+
+  const marks: string[] = []
+  for (const run of runsByFill(polygons)) {
+    const single = run.polygons.length === 1 ? run.polygons[0] : null
+    if (single != null) {
+      marks.push(`    <polygon points="${points(single)}" fill="${run.fill}" />`)
+      continue
+    }
+    marks.push(`    <g fill="${run.fill}">`)
+    for (const polygon of run.polygons) marks.push(`      <polygon points="${points(polygon)}" />`)
+    marks.push('    </g>')
+  }
+
+  const inset = TILE_STROKE_WIDTH / 2
+  const side = viewBox - TILE_STROKE_WIDTH
+  const offset = ((viewBox * (1 - TILE_SCALE)) / 2).toFixed(2)
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${viewBox} ${viewBox}" width="${viewBox}" height="${viewBox}" role="img" aria-label="${title}">
+  <title>${title}</title>
+  <!-- Generated from \`img/logo.svg\` by \`bun run icons\`. Do not edit by hand. -->
+  <rect x="${inset}" y="${inset}" width="${side}" height="${side}" rx="${TILE_CORNER}" fill="none" stroke="${TILE_STROKE}" stroke-width="${TILE_STROKE_WIDTH}" />
+  <g transform="translate(${offset} ${offset}) scale(${TILE_SCALE})">
+${marks.join('\n')}
+  </g>
+</svg>
+`
+}
+
 type Generated = { files: string[]; markShare: number }
 
 /** Writes every icon below `root` and returns their paths relative to it. */
@@ -410,6 +467,9 @@ async function generate(root: string): Promise<Generated> {
     await writeFile(absolute, contents)
     files.push(relative)
   }
+
+  // The tile logo the README and the docs site show; the bare mark stays the source.
+  await write(TILE, tileSvg(polygons, viewBox, parseTitle(svg)))
 
   // iOS: one universal 1024 slot, opaque, the viewBox filling the canvas.
   await write(
@@ -521,13 +581,13 @@ async function check(): Promise<void> {
       }
     }
     if (differing.length > 0) {
-      process.stderr.write('App icons differ from img/logo.svg; run `bun run icons`:\n')
+      process.stderr.write('Generated files differ from img/logo.svg; run `bun run icons`:\n')
       for (const relative of differing) {
         process.stderr.write(`  ${relative}\n`)
       }
       process.exit(1)
     }
-    process.stdout.write(`${files.length} app icons match img/logo.svg\n`)
+    process.stdout.write(`${files.length} generated files match img/logo.svg\n`)
   } finally {
     await rm(scratch, { recursive: true, force: true })
   }
@@ -541,7 +601,7 @@ async function main(): Promise<void> {
 
   const { files, markShare } = await generate(ROOT)
   console.log(
-    `Wrote the iOS icon, ${Object.keys(LEGACY_DENSITIES).length * 2} legacy PNGs and the adaptive icon (${files.length} files).`,
+    `Wrote the tile logo, the iOS icon, ${Object.keys(LEGACY_DENSITIES).length * 2} legacy PNGs and the adaptive icon (${files.length} files).`,
   )
   console.log(
     `Mark spans ${markShare * 100}% of the iOS canvas and ` +

@@ -21,4 +21,4 @@ async function render(source: string, width: number, left: number, target: strin
 }
 
 await render('benchmark.svg', WIDTH, 0, 'og-benchmark.png')
-await render('logo.svg', 480, (WIDTH - 480) / 2, 'og-logo.png')
+await render('logo-tile.svg', 480, (WIDTH - 480) / 2, 'og-logo.png')

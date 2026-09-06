@@ -114,7 +114,7 @@ Ensure all generated assets match their source of truth:
 
 ```sh
 bun run docs:api --check   # packages/react-native-nitro-h3/docs/api.md is up to date
-bun run icons --check      # 17 app icons match img/logo.svg
+bun run icons --check      # 18 generated files match img/logo.svg
 bun run vendor:h3 --check  # third_party/h3 matches upstream v4.5.0
 ```
 
