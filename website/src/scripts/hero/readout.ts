@@ -6,6 +6,8 @@ export type ReadoutElements = {
   call: HTMLElement
   chip: HTMLElement
   id: HTMLElement
+  /** The visually hidden live region, absent when the page does not render one. */
+  announce: HTMLElement | null
 }
 
 /** San Francisco anchors the plane, so the readout reads as a real place. */
@@ -15,8 +17,8 @@ const LAT_PER_PV = 0.42
 const LNG_PER_PU = 0.58
 
 /**
- * The coordinates shown are the cell centre, so calling `latLngToCell` with them returns exactly
- * the id on the second line. Pointer motion is not announced, so `aria-live` is switched off first.
+ * Writes the readout for one cell. The coordinates shown are the cell centre, so calling
+ * `latLngToCell` with them returns exactly the id on the second line.
  */
 export function updateReadout(
   el: ReadoutElements,
@@ -28,10 +30,13 @@ export function updateReadout(
   const centre = centerOf(q, r, s)
   const id = latLngToCell(LAT0 - centre[1] * LAT_PER_PV, LNG0 + centre[0] * LNG_PER_PU, RES)
   const [lat, lng] = cellToLatLng(id)
-  el.card.setAttribute('aria-live', announce ? 'polite' : 'off')
+  const call = `latLngToCell(${lat.toFixed(4)}, ${lng.toFixed(4)}, ${RES})`
+  const hex = `0x${id.toLowerCase()}n`
   el.chip.textContent = `res ${RES}`
-  el.call.textContent = `latLngToCell(${lat.toFixed(4)}, ${lng.toFixed(4)}, ${RES})`
-  el.id.textContent = `0x${id.toLowerCase()}n`
+  el.call.textContent = call
+  el.id.textContent = hex
+  // pointer motion would flood the live region
+  if (announce && el.announce) el.announce.textContent = `${call} ${hex}`
 }
 
 export type AnchorInput = {

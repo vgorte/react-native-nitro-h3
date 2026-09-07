@@ -105,6 +105,8 @@ export function attachInput(
   })
 
   stage.addEventListener('keydown', (event) => {
+    // a focused link or button keeps its own keys
+    if (onLink(event.target)) return
     const step = KEY_STEPS[event.key]
     if (step) {
       event.preventDefault()

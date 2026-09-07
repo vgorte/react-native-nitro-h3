@@ -43,12 +43,13 @@ export function start(): void {
   const copy = document.querySelector<HTMLElement>('.nh3-copy')
   const card = document.querySelector<HTMLElement>('.nh3-readout')
   const hintEl = document.querySelector<HTMLElement>('.nh3-hint')
+  const announceEl = document.querySelector<HTMLElement>('.nh3-announce')
   if (!stage || !canvas || !copy || !card) return
   const call = card.querySelector<HTMLElement>('.nh3-call')
   const chip = card.querySelector<HTMLElement>('.nh3-chip')
   const idOut = card.querySelector<HTMLElement>('.nh3-id')
   if (!call || !chip || !idOut) return
-  const readoutEls: ReadoutElements = { card, call, chip, id: idOut }
+  const readoutEls: ReadoutElements = { card, call, chip, id: idOut, announce: announceEl }
 
   const params = new URLSearchParams(location.search)
   const debug = params.get('heroDebug') === '1'
@@ -275,14 +276,17 @@ export function start(): void {
   ).observe(stage)
 
   let resizeTimer = 0
-  window.addEventListener('resize', () => {
+  const onResize = (): void => {
     window.clearTimeout(resizeTimer)
     resizeTimer = window.setTimeout(() => {
       const next = pickMode(new URLSearchParams(location.search))
       if (next !== mode) applyMode(next)
       else rebuild()
     }, RESIZE_DEBOUNCE_MS)
-  })
+  }
+  window.addEventListener('resize', onResize)
+  // The stage can gain its size from a layout change that never resizes the window.
+  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(onResize).observe(stage)
   // The copy block changes size when the web fonts land, so the keep-out is measured again.
   void document.fonts.ready.then(() => {
     rebuild()
