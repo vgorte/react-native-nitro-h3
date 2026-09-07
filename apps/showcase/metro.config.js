@@ -12,7 +12,7 @@ config.resolver.nodeModulesPaths = [
   path.resolve(workspaceRoot, 'node_modules'),
 ]
 
-// the symlinked workspace package would otherwise resolve `react-native` 0.87.0 from its own copy
+// the symlinked package would otherwise resolve `react-native` from its own devDependency copy
 const pinnedPackages = ['react', 'react-native']
 const pinnedOrigin = path.join(projectRoot, 'index.ts')
 
