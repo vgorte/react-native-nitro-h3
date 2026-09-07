@@ -26,7 +26,8 @@ jobs:
         run: bun run docs:api --check
       # The parity suite needs the compiled probe this job does not build, so `parity.yml` runs it.
       - run: bun test packages/react-native-nitro-h3/__tests__
-      # the showcase's bunfig carries the .ttf loader its theme test needs, so this runs in its own root
+      # the showcase is its own install, so its checks run in its own root
+      - run: bun run --cwd apps/showcase typecheck
       - run: bun run --cwd apps/showcase test
       - name: Vendored h3 matches the pinned upstream tag
         run: bun run vendor:h3 --check
