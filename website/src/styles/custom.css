@@ -96,6 +96,8 @@ html[data-has-hero] .page > .header {
 @media (min-width: 50rem) and (orientation: landscape) {
   .nh3-hero {
     height: calc(100dvh - var(--sl-nav-height));
+    /* Hold the copy block on a short viewport: below this the page scrolls instead of clipping it. */
+    min-height: 34rem;
   }
 }
 
