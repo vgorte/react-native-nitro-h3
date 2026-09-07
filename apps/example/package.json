@@ -38,7 +38,7 @@
     "@types/react": "^19.2.0",
     "h3-js": "4.5.0",
     "hermes-compiler": "250829098.0.17",
-    "jest": "^30.5.0",
+    "jest": "^30.5.1",
     "metro": "^0.87.0",
     "metro-cache": "^0.87.0",
     "metro-config": "^0.87.0",
