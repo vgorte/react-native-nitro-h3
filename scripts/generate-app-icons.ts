@@ -1,13 +1,14 @@
 /**
- * Generates an app's launcher icons from `img/logo.svg`.
+ * Generates an app's launcher icons from `img/logo.svg`, plus `img/logo-tile.svg` on the run
+ * that carries it.
  *
  * The logo is the single source of truth, so the icons are derived rather than drawn twice.
  * No SVG rasteriser is assumed to be installed: the mark is eight simple polygons, which a
  * supersampling scanline fill and a hand-rolled PNG encoder cover exactly.
  *
  * Usage:
- *   bun run icons                       rewrite the example app's icons from `img/logo.svg`
- *   bun run icons --check               fail if the committed example icons differ from the logo
+ *   bun run icons                       rewrite the example app's files from `img/logo.svg`
+ *   bun run icons --check               fail if the committed example files differ from the logo
  *   bun run icons:showcase              rewrite the showcase app's Expo icon assets
  *   bun run icons:showcase --check      fail if the committed showcase assets differ from the logo
  */
@@ -32,6 +33,12 @@ const LEGACY_DENSITIES = { mdpi: 48, hdpi: 72, xhdpi: 96, xxhdpi: 144, xxxhdpi: 
 // share of the icon's width the mark's bounding circle spans on the pre-adaptive launcher icons
 const LEGACY_FILL = 0.8
 
+// the public logo is the mark inside an app icon's outline, unfilled so it sits on any ground
+const TILE_STROKE = '#8A8F99'
+const TILE_STROKE_WIDTH = 8
+const TILE_CORNER = 56
+const TILE_SCALE = 0.78
+
 // Expo's own asset sizes: 1024 for the square icon, 512 for the two adaptive layers and 432 for
 // the themed one, which is the 108dp canvas at four times density.
 const EXPO_ICON_SIZE = 1024
@@ -45,6 +52,11 @@ interface TargetBase {
   background: string
   /** Recolours the logo's fills; a fill absent from the map is drawn as it is in the SVG. */
   palette: Record<string, string>
+  /**
+   * Where the repo's public tile logo is written, in the logo's own colours, or absent when the
+   * target does not carry it. It is not an app asset: only the default run rewrites it.
+   */
+  tile?: string
 }
 
 /** Writes into a checked-in Xcode iconset and Android resource tree, both relative to the root. */
@@ -75,6 +87,7 @@ const TARGETS: Record<'example' | 'showcase', IconTarget> = {
     // white, because the dark outer hexagon is what carries the silhouette on a light surface
     background: '#FFFFFF',
     palette: {},
+    tile: join('img', 'logo-tile.svg'),
   },
   showcase: {
     name: 'showcase',
@@ -140,6 +153,14 @@ function parseViewBox(svg: string): number {
     throw new Error('Expected a square viewBox anchored at the origin')
   }
   return Number(width)
+}
+
+function parseTitle(svg: string): string {
+  const title = svg.match(/<title>([^<]+)<\/title>/)?.[1]
+  if (title == null) {
+    throw new Error('The logo has no <title>; the tile takes its label from there')
+  }
+  return title
 }
 
 function parseColor(hex: string): [number, number, number] {
@@ -498,6 +519,48 @@ ${paths}
 `
 }
 
+/** Groups consecutive polygons of one fill, so the tile mirrors the source's `<g>` structure. */
+function runsByFill(polygons: Polygon[]): { fill: string; polygons: Polygon[] }[] {
+  const runs: { fill: string; polygons: Polygon[] }[] = []
+  for (const polygon of polygons) {
+    const last = runs[runs.length - 1]
+    if (last != null && last.fill === polygon.fill) last.polygons.push(polygon)
+    else runs.push({ fill: polygon.fill, polygons: [polygon] })
+  }
+  return runs
+}
+
+/** Emits the mark inside a rounded outline, unprojected: the coordinates carry a transform instead. */
+function tileSvg(polygons: Polygon[], viewBox: number, title: string): string {
+  const points = (polygon: Polygon) =>
+    polygon.points.map((p) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ')
+
+  const marks: string[] = []
+  for (const run of runsByFill(polygons)) {
+    const single = run.polygons.length === 1 ? run.polygons[0] : null
+    if (single != null) {
+      marks.push(`    <polygon points="${points(single)}" fill="${run.fill}" />`)
+      continue
+    }
+    marks.push(`    <g fill="${run.fill}">`)
+    for (const polygon of run.polygons) marks.push(`      <polygon points="${points(polygon)}" />`)
+    marks.push('    </g>')
+  }
+
+  const inset = TILE_STROKE_WIDTH / 2
+  const side = viewBox - TILE_STROKE_WIDTH
+  const offset = ((viewBox * (1 - TILE_SCALE)) / 2).toFixed(2)
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${viewBox} ${viewBox}" width="${viewBox}" height="${viewBox}" role="img" aria-label="${title}">
+  <title>${title}</title>
+  <!-- Generated from \`img/logo.svg\` by \`bun run icons\`. Do not edit by hand. -->
+  <rect x="${inset}" y="${inset}" width="${side}" height="${side}" rx="${TILE_CORNER}" fill="none" stroke="${TILE_STROKE}" stroke-width="${TILE_STROKE_WIDTH}" />
+  <g transform="translate(${offset} ${offset}) scale(${TILE_SCALE})">
+${marks.join('\n')}
+  </g>
+</svg>
+`
+}
+
 /** The mark ready to draw, plus the writer a target's files go through. */
 type Mark = {
   polygons: Polygon[]
@@ -668,6 +731,12 @@ async function generate(root: string, target: IconTarget): Promise<Generated> {
     },
   }
 
+  // the tile logo the README and the docs site show; the bare mark stays the source, so it is
+  // written from the logo's own polygons rather than the target's recoloured ones
+  if (target.tile != null) {
+    await mark.write(target.tile, tileSvg(polygons, viewBox, parseTitle(svg)))
+  }
+
   if (target.layout === 'native') {
     await writeNativeIcons(mark, target)
   } else {
@@ -713,14 +782,14 @@ async function check(target: IconTarget): Promise<void> {
     if (differing.length > 0) {
       const command = target.name === 'example' ? 'icons' : `icons:${target.name}`
       process.stderr.write(
-        `The ${target.name} icons differ from img/logo.svg; run \`bun run ${command}\`:\n`,
+        `The generated ${target.name} files differ from img/logo.svg; run \`bun run ${command}\`:\n`,
       )
       for (const relative of differing) {
         process.stderr.write(`  ${relative}\n`)
       }
       process.exit(1)
     }
-    process.stdout.write(`${files.length} ${target.name} icons match img/logo.svg\n`)
+    process.stdout.write(`${files.length} generated ${target.name} files match img/logo.svg\n`)
   } finally {
     await rm(scratch, { recursive: true, force: true })
   }
@@ -746,7 +815,8 @@ async function main(): Promise<void> {
   }
 
   const { files, markShare } = await generate(ROOT, target)
-  console.log(`Wrote ${files.length} icon files for the ${target.name} app.`)
+  const tile = target.tile == null ? '' : ', the tile logo among them'
+  console.log(`Wrote ${files.length} generated files for the ${target.name} app${tile}.`)
   console.log(
     `Mark spans ${markShare * 100}% of the square canvas and ` +
       `${ADAPTIVE_SAFE_DIAMETER}dp of the ${ADAPTIVE_CANVAS}dp adaptive canvas.`,
