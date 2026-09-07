@@ -13,8 +13,6 @@
 
 <a href="https://vgorte.github.io/react-native-nitro-h3/showcase/"><img align="right" src="https://raw.githubusercontent.com/vgorte/react-native-nitro-h3/main/img/showcase-portrait-hero.gif" alt="The showcase app: a hexagon grid follows the map, a cell splits into its children, a million points fold into cells" width="280" /></a>
 
-*The animation is the [showcase app](https://vgorte.github.io/react-native-nitro-h3/showcase/): every cell computed by this package, every pixel drawn by the app.*
-
 Brings Uber's [H3](https://h3geo.org/), the hexagonal hierarchical geospatial index, to native iOS and Android applications. It vendors the H3 C library and calls it directly from native code instead of running it through JavaScript.
 
 The result is a native H3 binding designed for performance-sensitive React Native workloads.
