@@ -1,13 +1,16 @@
 /**
- * Generates the example app's launcher icons and `img/logo-tile.svg` from `img/logo.svg`.
+ * Generates an app's launcher icons from `img/logo.svg`, plus `img/logo-tile.svg` on the run
+ * that carries it.
  *
  * The logo is the single source of truth, so the icons are derived rather than drawn twice.
  * No SVG rasteriser is assumed to be installed: the mark is eight simple polygons, which a
  * supersampling scanline fill and a hand-rolled PNG encoder cover exactly.
  *
  * Usage:
- *   bun run icons           rewrite the generated files from `img/logo.svg`
- *   bun run icons --check   fail if the committed files differ from `img/logo.svg`
+ *   bun run icons                       rewrite the example app's files from `img/logo.svg`
+ *   bun run icons --check               fail if the committed example files differ from the logo
+ *   bun run icons:showcase              rewrite the showcase app's Expo icon assets
+ *   bun run icons:showcase --check      fail if the committed showcase assets differ from the logo
  */
 
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
@@ -19,13 +22,6 @@ import { deflateSync, inflateSync } from 'node:zlib'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(HERE, '..')
 const LOGO = join(ROOT, 'img', 'logo.svg')
-const TILE = join('img', 'logo-tile.svg')
-const IOS_ICONSET = 'apps/example/ios/H3Example/Images.xcassets/AppIcon.appiconset'
-const ANDROID_RES = 'apps/example/android/app/src/main/res'
-
-// The mark sits on an opaque ground: iOS rejects alpha outright, and the dark outer hexagon
-// is what carries the silhouette on a light surface.
-const BACKGROUND = '#FFFFFF'
 
 // Android's adaptive icon guarantees only the central 66 of 108dp survives every mask shape,
 // and the hexagon's points are its extremities, so the mark is fitted to exactly that circle.
@@ -34,7 +30,7 @@ const ADAPTIVE_SAFE_DIAMETER = 66
 
 const LEGACY_DENSITIES = { mdpi: 48, hdpi: 72, xhdpi: 96, xxhdpi: 144, xxxhdpi: 192 }
 
-// Share of the icon's width the mark's bounding circle spans on the pre-adaptive launcher icons.
+// share of the icon's width the mark's bounding circle spans on the pre-adaptive launcher icons
 const LEGACY_FILL = 0.8
 
 // the public logo is the mark inside an app icon's outline, unfilled so it sits on any ground
@@ -42,6 +38,73 @@ const TILE_STROKE = '#8A8F99'
 const TILE_STROKE_WIDTH = 8
 const TILE_CORNER = 56
 const TILE_SCALE = 0.78
+
+// Expo's own asset sizes: 1024 for the square icon, 512 for the two adaptive layers and 432 for
+// the themed one, which is the 108dp canvas at four times density.
+const EXPO_ICON_SIZE = 1024
+const EXPO_LAYER_SIZE = 512
+const EXPO_MONOCHROME_SIZE = 432
+
+/** What every target names: its ground and how the logo's fills are recoloured for it. */
+interface TargetBase {
+  name: string
+  /** The opaque ground behind the mark; iOS rejects alpha outright, so one is always needed. */
+  background: string
+  /** Recolours the logo's fills; a fill absent from the map is drawn as it is in the SVG. */
+  palette: Record<string, string>
+  /**
+   * Where the repo's public tile logo is written, in the logo's own colours, or absent when the
+   * target does not carry it. It is not an app asset: only the default run rewrites it.
+   */
+  tile?: string
+}
+
+/** Writes into a checked-in Xcode iconset and Android resource tree, both relative to the root. */
+interface NativeTarget extends TargetBase {
+  layout: 'native'
+  iconset: string
+  res: string
+}
+
+/**
+ * Writes the four PNGs an Expo config points at, which `expo prebuild` carries into the native
+ * projects, so nothing is written into the prebuild output itself.
+ */
+interface ExpoTarget extends TargetBase {
+  layout: 'expo'
+  assets: { icon: string; foreground: string; background: string; monochrome: string }
+}
+
+/** Names an app the icons are generated for: where they go and how the mark is coloured. */
+type IconTarget = NativeTarget | ExpoTarget
+
+const TARGETS: Record<'example' | 'showcase', IconTarget> = {
+  example: {
+    name: 'example',
+    layout: 'native',
+    iconset: 'apps/example/ios/H3Example/Images.xcassets/AppIcon.appiconset',
+    res: 'apps/example/android/app/src/main/res',
+    // white, because the dark outer hexagon is what carries the silhouette on a light surface
+    background: '#FFFFFF',
+    palette: {},
+    tile: join('img', 'logo-tile.svg'),
+  },
+  showcase: {
+    name: 'showcase',
+    layout: 'expo',
+    assets: {
+      icon: 'apps/showcase/assets/icon.png',
+      foreground: 'apps/showcase/assets/android-icon-foreground.png',
+      background: 'apps/showcase/assets/android-icon-background.png',
+      monochrome: 'apps/showcase/assets/android-icon-monochrome.png',
+    },
+    // the Observatory ground, so the mark sits on the field the app draws on
+    background: '#060911',
+    // the ramp's first, third and fourth stops: the boundary stays the darkest of them, so the
+    // seven cells and the brighter centre are what read at launcher size
+    palette: { '#20232A': '#0F2F5A', '#219FC9': '#3FB0FF', '#E8EEF4': '#C9EBFF' },
+  },
+}
 
 type Point = { x: number; y: number }
 type Polygon = { points: Point[]; fill: string }
@@ -152,8 +215,22 @@ type RenderOptions = {
   size: number
   /** Fraction of the canvas the logo's viewBox is scaled to occupy. */
   contentScale: number
+  /** The ground behind the mark, or `null` to leave it transparent for a layered icon. */
+  background: string | null
   /** Clips the background to an inscribed circle, for the legacy round launcher icon. */
   round?: boolean
+}
+
+/** Maps viewBox coordinates onto a centred square canvas of `size` pixels. */
+function projector(viewBox: number, size: number, contentScale: number): (point: Point) => Point {
+  const scale = (size * contentScale) / viewBox
+  const offset = (size - viewBox * scale) / 2
+  return (point) => ({ x: point.x * scale + offset, y: point.y * scale + offset })
+}
+
+/** Answers the mark with the target's palette applied to it. */
+function recolour(polygons: Polygon[], palette: Record<string, string>): Polygon[] {
+  return polygons.map((polygon) => ({ ...polygon, fill: palette[polygon.fill] ?? polygon.fill }))
 }
 
 const SAMPLES = 4
@@ -170,40 +247,36 @@ function blend(
 }
 
 function render(polygons: Polygon[], viewBox: number, options: RenderOptions): Uint8Array {
-  const { size, contentScale, round = false } = options
+  const { size, contentScale, background, round = false } = options
   const rgba = new Uint8Array(size * size * 4)
 
-  const [backgroundR, backgroundG, backgroundB] = parseColor(BACKGROUND)
-  const radius = size / 2
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      let coverage = 1
-      if (round) {
-        coverage = 0
-        for (let sy = 0; sy < SAMPLES; sy++) {
-          for (let sx = 0; sx < SAMPLES; sx++) {
-            const dx = x + (sx + 0.5) / SAMPLES - radius
-            const dy = y + (sy + 0.5) / SAMPLES - radius
-            if (dx * dx + dy * dy <= radius * radius) coverage++
+  if (background != null) {
+    const [backgroundR, backgroundG, backgroundB] = parseColor(background)
+    const radius = size / 2
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        let coverage = 1
+        if (round) {
+          coverage = 0
+          for (let sy = 0; sy < SAMPLES; sy++) {
+            for (let sx = 0; sx < SAMPLES; sx++) {
+              const dx = x + (sx + 0.5) / SAMPLES - radius
+              const dy = y + (sy + 0.5) / SAMPLES - radius
+              if (dx * dx + dy * dy <= radius * radius) coverage++
+            }
           }
+          coverage /= SAMPLES * SAMPLES
         }
-        coverage /= SAMPLES * SAMPLES
+        const at = (y * size + x) * 4
+        rgba[at] = backgroundR
+        rgba[at + 1] = backgroundG
+        rgba[at + 2] = backgroundB
+        rgba[at + 3] = Math.round(coverage * 255)
       }
-      const at = (y * size + x) * 4
-      rgba[at] = backgroundR
-      rgba[at + 1] = backgroundG
-      rgba[at + 2] = backgroundB
-      rgba[at + 3] = Math.round(coverage * 255)
     }
   }
 
-  // viewBox units to pixels, centred
-  const scale = (size * contentScale) / viewBox
-  const offset = (size - viewBox * scale) / 2
-  const project = (point: Point): Point => ({
-    x: point.x * scale + offset,
-    y: point.y * scale + offset,
-  })
+  const project = projector(viewBox, size, contentScale)
 
   for (const polygon of polygons) {
     const projected = polygon.points.map(project)
@@ -234,6 +307,55 @@ function render(polygons: Polygon[], viewBox: number, options: RenderOptions): U
         rgba[at + 2] = blend(b, rgba[at + 2] ?? 0, alpha, under, over)
         rgba[at + 3] = Math.round(over * 255)
       }
+    }
+  }
+
+  return rgba
+}
+
+/**
+ * Renders the mark as one white shape on transparency, for Android's themed icon.
+ *
+ * The system keeps the alpha channel and tints it, so the seven cells have to be holes rather
+ * than a second colour: a sample inside an odd number of polygons is inside the shape, which is
+ * the even-odd rule the vector drawable states.
+ */
+function renderSilhouette(
+  polygons: Polygon[],
+  viewBox: number,
+  options: { size: number; contentScale: number },
+): Uint8Array {
+  const { size, contentScale } = options
+  const rgba = new Uint8Array(size * size * 4)
+  const project = projector(viewBox, size, contentScale)
+  const projected = polygons.map((polygon) => polygon.points.map(project))
+
+  const all = projected.flat()
+  const minX = Math.max(0, Math.floor(Math.min(...all.map((p) => p.x))))
+  const maxX = Math.min(size - 1, Math.ceil(Math.max(...all.map((p) => p.x))))
+  const minY = Math.max(0, Math.floor(Math.min(...all.map((p) => p.y))))
+  const maxY = Math.min(size - 1, Math.ceil(Math.max(...all.map((p) => p.y))))
+
+  for (let y = minY; y <= maxY; y++) {
+    for (let x = minX; x <= maxX; x++) {
+      let hits = 0
+      for (let sy = 0; sy < SAMPLES; sy++) {
+        for (let sx = 0; sx < SAMPLES; sx++) {
+          const sampleX = x + (sx + 0.5) / SAMPLES
+          const sampleY = y + (sy + 0.5) / SAMPLES
+          let inside = false
+          for (const points of projected) {
+            if (contains(points, sampleX, sampleY)) inside = !inside
+          }
+          if (inside) hits++
+        }
+      }
+      if (hits === 0) continue
+      const at = (y * size + x) * 4
+      rgba[at] = 0xff
+      rgba[at + 1] = 0xff
+      rgba[at + 2] = 0xff
+      rgba[at + 3] = Math.round((hits / (SAMPLES * SAMPLES)) * 255)
     }
   }
 
@@ -439,10 +561,146 @@ ${marks.join('\n')}
 `
 }
 
+/** The mark ready to draw, plus the writer a target's files go through. */
+type Mark = {
+  polygons: Polygon[]
+  viewBox: number
+  /** The mark's bounding radius in viewBox units. */
+  radius: number
+  /** Answers the content scale that makes that circle span the given share of a canvas. */
+  fill: (share: number) => number
+  write: (relative: string, contents: Buffer | string) => Promise<void>
+}
+
+/** Writes the iconset and resource tree of an app whose native projects are checked in. */
+async function writeNativeIcons(mark: Mark, target: NativeTarget): Promise<void> {
+  const { polygons, viewBox, radius, fill, write } = mark
+  const background = target.background
+
+  // iOS: one universal 1024 slot, opaque, the viewBox filling the canvas
+  await write(
+    join(target.iconset, 'AppIcon.png'),
+    encodePng(render(polygons, viewBox, { size: 1024, contentScale: 1, background }), 1024, false),
+  )
+  await write(
+    join(target.iconset, 'Contents.json'),
+    `${JSON.stringify(
+      {
+        images: [
+          { filename: 'AppIcon.png', idiom: 'universal', platform: 'ios', size: '1024x1024' },
+        ],
+        info: { author: 'xcode', version: 1 },
+      },
+      null,
+      2,
+    )}\n`,
+  )
+
+  // Android: PNGs for API 24 and 25, which predate the adaptive icon
+  for (const [density, size] of Object.entries(LEGACY_DENSITIES)) {
+    const directory = join(target.res, `mipmap-${density}`)
+    const contentScale = fill(LEGACY_FILL)
+    await write(
+      join(directory, 'ic_launcher.png'),
+      encodePng(render(polygons, viewBox, { size, contentScale, background }), size, true),
+    )
+    await write(
+      join(directory, 'ic_launcher_round.png'),
+      encodePng(
+        render(polygons, viewBox, { size, contentScale, background, round: true }),
+        size,
+        true,
+      ),
+    )
+  }
+
+  // Android: the adaptive icon stays vector, so no density loses detail
+  const foreground = polygons
+    .map((polygon) => {
+      const path = toAdaptivePath(polygon.points, viewBox, radius)
+      return `    <path android:fillColor="${polygon.fill}" android:pathData="${path}" />`
+    })
+    .join('\n')
+  const drawable = join(target.res, 'drawable')
+  await write(join(drawable, 'ic_launcher_foreground.xml'), vectorDrawable(foreground))
+
+  // the themed icon is one shape the system tints, so the seven children are punched out of the
+  // outer hexagon and `evenOdd` over a single path is what makes the holes holes
+  const monochromePath = polygons
+    .map((polygon) => toAdaptivePath(polygon.points, viewBox, radius))
+    .join(' ')
+  await write(
+    join(drawable, 'ic_launcher_monochrome.xml'),
+    vectorDrawable(
+      `    <path android:fillColor="#FFFFFF" android:fillType="evenOdd" android:pathData="${monochromePath}" />`,
+    ),
+  )
+
+  const anydpi = join(target.res, 'mipmap-anydpi-v26')
+  const adaptive = `<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+    <monochrome android:drawable="@drawable/ic_launcher_monochrome" />
+</adaptive-icon>
+`
+  await write(join(anydpi, 'ic_launcher.xml'), adaptive)
+  await write(join(anydpi, 'ic_launcher_round.xml'), adaptive)
+
+  await write(
+    join(target.res, 'values', 'ic_launcher_background.xml'),
+    `<resources>
+    <color name="ic_launcher_background">${background}</color>
+</resources>
+`,
+  )
+}
+
+/** Writes the four PNG assets an Expo config points at. */
+async function writeExpoIcons(mark: Mark, target: ExpoTarget): Promise<void> {
+  const { polygons, viewBox, fill, write } = mark
+  const { assets, background } = target
+  // both adaptive layers are read against the 108dp canvas, so both take the safe-zone inset
+  const contentScale = fill(ADAPTIVE_SAFE_DIAMETER / ADAPTIVE_CANVAS)
+
+  await write(
+    assets.icon,
+    encodePng(
+      render(polygons, viewBox, { size: EXPO_ICON_SIZE, contentScale: 1, background }),
+      EXPO_ICON_SIZE,
+      false,
+    ),
+  )
+  await write(
+    assets.foreground,
+    encodePng(
+      render(polygons, viewBox, { size: EXPO_LAYER_SIZE, contentScale, background: null }),
+      EXPO_LAYER_SIZE,
+      true,
+    ),
+  )
+  // the background layer is the ground alone; the mark rides on the foreground above it
+  await write(
+    assets.background,
+    encodePng(
+      render([], viewBox, { size: EXPO_LAYER_SIZE, contentScale: 1, background }),
+      EXPO_LAYER_SIZE,
+      true,
+    ),
+  )
+  await write(
+    assets.monochrome,
+    encodePng(
+      renderSilhouette(polygons, viewBox, { size: EXPO_MONOCHROME_SIZE, contentScale }),
+      EXPO_MONOCHROME_SIZE,
+      true,
+    ),
+  )
+}
+
 type Generated = { files: string[]; markShare: number }
 
-/** Writes every icon below `root` and returns their paths relative to it. */
-async function generate(root: string): Promise<Generated> {
+/** Writes every icon of the target below `root` and returns their paths relative to it. */
+async function generate(root: string, target: IconTarget): Promise<Generated> {
   const svg = await readFile(LOGO, 'utf8')
   if (svg.includes('transform=')) {
     throw new Error('The logo carries a transform; this renderer projects raw coordinates only')
@@ -457,92 +715,33 @@ async function generate(root: string): Promise<Generated> {
   assertOuterEnclosesTheRest(polygons)
 
   const radius = markRadius(outer, viewBox)
-  // the contentScale that makes the mark's bounding circle span the given share of the canvas
-  const fill = (share: number) => (share * viewBox) / (2 * radius)
 
   const files: string[] = []
-  const write = async (relative: string, contents: Buffer | string): Promise<void> => {
-    const absolute = join(root, relative)
-    await mkdir(dirname(absolute), { recursive: true })
-    await writeFile(absolute, contents)
-    files.push(relative)
+  const mark: Mark = {
+    polygons: recolour(polygons, target.palette),
+    viewBox,
+    radius,
+    // the contentScale that makes the mark's bounding circle span the given share of the canvas
+    fill: (share: number) => (share * viewBox) / (2 * radius),
+    write: async (relative, contents) => {
+      const absolute = join(root, relative)
+      await mkdir(dirname(absolute), { recursive: true })
+      await writeFile(absolute, contents)
+      files.push(relative)
+    },
   }
 
-  // The tile logo the README and the docs site show; the bare mark stays the source.
-  await write(TILE, tileSvg(polygons, viewBox, parseTitle(svg)))
-
-  // iOS: one universal 1024 slot, opaque, the viewBox filling the canvas.
-  await write(
-    join(IOS_ICONSET, 'AppIcon.png'),
-    encodePng(render(polygons, viewBox, { size: 1024, contentScale: 1 }), 1024, false),
-  )
-  await write(
-    join(IOS_ICONSET, 'Contents.json'),
-    `${JSON.stringify(
-      {
-        images: [
-          { filename: 'AppIcon.png', idiom: 'universal', platform: 'ios', size: '1024x1024' },
-        ],
-        info: { author: 'xcode', version: 1 },
-      },
-      null,
-      2,
-    )}\n`,
-  )
-
-  // Android: PNGs for API 24 and 25, which predate the adaptive icon.
-  for (const [density, size] of Object.entries(LEGACY_DENSITIES)) {
-    const directory = join(ANDROID_RES, `mipmap-${density}`)
-    const contentScale = fill(LEGACY_FILL)
-    await write(
-      join(directory, 'ic_launcher.png'),
-      encodePng(render(polygons, viewBox, { size, contentScale }), size, true),
-    )
-    await write(
-      join(directory, 'ic_launcher_round.png'),
-      encodePng(render(polygons, viewBox, { size, contentScale, round: true }), size, true),
-    )
+  // the tile logo the README and the docs site show; the bare mark stays the source, so it is
+  // written from the logo's own polygons rather than the target's recoloured ones
+  if (target.tile != null) {
+    await mark.write(target.tile, tileSvg(polygons, viewBox, parseTitle(svg)))
   }
 
-  // Android: the adaptive icon stays vector, so no density loses detail.
-  const foreground = polygons
-    .map((polygon) => {
-      const path = toAdaptivePath(polygon.points, viewBox, radius)
-      return `    <path android:fillColor="${polygon.fill}" android:pathData="${path}" />`
-    })
-    .join('\n')
-  const drawable = join(ANDROID_RES, 'drawable')
-  await write(join(drawable, 'ic_launcher_foreground.xml'), vectorDrawable(foreground))
-
-  // The themed icon is the outer hexagon with the seven children punched out, so the system
-  // can tint one shape. `evenOdd` over a single path is what makes the holes holes.
-  const monochromePath = polygons
-    .map((polygon) => toAdaptivePath(polygon.points, viewBox, radius))
-    .join(' ')
-  await write(
-    join(drawable, 'ic_launcher_monochrome.xml'),
-    vectorDrawable(
-      `    <path android:fillColor="#FFFFFF" android:fillType="evenOdd" android:pathData="${monochromePath}" />`,
-    ),
-  )
-
-  const anydpi = join(ANDROID_RES, 'mipmap-anydpi-v26')
-  const adaptive = `<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@color/ic_launcher_background" />
-    <foreground android:drawable="@drawable/ic_launcher_foreground" />
-    <monochrome android:drawable="@drawable/ic_launcher_monochrome" />
-</adaptive-icon>
-`
-  await write(join(anydpi, 'ic_launcher.xml'), adaptive)
-  await write(join(anydpi, 'ic_launcher_round.xml'), adaptive)
-
-  await write(
-    join(ANDROID_RES, 'values', 'ic_launcher_background.xml'),
-    `<resources>
-    <color name="ic_launcher_background">${BACKGROUND}</color>
-</resources>
-`,
-  )
+  if (target.layout === 'native') {
+    await writeNativeIcons(mark, target)
+  } else {
+    await writeExpoIcons(mark, target)
+  }
 
   return { files, markShare: (2 * radius) / viewBox }
 }
@@ -570,10 +769,10 @@ async function differs(committed: string, generated: string): Promise<boolean> {
   )
 }
 
-async function check(): Promise<void> {
+async function check(target: IconTarget): Promise<void> {
   const scratch = await mkdtemp(join(tmpdir(), 'app-icons-'))
   try {
-    const { files } = await generate(scratch)
+    const { files } = await generate(scratch, target)
     const differing: string[] = []
     for (const relative of files) {
       if (await differs(join(ROOT, relative), join(scratch, relative))) {
@@ -581,30 +780,45 @@ async function check(): Promise<void> {
       }
     }
     if (differing.length > 0) {
-      process.stderr.write('Generated files differ from img/logo.svg; run `bun run icons`:\n')
+      const command = target.name === 'example' ? 'icons' : `icons:${target.name}`
+      process.stderr.write(
+        `The generated ${target.name} files differ from img/logo.svg; run \`bun run ${command}\`:\n`,
+      )
       for (const relative of differing) {
         process.stderr.write(`  ${relative}\n`)
       }
       process.exit(1)
     }
-    process.stdout.write(`${files.length} generated files match img/logo.svg\n`)
+    process.stdout.write(`${files.length} generated ${target.name} files match img/logo.svg\n`)
   } finally {
     await rm(scratch, { recursive: true, force: true })
   }
 }
 
+/** Answers the target named by `--target`, defaulting to the example app. */
+function selectTarget(argv: string[]): IconTarget {
+  const at = argv.indexOf('--target')
+  const name = at === -1 ? 'example' : argv[at + 1]
+  for (const target of Object.values(TARGETS)) {
+    if (target.name === name) return target
+  }
+  const expected = Object.keys(TARGETS).join(' or ')
+  process.stderr.write(`Unknown target "${name}"; expected ${expected}\n`)
+  process.exit(1)
+}
+
 async function main(): Promise<void> {
+  const target = selectTarget(process.argv)
   if (process.argv.includes('--check')) {
-    await check()
+    await check(target)
     return
   }
 
-  const { files, markShare } = await generate(ROOT)
+  const { files, markShare } = await generate(ROOT, target)
+  const tile = target.tile == null ? '' : ', the tile logo among them'
+  console.log(`Wrote ${files.length} generated files for the ${target.name} app${tile}.`)
   console.log(
-    `Wrote the tile logo, the iOS icon, ${Object.keys(LEGACY_DENSITIES).length * 2} legacy PNGs and the adaptive icon (${files.length} files).`,
-  )
-  console.log(
-    `Mark spans ${markShare * 100}% of the iOS canvas and ` +
+    `Mark spans ${markShare * 100}% of the square canvas and ` +
       `${ADAPTIVE_SAFE_DIAMETER}dp of the ${ADAPTIVE_CANVAS}dp adaptive canvas.`,
   )
 }

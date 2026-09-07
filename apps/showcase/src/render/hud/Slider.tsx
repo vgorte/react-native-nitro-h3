@@ -1,0 +1,97 @@
+import { Canvas, Circle, Rect } from '@shopify/react-native-skia'
+import { useEffect, useMemo } from 'react'
+import { View } from 'react-native'
+import { type ComposedGesture, Gesture, GestureDetector } from 'react-native-gesture-handler'
+import { runOnJS, useDerivedValue, useSharedValue } from 'react-native-reanimated'
+import { colours, ramp } from '../../theme/tokens'
+import { sliderValueAt } from './track'
+
+export { sliderValueAt } from './track'
+
+/** Configures {@linkcode Slider}. */
+export interface SliderProps {
+  min: number
+  max: number
+  value: number
+  /** Length of the track in points; the knob is drawn inside its own margin on either side. */
+  width: number
+  /** Called on every whole step the drag crosses. */
+  onChange(next: number): void
+  /** Called once the drag ends, for the work that is too heavy to do at every step. */
+  onSettle(next: number): void
+  /** The gesture of the canvas underneath, which the drag must win against. */
+  blocks?: ComposedGesture
+}
+
+const KNOB_RADIUS = 5
+const TRACK_HEIGHT = 1
+const FILL_HEIGHT = 2
+const ROW_HEIGHT = 28
+
+/**
+ * Draws the hairline slider every act sets its one control with.
+ *
+ * The knob follows the finger on the UI thread, so a drag costs the act nothing between steps.
+ * `onChange` reaches the act on each whole step the drag crosses, which is a data change and may
+ * rebuild; `onSettle` reaches it once the drag ends, for the work that is only worth doing then.
+ */
+export function Slider({ min, max, value, width, onChange, onSettle, blocks }: SliderProps) {
+  const position = useSharedValue(value)
+  const canvasWidth = width + KNOB_RADIUS * 2
+
+  useEffect(() => {
+    position.value = value
+  }, [value, position])
+
+  const gesture = useMemo(() => {
+    const pan = Gesture.Pan()
+      .minDistance(0)
+      .onBegin((event) => {
+        'worklet'
+        position.value = sliderValueAt(event.x - KNOB_RADIUS, width, min, max)
+        runOnJS(onChange)(position.value)
+      })
+      .onChange((event) => {
+        'worklet'
+        const next = sliderValueAt(event.x - KNOB_RADIUS, width, min, max)
+        if (next === position.value) return
+        position.value = next
+        runOnJS(onChange)(next)
+      })
+      .onFinalize(() => {
+        'worklet'
+        runOnJS(onSettle)(position.value)
+      })
+    // the canvas below overlaps the track, so activation order must not decide
+    return blocks === undefined ? pan : pan.blocksExternalGesture(...blocks.toGestureArray())
+  }, [min, max, width, position, onChange, onSettle, blocks])
+
+  const fraction = useDerivedValue(() => (position.value - min) / (max - min))
+  const fillWidth = useDerivedValue(() => fraction.value * width)
+  const knobX = useDerivedValue(() => KNOB_RADIUS + fraction.value * width)
+  const size = useMemo(() => ({ width: canvasWidth, height: ROW_HEIGHT }), [canvasWidth])
+
+  return (
+    <GestureDetector gesture={gesture}>
+      <View style={size}>
+        <Canvas style={size}>
+          <Rect
+            x={KNOB_RADIUS}
+            y={ROW_HEIGHT / 2 - TRACK_HEIGHT / 2}
+            width={width}
+            height={TRACK_HEIGHT}
+            color={colours.hairline}
+          />
+          <Rect
+            x={KNOB_RADIUS}
+            y={ROW_HEIGHT / 2 - FILL_HEIGHT / 2}
+            width={fillWidth}
+            height={FILL_HEIGHT}
+            color={ramp[2]}
+          />
+          <Circle cx={knobX} cy={ROW_HEIGHT / 2} r={KNOB_RADIUS} color={ramp[2]} />
+        </Canvas>
+      </View>
+    </GestureDetector>
+  )
+}
