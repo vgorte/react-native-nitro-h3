@@ -1,28 +1,5 @@
-@import '@fontsource-variable/inter';
-@import '@fontsource-variable/jetbrains-mono';
-
-/* Starlight sizes the hero image inside `@layer starlight.core`, so these unlayered rules win. */
-.hero > img {
-  width: min(60%, 12rem);
-}
-
-@media (min-width: 50rem) {
-  .hero > img {
-    width: min(100%, 16rem);
-  }
-
-  /* The panel below the hero already pads by `1.5rem`, which is the whole gap the badge row needs. */
-  .hero {
-    padding-block-end: 0;
-  }
-}
-
-.badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-top: 0;
-}
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/jetbrains-mono";
 
 /* V3 palette. The hero and the docs share one ramp; the logo keeps hue 195 and is untouched. */
 :root {
@@ -40,8 +17,8 @@
   --sl-color-bg-inline-code: rgba(90, 150, 255, 0.14);
   --sl-color-hairline-light: rgba(120, 170, 255, 0.28);
   --sl-color-hairline: rgba(120, 170, 255, 0.28);
-  --sl-font: 'Inter Variable';
-  --sl-font-mono: 'JetBrains Mono Variable';
+  --sl-font: "Inter Variable";
+  --sl-font-mono: "JetBrains Mono Variable";
 }
 
 /* The header title reads as a wordmark, not a link, so it takes the text colour instead of the accent. */
@@ -52,4 +29,314 @@
 /* The claim under an act's description stands off by space and its mark alone, in the text colour. */
 .sl-markdown-content p.use {
   margin-top: 1.5rem;
+}
+
+/* The landing page is the hero alone, so the content panel releases its padding and its measure.
+   These rules are unlayered, so they beat `@layer starlight.core`. */
+html[data-has-hero] main {
+  padding: 0;
+}
+
+html[data-has-hero] .content-panel {
+  padding: 0;
+  border-top: 0;
+}
+
+html[data-has-hero] .content-panel > .sl-container {
+  max-width: none;
+  margin-inline: 0;
+}
+
+/* Everything that is not the hero keeps the panel's own measure and padding. */
+html[data-has-hero] .content-panel > .sl-container > :not(.nh3-hero) {
+  max-width: var(--sl-content-width);
+  margin-inline: auto;
+  padding-inline: var(--sl-content-pad-x);
+}
+
+html[data-has-hero] .content-panel > .sl-container > footer {
+  padding-bottom: 3vh;
+}
+
+/* The body ground is the same near-black the hero starts from, so the strip above the stage
+   reads as one dark field. The header keeps its z-index and stays above the canvas. */
+html[data-has-hero] .page > .header {
+  background-color: transparent;
+  border-bottom-color: transparent;
+}
+
+.nh3-hero {
+  --nh3-glow-x: 63%;
+  --nh3-glow-y: 70%;
+  --nh3-horizon: 41.4%;
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  cursor: crosshair;
+  user-select: none;
+  -webkit-user-select: none;
+  /* Not `none`: a vertical drag still scrolls the page down to the footer. */
+  touch-action: pan-y;
+  background:
+    radial-gradient(
+      120% 70% at var(--nh3-glow-x) var(--nh3-glow-y),
+      rgba(24, 54, 110, 0.55) 0%,
+      rgba(8, 16, 34, 0) 62%
+    ),
+    linear-gradient(180deg, #04060b 0%, #060b18 var(--nh3-horizon), #081226 100%);
+}
+
+.nh3-hero.mob {
+  --nh3-glow-x: 70%;
+  --nh3-glow-y: 69%;
+}
+
+@media (min-width: 50rem) and (orientation: landscape) {
+  .nh3-hero {
+    height: calc(100dvh - var(--sl-nav-height));
+  }
+}
+
+/* The same query `MODE_QUERY` in src/scripts/hero/scene.ts uses, so mode and layout agree. */
+@media (orientation: portrait), (max-width: 49.9375rem) {
+  .nh3-hero {
+    width: 100%;
+    aspect-ratio: 868 / 1882;
+    max-height: calc(100dvh - var(--sl-nav-height));
+  }
+}
+
+.nh3-fx {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.nh3-vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(3, 6, 12, 0.82) 0%, rgba(3, 6, 12, 0.45) 22%, rgba(3, 6, 12, 0) 45%),
+    linear-gradient(
+      180deg,
+      rgba(3, 6, 12, 0.55) 0%,
+      rgba(3, 6, 12, 0) 16%,
+      rgba(3, 6, 12, 0) 82%,
+      rgba(3, 6, 12, 0.45) 100%
+    );
+}
+
+.nh3-hero.mob .nh3-vignette {
+  background: linear-gradient(
+    180deg,
+    rgba(3, 6, 12, 0.88) 0%,
+    rgba(3, 6, 12, 0.55) 20%,
+    rgba(3, 6, 12, 0) 38%,
+    rgba(3, 6, 12, 0) 74%,
+    rgba(3, 6, 12, 0.6) 100%
+  );
+}
+
+/* The copy block keeps the ordinary cursor, so the pointer stays readable over the buttons. */
+.nh3-copy {
+  position: absolute;
+  left: clamp(1.5rem, 5.4vw, 6rem);
+  top: clamp(4rem, 19.5vw, 14rem);
+  z-index: 2;
+  max-width: min(34vw, 32rem);
+  pointer-events: none;
+  cursor: default;
+}
+
+.nh3-copy > * {
+  pointer-events: auto;
+}
+
+.nh3-copy h1 {
+  color: var(--sl-color-white);
+  font-weight: 700;
+  font-size: clamp(2.5rem, 5.2vw, 4.6rem);
+  line-height: 1.06;
+  letter-spacing: -0.028em;
+}
+
+.nh3-copy h1 .accent {
+  background: linear-gradient(92deg, #4da3ff 5%, #8f7bff 90%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.nh3-tagline {
+  margin-top: 1.5rem;
+  max-width: 30rem;
+  color: var(--sl-color-gray-2);
+  font-size: clamp(1rem, 1.35vw, 1.25rem);
+  line-height: 1.55;
+}
+
+.nh3-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-top: 2rem;
+}
+
+@media (orientation: portrait), (max-width: 49.9375rem) {
+  .nh3-copy {
+    left: 6vw;
+    right: 6vw;
+    top: 12vh;
+    max-width: none;
+  }
+}
+
+.nh3-readout {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 3;
+  width: max-content;
+  max-width: min(42vw, 30rem);
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--sl-color-hairline-light);
+  border-radius: 0.75rem;
+  pointer-events: none;
+  background: rgba(8, 13, 24, 0.78);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow:
+    0 0.5rem 1.6rem rgba(0, 0, 0, 0.45),
+    inset 0 0 1rem rgba(60, 140, 255, 0.12);
+}
+
+.nh3-line {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  white-space: nowrap;
+  font-family: var(--sl-font-mono);
+  font-size: 0.8125rem;
+  color: #cfe0f7;
+}
+
+.nh3-out {
+  margin-top: 0.45rem;
+}
+
+.nh3-arrow {
+  color: var(--sl-color-accent);
+  margin-right: 0.35rem;
+}
+
+.nh3-id {
+  color: #8fb6ee;
+  letter-spacing: 0.02em;
+}
+
+.nh3-chip {
+  margin-left: auto;
+  padding: 0.1rem 0.4rem;
+  border: 1px solid rgba(120, 170, 255, 0.3);
+  border-radius: 0.375rem;
+  font-family: var(--sl-font-mono);
+  font-size: 0.75rem;
+  color: #bcd2f5;
+  background: var(--sl-color-bg-inline-code);
+}
+
+.nh3-hero.mob .nh3-readout {
+  left: 4.5vw;
+  right: 4.5vw;
+  top: auto;
+  bottom: 4vw;
+  width: auto;
+  max-width: none;
+  padding: 0.9rem 1.1rem;
+}
+
+/* Clipped, not hidden: a display:none region announces nothing. */
+.nh3-announce {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.nh3-hint {
+  position: absolute;
+  left: 52%;
+  bottom: 4.6vw;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.9rem;
+  border-radius: 0.75rem;
+  pointer-events: none;
+  background: rgba(4, 6, 11, 0.45);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  transition: opacity 0.4s ease;
+}
+
+.nh3-hint.gone {
+  opacity: 0;
+}
+
+.nh3-hint[hidden] {
+  display: none;
+}
+
+.nh3-hint svg {
+  width: 1.6rem;
+  height: 1.6rem;
+  flex: none;
+  color: #8fb6ee;
+}
+
+.nh3-hint b {
+  display: block;
+  color: var(--sl-color-gray-1);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.nh3-hint small {
+  display: block;
+  margin-top: 0.1rem;
+  color: #c2ccda;
+  font-size: 0.8rem;
+}
+
+.nh3-hero.mob .nh3-hint {
+  left: 5vw;
+  right: 5vw;
+  bottom: 22vw;
+}
+
+.nh3-hero:focus-visible {
+  outline: 2px solid #4da3ff;
+  outline-offset: -2px;
+}
+
+.nh3-hero :focus-visible {
+  outline: 2px solid #4da3ff;
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nh3-hint,
+  .nh3-hero .sl-link-button {
+    transition: none;
+  }
 }

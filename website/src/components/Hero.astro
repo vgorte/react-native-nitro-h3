@@ -1,0 +1,76 @@
+---
+import { LinkButton } from '@astrojs/starlight/components'
+
+const { data } = Astro.locals.starlightRoute.entry
+const { title = data.title, tagline, actions = [] } = data.hero ?? {}
+---
+
+<section class="nh3-hero" tabindex="0" role="application" aria-label="Interactive H3 grid">
+  <canvas class="nh3-fx" aria-hidden="true"></canvas>
+  <div class="nh3-vignette" aria-hidden="true"></div>
+
+  <div class="nh3-copy">
+    <h1 id="_top" data-page-title set:html={title} />
+    {tagline && <p class="nh3-tagline" set:html={tagline} />}
+    {
+      actions.length > 0 && (
+        <div class="nh3-actions">
+          {actions.map(
+            ({ attrs: { class: className, ...attrs } = {}, icon, link: href, text, variant }) => (
+              <LinkButton {href} {variant} icon={icon?.name} class:list={[className]} {...attrs}>
+                {text}
+                {icon?.html && <Fragment set:html={icon.html} />}
+              </LinkButton>
+            )
+          )}
+        </div>
+      )
+    }
+  </div>
+
+  <div class="nh3-readout">
+    <div class="nh3-line">
+      <span class="nh3-call">latLngToCell(37.7749, -122.4194, 12)</span>
+      <span class="nh3-chip">res 12</span>
+    </div>
+    <div class="nh3-line nh3-out">
+      <span class="nh3-arrow">&#8594;</span><span class="nh3-id">0x8c283082803ffffn</span>
+    </div>
+  </div>
+
+  {/* Pointer motion writes the card directly, so only a deliberate change reaches this region. */}
+  <div class="nh3-announce" aria-live="polite"></div>
+
+  <div class="nh3-hint">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.7"
+      stroke-linejoin="round"
+      aria-hidden="true"><path d="M12 2.4 20.4 7.2v9.6L12 21.6 3.6 16.8V7.2Z"></path></svg
+    >
+    <div><b>Pick any cell</b><small>See the H3 id your app would get</small></div>
+  </div>
+</section>
+
+{/* The mode class is set before paint so a phone never shows one frame of the desktop scene.
+    It mirrors `pickMode` in src/scripts/hero/scene.ts, which owns the same rule for the canvas. */}
+<script is:inline>
+	(() => {
+		const forced = new URLSearchParams(location.search).get('mode');
+		const mob =
+			forced === 'mob' || forced === 'mobile'
+				? true
+				: forced === 'desk' || forced === 'desktop'
+					? false
+					: matchMedia('(orientation: portrait), (max-width: 49.9375rem)').matches;
+		if (mob) document.querySelector('.nh3-hero')?.classList.add('mob');
+	})();
+</script>
+
+<script>
+  import { start } from '../scripts/hero'
+
+  start()
+</script>
