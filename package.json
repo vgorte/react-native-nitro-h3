@@ -40,7 +40,7 @@
     },
     "hooks": {
       "before:release": "H3_PARITY_REQUIRED=1 bun run --cwd packages/react-native-nitro-h3 parity",
-      "after:bump": "bun install && git add bun.lock && bun example bundle-install && bun example pods && git add apps/example/ios/Podfile.lock"
+      "after:bump": "bun install && bun run scripts/sync-lockfile-versions.ts && git add bun.lock && bun example bundle-install && bun example pods && git add apps/example/ios/Podfile.lock"
     },
     "plugins": {
       "@release-it/bumper": {

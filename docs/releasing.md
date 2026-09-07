@@ -249,7 +249,11 @@ strict phases:
 3. **Root finalization:** Runs the root release-it. This phase owns the version bump commit, the
    git tag, generating the changelog, and creating the GitHub Release. It also bumps the version in
    `packages/react-native-nitro-h3/package.json` and `apps/example/package.json`, refreshes both
-   lockfiles, and stages them for the commit.
+   lockfiles, and stages them for the commit. The pinned bun 1.3.14 rewrites the workspace
+   entries of `bun.lock` only when a dependency changes
+   ([oven-sh/bun#18906](https://github.com/oven-sh/bun/issues/18906), fixed in bun 1.4.1). The hook
+   therefore runs `scripts/sync-lockfile-versions.ts` right after `bun install` to write the bumped
+   versions in.
 
 ### The two jobs of `release.yml`
 
