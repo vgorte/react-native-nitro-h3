@@ -1,0 +1,320 @@
+import type { EnergyState } from './energy'
+import {
+  centerOf,
+  depth,
+  type Fit,
+  type Hexagon,
+  hexPts,
+  inKeepOut,
+  KO_FEATHER,
+  type Point,
+  PU_MAX,
+  PU_MIN,
+  PV_MAX2,
+  PV_MIN2,
+  proj,
+  type Rect,
+  screenOf,
+} from './geometry'
+import type { Scene } from './scene'
+
+export type Sparkle = { x: number; y: number; ph: number; sp: number; r: number; d: number }
+export type LitCell = { q: number; r: number; ph: number; sp: number }
+export type Pulse = { t: number; a: number; d: number }
+
+/** The prototype's Lehmer generator, so the picked cells and sparkles reproduce exactly. */
+function lcg(seed: number): () => number {
+  let state = seed
+  return () => {
+    state = (state * 16807) % 2147483647
+    return state / 2147483647
+  }
+}
+
+function tracePolygon(g: CanvasRenderingContext2D, points: readonly Point[]): void {
+  g.beginPath()
+  for (const [i, point] of points.entries()) {
+    if (i === 0) g.moveTo(point[0], point[1])
+    else g.lineTo(point[0], point[1])
+  }
+  g.closePath()
+}
+
+/** Sizes the backing store to the stage and lays the cover fit onto the context. */
+export function sizeCanvas(
+  canvas: HTMLCanvasElement,
+  cssWidth: number,
+  cssHeight: number,
+  fit: Fit,
+  dpr: number,
+): CanvasRenderingContext2D {
+  canvas.width = Math.round(cssWidth * dpr)
+  canvas.height = Math.round(cssHeight * dpr)
+  const g = canvas.getContext('2d')
+  if (!g) throw new Error('the hero needs a 2d canvas context')
+  const k = fit.scale * dpr
+  g.setTransform(k, 0, 0, k, -fit.offsetX * k, -fit.offsetY * k)
+  return g
+}
+
+/** Clears the whole backing store, ignoring the cover-fit transform. */
+export function clearAll(g: CanvasRenderingContext2D): void {
+  g.save()
+  g.setTransform(1, 0, 0, 1, 0, 0)
+  g.clearRect(0, 0, g.canvas.width, g.canvas.height)
+  g.restore()
+}
+
+/**
+ * Paints the keep-out mask at design size. The blur eats into the rectangle from both sides, so
+ * the rectangle is grown by the feather before it is drawn.
+ */
+export function buildKeepOut(mask: HTMLCanvasElement, W: number, H: number, ko: Rect | null): void {
+  mask.width = W
+  mask.height = H
+  if (!ko) return
+  const g = mask.getContext('2d')
+  if (!g) return
+  const o = KO_FEATHER
+  g.filter = `blur(${KO_FEATHER / 2}px)`
+  g.fillStyle = '#000'
+  g.fillRect(ko.left - o, ko.top - o, ko.right - ko.left + o * 2, ko.bottom - ko.top + o * 2)
+  g.filter = 'none'
+}
+
+export function punchKeepOut(
+  g: CanvasRenderingContext2D,
+  mask: HTMLCanvasElement,
+  ko: Rect | null,
+): void {
+  if (!ko) return
+  g.globalCompositeOperation = 'destination-out'
+  g.drawImage(mask, 0, 0)
+  g.globalCompositeOperation = 'source-over'
+}
+
+function pickLitCells(scene: Scene, s: number): LitCell[] {
+  const rnd = lcg(40 + Math.round(s * 10000))
+  const cells: LitCell[] = []
+  for (let i = 0; i < 5; i++) {
+    const pu = scene.clampU[0] + rnd() * (scene.clampU[1] - scene.clampU[0])
+    const pv = -0.1 + rnd() * 0.3
+    const q = Math.round(pu / (1.5 * s))
+    const r = Math.round(pv / (s * Math.sqrt(3)) - q / 2)
+    cells.push({ q, r, ph: rnd() * 6.28, sp: 0.25 + rnd() * 0.5 })
+  }
+  return cells
+}
+
+/** Draws the static grid into its own canvas and returns the five slow-breathing lit cells. */
+export function buildGrid(
+  g: CanvasRenderingContext2D,
+  scene: Scene,
+  s: number,
+  mask: HTMLCanvasElement,
+  ko: Rect | null,
+): LitCell[] {
+  clearAll(g)
+  g.globalCompositeOperation = 'lighter'
+  const q0 = Math.floor(PU_MIN / (1.5 * s)) - 1
+  const q1 = Math.ceil(PU_MAX / (1.5 * s)) + 1
+  const kk = s * Math.sqrt(3)
+  for (let q = q0; q <= q1; q++) {
+    const r0 = Math.floor(PV_MIN2 / kk - q / 2) - 1
+    const r1 = Math.ceil(PV_MAX2 / kk - q / 2) + 1
+    for (let r = r0; r <= r1; r++) {
+      const centre = centerOf(q, r, s)
+      if (centre[0] < PU_MIN || centre[0] > PU_MAX) continue
+      if (centre[1] < PV_MIN2 || centre[1] > PV_MAX2) continue
+      const points = hexPts(scene.Hm, centre[0], centre[1], s * 0.985)
+      // The cull uses the design space, not the crop, so a resize never forces a rebuild.
+      const visible = points.some(
+        ([x, y]) => x > -60 && x < scene.W + 60 && y > -60 && y < scene.H + 60,
+      )
+      if (!visible) continue
+      const d = depth(centre[1])
+      tracePolygon(g, points)
+      g.strokeStyle = `rgba(80,160,255,${(0.13 + 0.21 * d).toFixed(3)})`
+      g.lineWidth = 0.8 + 1.1 * d
+      g.shadowColor = '#2f7dff'
+      g.shadowBlur = 3 + 7 * d
+      g.stroke()
+      g.shadowBlur = 0
+      g.fillStyle = `rgba(170,215,255,${(0.05 + 0.09 * d).toFixed(3)})`
+      for (const [x, y] of points) {
+        g.beginPath()
+        g.arc(x, y, 0.9 + 0.9 * d, 0, 6.29)
+        g.fill()
+      }
+    }
+  }
+  g.globalCompositeOperation = 'destination-in'
+  const mk = scene.mask
+  const radial = g.createRadialGradient(mk.cx, mk.cy, mk.r0, mk.cx, mk.cy, mk.r1)
+  radial.addColorStop(0, 'rgba(0,0,0,1)')
+  radial.addColorStop(1, 'rgba(0,0,0,0)')
+  g.fillStyle = radial
+  g.fillRect(0, 0, scene.W, scene.H)
+  const linear = g.createLinearGradient(0, mk.fy0, 0, mk.fy1)
+  linear.addColorStop(0, 'rgba(0,0,0,0.04)')
+  linear.addColorStop(1, 'rgba(0,0,0,1)')
+  g.fillStyle = linear
+  g.fillRect(0, 0, scene.W, scene.H)
+  g.globalCompositeOperation = 'source-over'
+  punchKeepOut(g, mask, ko)
+  return pickLitCells(scene, s)
+}
+
+export function makeSparkles(scene: Scene): Sparkle[] {
+  const rnd = lcg(7)
+  const sparkles: Sparkle[] = []
+  for (let i = 0; i < 18; i++) {
+    const u = 0.06 + rnd() * 0.96
+    const v = 0.1 + rnd() * 0.8
+    const [x, y] = proj(scene.Hm, u, v)
+    const d = Math.min(1, Math.max(0, (v - 0.05) / 0.91))
+    if (x < -20 || x > scene.W + 20 || y < -20 || y > scene.H + 20) continue
+    sparkles.push({
+      x,
+      y,
+      ph: rnd() * 6.28,
+      sp: 0.6 + rnd() * 1.2,
+      r: (1.2 + rnd() * 1.6) * (0.7 + 0.5 * d),
+      d,
+    })
+  }
+  return sparkles
+}
+
+export type FrameInput = {
+  ctx: CanvasRenderingContext2D
+  grid: HTMLCanvasElement
+  mask: HTMLCanvasElement
+  scene: Scene
+  ko: Rect | null
+  energy: EnergyState
+  sparkles: readonly Sparkle[]
+  litCells: readonly LitCell[]
+  pulses: Pulse[]
+  focus: { cu: number; cv: number; s: number }
+  breath: number
+  t: number
+  reduced: boolean
+}
+
+/** Draws one frame and returns the focus hexagon, which the card anchoring needs. */
+export function drawScene(input: FrameInput): Hexagon {
+  const { ctx, scene, t, reduced } = input
+  clearAll(ctx)
+  // The grid canvas already carries the cover fit, so it is blitted device pixel for device pixel.
+  ctx.save()
+  ctx.setTransform(1, 0, 0, 1, 0, 0)
+  ctx.drawImage(input.grid, 0, 0)
+  ctx.restore()
+  ctx.globalCompositeOperation = 'lighter'
+
+  for (const sparkle of input.sparkles) {
+    const osc = reduced
+      ? 0.35
+      : 0.22 + 0.28 * (0.5 + 0.5 * Math.sin((t / 1000) * sparkle.sp + sparkle.ph))
+    const a = osc * (0.45 + 0.55 * sparkle.d)
+    ctx.shadowColor = '#5fb0ff'
+    ctx.shadowBlur = 8
+    ctx.fillStyle = `rgba(190,225,255,${a.toFixed(3)})`
+    ctx.beginPath()
+    ctx.arc(sparkle.x, sparkle.y, sparkle.r, 0, 6.29)
+    ctx.fill()
+  }
+  ctx.shadowBlur = 0
+
+  for (const lit of input.litCells) {
+    const centre = centerOf(lit.q, lit.r, input.focus.s)
+    const d = depth(centre[1])
+    const osc = reduced ? 0.7 : 0.35 + 0.65 * (0.5 + 0.5 * Math.sin((t / 1000) * lit.sp + lit.ph))
+    tracePolygon(ctx, hexPts(scene.Hm, centre[0], centre[1], input.focus.s * 0.985))
+    ctx.fillStyle = `rgba(60,140,255,${((0.05 + 0.11 * d) * osc).toFixed(3)})`
+    ctx.fill()
+  }
+
+  ctx.shadowColor = '#3d8bff'
+  for (const cell of input.energy.cells.values()) {
+    const centre = centerOf(cell.q, cell.r, input.focus.s)
+    if (centre[0] < PU_MIN || centre[0] > PU_MAX) continue
+    if (centre[1] < PV_MIN2 || centre[1] > PV_MAX2) continue
+    const screen = screenOf(scene.Hm, centre[0], centre[1])
+    if (inKeepOut(input.ko, screen[0], screen[1], 0)) continue
+    const e = cell.e
+    const d = depth(centre[1])
+    tracePolygon(ctx, hexPts(scene.Hm, centre[0], centre[1], input.focus.s * 0.985))
+    ctx.fillStyle = `rgba(60,140,255,${(0.06 + 0.3 * e * d).toFixed(3)})`
+    ctx.strokeStyle = `rgba(140,195,255,${(0.15 + 0.6 * e).toFixed(3)})`
+    ctx.lineWidth = 0.8 + 2.2 * e
+    ctx.shadowBlur = 4 + 14 * e
+    ctx.fill()
+    ctx.stroke()
+  }
+  ctx.shadowBlur = 0
+
+  const { cu, cv, s } = input.focus
+  const fd = depth(cv)
+  const fp = hexPts(scene.Hm, cu, cv, s)
+  tracePolygon(ctx, fp)
+  ctx.strokeStyle = `rgba(168,212,255,${input.breath.toFixed(3)})`
+  ctx.lineWidth = 1.5 + 1.1 * fd
+  ctx.shadowColor = '#6cb4ff'
+  ctx.shadowBlur = 9 + 9 * fd
+  ctx.stroke()
+
+  for (const [x, y] of fp) {
+    ctx.fillStyle = `rgba(232,244,255,${((0.55 + 0.35 * fd) * input.breath).toFixed(3)})`
+    ctx.shadowColor = '#8ec5ff'
+    ctx.shadowBlur = 6 + 6 * fd
+    ctx.beginPath()
+    ctx.arc(x, y, 1.7 + 1.3 * fd, 0, 6.29)
+    ctx.fill()
+  }
+  const centreScreen = screenOf(scene.Hm, cu, cv)
+  ctx.fillStyle = 'rgba(240,248,255,0.95)'
+  ctx.shadowColor = '#9fd0ff'
+  ctx.shadowBlur = 10 + 10 * fd
+  ctx.beginPath()
+  ctx.arc(centreScreen[0], centreScreen[1], 2.6 + 1.2 * fd, 0, 6.29)
+  ctx.fill()
+  ctx.shadowBlur = 0
+
+  for (let i = input.pulses.length - 1; i >= 0; i--) {
+    const pulse = input.pulses[i]
+    if (!pulse) continue
+    const e = (t - pulse.t) / pulse.d
+    if (e >= 1) {
+      input.pulses.splice(i, 1)
+      continue
+    }
+    tracePolygon(ctx, hexPts(scene.Hm, cu, cv, s * (1 + e * 1.5)))
+    ctx.strokeStyle = `rgba(140,195,255,${(0.55 * pulse.a * (1 - e)).toFixed(3)})`
+    ctx.lineWidth = 2
+    ctx.stroke()
+  }
+
+  ctx.globalCompositeOperation = 'source-over'
+  punchKeepOut(ctx, input.mask, input.ko)
+  return fp
+}
+
+export function drawLeader(
+  g: CanvasRenderingContext2D,
+  hexAnchor: Point,
+  cardAnchor: Point,
+  docked: boolean,
+): void {
+  g.strokeStyle = 'rgba(150,195,255,0.5)'
+  g.lineWidth = docked ? 2 : 1.2
+  g.beginPath()
+  g.moveTo(hexAnchor[0], hexAnchor[1])
+  g.lineTo(cardAnchor[0], cardAnchor[1])
+  g.stroke()
+  g.fillStyle = 'rgba(190,220,255,0.85)'
+  g.beginPath()
+  g.arc(hexAnchor[0], hexAnchor[1], docked ? 3.5 : 2.2, 0, 6.29)
+  g.fill()
+}
