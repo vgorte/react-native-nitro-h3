@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { EXCLUDED, PAGES, type Page } from '../pages'
 import {
+  forceDarkSvg,
   frontmatter,
   hasSteps,
   hasTabs,
@@ -80,6 +81,37 @@ describe('stripHeadingEmoji', () => {
   test('leaves an emoji outside a heading alone', () => {
     const text = '| ✅ supported | yes |\n\n> 💡 A tip.\n'
     expect(stripHeadingEmoji(text)).toBe(text)
+  })
+})
+
+describe('forceDarkSvg', () => {
+  const svg = [
+    '<style>',
+    'text { fill: #727a84 }',
+    '@media (prefers-color-scheme: light) {',
+    'text { fill: #57606a }',
+    '}',
+    '@media (prefers-color-scheme: dark) {',
+    'text { fill: #8b949e }',
+    '}',
+    '</style>',
+  ].join('\n')
+
+  test('drops the light block and unwraps the dark one after the base rules', () => {
+    expect(forceDarkSvg(svg)).toBe(
+      ['<style>', 'text { fill: #727a84 }', 'text { fill: #8b949e }', '</style>'].join('\n'),
+    )
+  })
+
+  test('returns a file without a media block unchanged', () => {
+    const plain = '<svg><path d="M0 0h8v8H0z" fill="#219fc9"/></svg>'
+    expect(forceDarkSvg(plain)).toBe(plain)
+  })
+
+  test('throws on an unclosed media block', () => {
+    expect(() => forceDarkSvg('@media (prefers-color-scheme: dark) {\ntext { fill: red }')).toThrow(
+      /never closed/,
+    )
   })
 })
 
