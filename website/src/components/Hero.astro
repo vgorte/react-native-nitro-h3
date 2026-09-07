@@ -5,7 +5,7 @@ const { data } = Astro.locals.starlightRoute.entry
 const { title = data.title, tagline, actions = [] } = data.hero ?? {}
 ---
 
-<section class="nh3-hero" tabindex="0" role="application" aria-label="Interactive H3 grid">
+<section class="nh3-hero" tabindex="0" aria-label="Interactive H3 grid">
   <canvas class="nh3-fx" aria-hidden="true"></canvas>
   <div class="nh3-vignette" aria-hidden="true"></div>
 

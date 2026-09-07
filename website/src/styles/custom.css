@@ -54,7 +54,9 @@ html[data-has-hero] .content-panel > .sl-container > :not(.nh3-hero) {
   padding-inline: var(--sl-content-pad-x);
 }
 
-html[data-has-hero] .content-panel > .sl-container > footer {
+/* `Footer.astro` puts its own link row after Starlight's footer, so both carry the breathing room
+   and the page ends below the last visible line. */
+html[data-has-hero] .content-panel > .sl-container > :is(footer, .site-footer) {
   padding-bottom: 3vh;
 }
 
@@ -144,7 +146,7 @@ html[data-has-hero] .page > .header {
 .nh3-copy {
   position: absolute;
   left: clamp(1.5rem, 5.4vw, 6rem);
-  top: clamp(4rem, 19.5vw, 14rem);
+  top: clamp(4rem, min(19.5vw, 30vh), 14rem);
   z-index: 2;
   max-width: min(34vw, 32rem);
   pointer-events: none;
