@@ -1,3 +1,6 @@
+@import '@fontsource-variable/inter';
+@import '@fontsource-variable/jetbrains-mono';
+
 /* Starlight sizes the hero image inside `@layer starlight.core`, so these unlayered rules win. */
 .hero > img {
   width: min(60%, 12rem);
@@ -21,17 +24,24 @@
   margin-top: 0;
 }
 
-/* Accent palette in the hue of the logo centre `#219FC9`, with Starlight's own lightness steps. */
+/* V3 palette. The hero and the docs share one ramp; the logo keeps hue 195 and is untouched. */
 :root {
-  --sl-color-accent-low: hsl(195, 54%, 20%);
-  --sl-color-accent: #219fc9;
-  --sl-color-accent-high: hsl(195, 85%, 80%);
-}
-
-:root[data-theme="light"] {
-  --sl-color-accent-low: hsl(195, 88%, 90%);
-  --sl-color-accent: #219fc9;
-  --sl-color-accent-high: hsl(195, 80%, 28%);
+  --sl-color-accent: #4da3ff;
+  --sl-color-accent-low: hsl(211, 60%, 18%);
+  --sl-color-accent-high: hsl(211, 90%, 85%);
+  --sl-color-white: #f2f5fa;
+  --sl-color-gray-1: #e8edf5;
+  --sl-color-gray-2: #c7d2e2;
+  --sl-color-gray-3: #93a1b5;
+  --sl-color-gray-4: #5c6a80;
+  --sl-color-gray-5: #1c2740;
+  --sl-color-gray-6: #0b1120;
+  --sl-color-black: #04060b;
+  --sl-color-bg-inline-code: rgba(90, 150, 255, 0.14);
+  --sl-color-hairline-light: rgba(120, 170, 255, 0.28);
+  --sl-color-hairline: rgba(120, 170, 255, 0.28);
+  --sl-font: 'Inter Variable';
+  --sl-font-mono: 'JetBrains Mono Variable';
 }
 
 /* The header title reads as a wordmark, not a link, so it takes the text colour instead of the accent. */

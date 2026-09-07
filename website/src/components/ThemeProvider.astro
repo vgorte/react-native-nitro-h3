@@ -1,0 +1,11 @@
+{/* Dark only: the theme is pinned here, and `ThemeSelect.astro` is empty so no picker ships. */}
+<script is:inline>
+	document.documentElement.dataset.theme = 'dark';
+	try {
+		// An older visit may still hold a light preference, which would flip the page back.
+		localStorage.removeItem('starlight-theme');
+	} catch {
+		// Storage can be refused; the attribute above has already settled the theme.
+	}
+	window.StarlightThemeProvider = { updatePickers() {} };
+</script>

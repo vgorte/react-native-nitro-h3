@@ -16,7 +16,17 @@ export default defineConfig({
         { icon: 'github', label: 'GitHub', href: REPO },
         { icon: 'npm', label: 'npm', href: 'https://www.npmjs.com/package/react-native-nitro-h3' },
       ],
-      components: { Footer: './src/components/Footer.astro' },
+      components: {
+        Footer: './src/components/Footer.astro',
+        ThemeProvider: './src/components/ThemeProvider.astro',
+        ThemeSelect: './src/components/ThemeSelect.astro',
+      },
+      expressiveCode: {
+        styleOverrides: {
+          borderColor: 'var(--sl-color-hairline-light)',
+          codeBackground: 'var(--sl-color-gray-6)',
+        },
+      },
       customCss: ['./src/styles/custom.css'],
       lastUpdated: true,
       head: [
