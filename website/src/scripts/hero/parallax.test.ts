@@ -188,7 +188,7 @@ describe('the two shipped presets', () => {
     state.terY = -2.3456
     state.tiltX = 0.98765
     state.tiltY = -1.23456
-    state.cloX = 3.14159
+    state.cloX = 3.6
     state.idleX = 1
     state.cloY = 0
     state.idleY = -0.5
@@ -196,6 +196,6 @@ describe('the two shipped presets', () => {
     expect(terrainTransform(state, true)).toBe(
       'perspective(1200px) translate3d(1.23px,-2.35px,0) rotateX(0.988deg) rotateY(-1.235deg)',
     )
-    expect(cloudTransform(state)).toBe('translate3d(4.14px,-0.50px,0)')
+    expect(cloudTransform(state)).toBe('translate3d(4.60px,-0.50px,0)')
   })
 })
