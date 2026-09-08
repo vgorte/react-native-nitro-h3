@@ -14,7 +14,7 @@ const HERO = join(WEBSITE, 'src', 'assets', 'hero')
 /** The in-repo source. The originals live outside the repository and are passed as an argument. */
 const SOURCE = join(HERO, 'clouds-layer.webp')
 const OUT = join(HERO, 'clouds-plate.webp')
-/** The quality the two hero images are accepted at, see the design's section 5.4. */
+/** The quality both hero images are accepted at, and the one the site delivers them at. */
 const QUALITY = 85
 
 type Raw = { data: Buffer; width: number; height: number }

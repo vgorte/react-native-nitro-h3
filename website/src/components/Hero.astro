@@ -8,14 +8,37 @@ const { data } = Astro.locals.starlightRoute.entry
 const { title = data.title, tagline, actions = [] } = data.hero ?? {}
 ---
 
+{/* Quality 85 is the setting both plates were accepted at, so the pipeline does not re-encode them
+    at its own default. The two `sizes` are the layer widths, 108 and 112 percent of the stage. */}
+
 <section class="nh3-hero" tabindex="0" aria-label="Interactive H3 grid">
   <div class="nh3-layer nh3-terrain" aria-hidden="true">
-    <Image src={terrain} alt="" aria-hidden="true" loading="eager" decoding="async" />
+    <Image
+      src={terrain}
+      widths={[768, 1376]}
+      sizes="108vw"
+      format="webp"
+      quality={85}
+      alt=""
+      aria-hidden="true"
+      loading="eager"
+      decoding="async"
+    />
     <canvas class="nh3-fx" aria-hidden="true"></canvas>
   </div>
 
   <div class="nh3-layer nh3-clouds" aria-hidden="true">
-    <Image src={cloudPlate} alt="" aria-hidden="true" loading="eager" decoding="async" />
+    <Image
+      src={cloudPlate}
+      widths={[576, 1024]}
+      sizes="112vw"
+      format="webp"
+      quality={85}
+      alt=""
+      aria-hidden="true"
+      loading="eager"
+      decoding="async"
+    />
   </div>
 
   <div class="nh3-vignette" aria-hidden="true"></div>
