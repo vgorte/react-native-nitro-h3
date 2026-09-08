@@ -177,7 +177,7 @@ export function start(): void {
     // A mode change and the first paint are not deliberate changes, so neither is announced.
     shownQ = focusQ
     shownR = focusR
-    updateReadout(readoutEls, focusQ, focusR, sTarget, false)
+    updateReadout(readoutEls, focusQ, focusR, false)
   }
 
   /** False when the stage has no layout yet, in which case the scene stays the placeholder. */
@@ -209,7 +209,7 @@ export function start(): void {
     if (!announce && focusQ === shownQ && focusR === shownR) return
     shownQ = focusQ
     shownR = focusR
-    updateReadout(readoutEls, focusQ, focusR, sTarget, announce)
+    updateReadout(readoutEls, focusQ, focusR, announce)
   }
 
   const applyMode = (next: Mode): void => {

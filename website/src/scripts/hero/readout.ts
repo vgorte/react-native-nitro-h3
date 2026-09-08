@@ -1,5 +1,5 @@
-import { cellToLatLng, latLngToCell } from 'h3-js'
-import { centerOf, type Hexagon, type Point, RES, type Rect } from './geometry'
+import { cellAt, Q_COUNT, Q_MIN, R_COUNT, R_MIN } from './cells.generated'
+import { type Hexagon, type Point, RES, type Rect } from './geometry'
 
 export type ReadoutElements = {
   card: HTMLElement
@@ -9,28 +9,26 @@ export type ReadoutElements = {
   announce: HTMLElement | null
 }
 
-/** San Francisco anchors the plane, so the readout reads as a real place. */
-const LAT0 = 37.7749
-const LNG0 = -122.4194
-const LAT_PER_PV = 0.42
-const LNG_PER_PU = 0.58
+/**
+ * Clamps an axial cell into the generated table. No supported stage box reaches past the table,
+ * so this only keeps the card honest if one ever does.
+ */
+export function clampToTable(q: number, r: number): Point {
+  return [
+    Math.min(Math.max(q, Q_MIN), Q_MIN + Q_COUNT - 1),
+    Math.min(Math.max(r, R_MIN), R_MIN + R_COUNT - 1),
+  ]
+}
 
 /**
  * Writes the readout for one cell. The coordinates shown are the cell centre, so calling
  * `latLngToCell` with them returns exactly the id on the second line.
  */
-export function updateReadout(
-  el: ReadoutElements,
-  q: number,
-  r: number,
-  s: number,
-  announce: boolean,
-): void {
-  const centre = centerOf(q, r, s)
-  const id = latLngToCell(LAT0 - centre[1] * LAT_PER_PV, LNG0 + centre[0] * LNG_PER_PU, RES)
-  const [lat, lng] = cellToLatLng(id)
-  const call = `latLngToCell(${lat.toFixed(4)}, ${lng.toFixed(4)}, ${RES})`
-  const hex = `0x${id.toLowerCase()}n`
+export function updateReadout(el: ReadoutElements, q: number, r: number, announce: boolean): void {
+  const cell = cellAt(...clampToTable(q, r))
+  if (!cell) return
+  const call = `latLngToCell(${cell.lat.toFixed(4)}, ${cell.lng.toFixed(4)}, ${RES})`
+  const hex = `0x${cell.id}n`
   el.call.textContent = call
   el.id.textContent = hex
   // pointer motion would flood the live region
