@@ -41,7 +41,7 @@ export function alphaFromLuma(data: Uint8ClampedArray, gain: number, whiten: boo
 }
 
 /** Bakes the source image once and resolves with an object URL for the layer. */
-export function bakeCloudPlate(source: HTMLImageElement, plate: Plate): Promise<string> {
+export async function bakeCloudPlate(source: HTMLImageElement, plate: Plate): Promise<string> {
   const iw = source.naturalWidth
   const ih = source.naturalHeight
   if (!iw || !ih) return Promise.reject(new Error('the cloud source has not decoded yet'))
@@ -75,11 +75,12 @@ export function bakeCloudPlate(source: HTMLImageElement, plate: Plate): Promise<
   alphaFromLuma(image.data, plate.gain, plate.whiten)
   g.putImageData(image, 0, 0)
 
-  return new Promise((resolve, reject) => {
+  const url = await new Promise<string>((resolve, reject) => {
     // PNG, because the plate needs its alpha channel.
     canvas.toBlob((blob) => {
       if (blob) resolve(URL.createObjectURL(blob))
       else reject(new Error('the cloud plate did not encode'))
     }, 'image/png')
   })
+  return url
 }
