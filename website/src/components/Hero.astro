@@ -22,6 +22,7 @@ const { title = data.title, tagline, actions = [] } = data.hero ?? {}
       alt=""
       aria-hidden="true"
       loading="eager"
+      fetchpriority="high"
       decoding="async"
     />
     <canvas class="nh3-fx" aria-hidden="true"></canvas>
@@ -37,6 +38,7 @@ const { title = data.title, tagline, actions = [] } = data.hero ?? {}
       alt=""
       aria-hidden="true"
       loading="eager"
+      fetchpriority="low"
       decoding="async"
     />
   </div>
