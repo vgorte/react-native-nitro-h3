@@ -7,6 +7,7 @@
     "og": "bun scripts/render-og.ts",
     "dev": "bun run sync && astro dev",
     "build": "bun run sync && astro build",
+    "check": "astro check --tsconfig ./tsconfig.astro.json",
     "preview": "astro preview"
   },
   "dependencies": {
@@ -18,5 +19,9 @@
     "sharp": "0.35.4",
     "starlight-links-validator": "0.25.3",
     "starlight-llms-txt": "0.11.0"
+  },
+  "devDependencies": {
+    "@astrojs/check": "0.9.10",
+    "typescript": "6.0.3"
   }
 }

@@ -17,6 +17,9 @@ jobs:
         with:
           bun-version: 1.3.14  # <-- pinned: `latest` turns an upstream release into a red build
       - run: bun install --frozen-lockfile
+      # The website sits outside the root workspace and carries its own lockfile, and the typecheck
+      # reaches into it for the hero scripts and `astro check`.
+      - run: bun install --frozen-lockfile --cwd website
       - run: bun run lint
       - run: bun run typecheck
       - run: bun run build

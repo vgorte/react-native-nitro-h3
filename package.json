@@ -6,7 +6,7 @@
     "apps/*"
   ],
   "scripts": {
-    "typecheck": "bun run --cwd packages/react-native-nitro-h3 typecheck && bun run --cwd packages/react-native-nitro-h3 typecheck:tests && bun run --cwd apps/example typecheck && tsc --noEmit -p scripts && tsc --noEmit -p website",
+    "typecheck": "bun run --cwd packages/react-native-nitro-h3 typecheck && bun run --cwd packages/react-native-nitro-h3 typecheck:tests && bun run --cwd apps/example typecheck && tsc --noEmit -p scripts && tsc --noEmit -p website && bun run --cwd website check",
     "build": "bun run --cwd packages/react-native-nitro-h3 build",
     "specs": "bun run --cwd packages/react-native-nitro-h3 specs",
     "lint": "biome check .",

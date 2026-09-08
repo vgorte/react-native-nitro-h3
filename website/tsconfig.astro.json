@@ -1,0 +1,7 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["bun", "astro/client", "@astrojs/starlight/locals"]
+  },
+  "include": [".astro/types.d.ts", "src/**/*.astro"]
+}
