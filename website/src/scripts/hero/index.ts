@@ -248,8 +248,8 @@ export function start(): void {
     cardX = null
     cardY = null
     cardSide = 1
-    card.style.left = ''
-    card.style.top = ''
+    // The docked layout places the card from CSS, so the followed position has to go with the mode.
+    card.style.transform = ''
     // The mode is part of the signature; this is what also carries the reset state into the plate.
     buildSig = ''
     const ready = rebuild()
@@ -390,8 +390,10 @@ export function start(): void {
       cardX += (anchor.x - cardX) * k
       cardY += (anchor.y - cardY) * k
       const placed = toStagePoint(layers, cardX, cardY, stageRect)
-      card.style.left = `${placed[0]}px`
-      card.style.top = `${placed[1]}px`
+      // A transform, not `left` and `top`: the card carries a backdrop filter, and a layout
+      // property would dirty layout for its subtree on every frame. The anchoring maths above is
+      // unchanged, only the write is.
+      card.style.transform = `translate3d(${placed[0].toFixed(1)}px,${placed[1].toFixed(1)}px,0)`
       cardBox = { left: cardX, top: cardY, right: cardX + cardWidth, bottom: cardY + cardHeight }
     }
 
