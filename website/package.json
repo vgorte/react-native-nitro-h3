@@ -6,6 +6,7 @@
     "sync": "bun scripts/sync-docs.ts",
     "og": "bun scripts/render-og.ts",
     "gen:cells": "bun scripts/gen-cell-table.ts",
+    "gen:clouds": "bun scripts/gen-cloud-plate.ts",
     "dev": "bun run sync && astro dev",
     "build": "bun run sync && astro build",
     "check": "astro check --tsconfig ./tsconfig.astro.json",

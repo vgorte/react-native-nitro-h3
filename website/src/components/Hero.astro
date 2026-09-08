@@ -1,7 +1,7 @@
 ---
 import { Image } from 'astro:assets'
 import { LinkButton } from '@astrojs/starlight/components'
-import clouds from '../assets/hero/clouds-layer.webp'
+import cloudPlate from '../assets/hero/clouds-plate.webp'
 import terrain from '../assets/hero/terrain-layer-2.webp'
 
 const { data } = Astro.locals.starlightRoute.entry
@@ -15,11 +15,8 @@ const { title = data.title, tagline, actions = [] } = data.hero ?? {}
   </div>
 
   <div class="nh3-layer nh3-clouds" aria-hidden="true">
-    <img class="nh3-cloud-plate" alt="" aria-hidden="true" />
+    <Image src={cloudPlate} alt="" aria-hidden="true" loading="eager" decoding="async" />
   </div>
-
-  {/* The unbaked plate. `plates.ts` reads its pixels once and writes the result to the layer. */}
-  <Image class="nh3-cloud-source" src={clouds} alt="" aria-hidden="true" loading="eager" decoding="async" />
 
   <div class="nh3-vignette" aria-hidden="true"></div>
 

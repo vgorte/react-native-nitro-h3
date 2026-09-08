@@ -8,6 +8,7 @@
   "include": [
     "pages.ts",
     "scripts/gen-cell-table.ts",
+    "scripts/gen-cloud-plate.ts",
     "scripts/sync-docs.ts",
     "scripts/sync-docs.test.ts",
     "src/scripts/hero/**/*.ts"

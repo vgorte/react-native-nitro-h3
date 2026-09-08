@@ -1,6 +1,9 @@
 import { PARA_REF_W } from './parallax'
 
-/** The layer's own 0.85 opacity is CSS, `.nh3-clouds`, so the bake carries no alpha field. */
+/**
+ * The cloud plate's recipe. The plate is baked by `website/scripts/gen-cloud-plate.ts` and ships as
+ * an image, so nothing here reaches the browser; the constants stay next to the scene they describe.
+ */
 export type Plate = { levels: string; whiten: boolean; gain: number }
 
 /**
@@ -13,7 +16,7 @@ export const CLOUD_PLATE: Plate = { levels: 'none', whiten: false, gain: 1 }
 export const DOF_BLUR_PX = 6
 
 /** The cloud layer's share of the stage width, which is what image pixels are scaled against. */
-const CLOUD_SPAN = 1.12
+export const CLOUD_SPAN = 1.12
 
 /** The band between the two zeroes stays sharp; the blurred copy is let through above and below. */
 export const DOF_STOPS: readonly (readonly [number, number])[] = [
@@ -23,6 +26,31 @@ export const DOF_STOPS: readonly (readonly [number, number])[] = [
   [0.73, 0],
   [1, 1],
 ]
+
+/** Returns the blur radius the plate is baked at, in pixels of an image this wide. */
+export function cloudBlurPx(imageWidth: number): number {
+  return (DOF_BLUR_PX * imageWidth) / (CLOUD_SPAN * PARA_REF_W)
+}
+
+/**
+ * Returns the depth-of-field band's alpha at a fraction of the image height, interpolated linearly
+ * over `DOF_STOPS`. It is the vertical gradient the blurred copy is cut with.
+ */
+export function bandAlphaAt(t: number): number {
+  const first = DOF_STOPS[0]
+  const last = DOF_STOPS[DOF_STOPS.length - 1]
+  if (!first || !last) return 0
+  if (t <= first[0]) return first[1]
+  for (let i = 1; i < DOF_STOPS.length; i += 1) {
+    const stop = DOF_STOPS[i]
+    const previous = DOF_STOPS[i - 1]
+    if (!stop || !previous || t > stop[0]) continue
+    const span = stop[0] - previous[0]
+    const k = span === 0 ? 1 : (t - previous[0]) / span
+    return previous[1] + (stop[1] - previous[1]) * k
+  }
+  return last[1]
+}
 
 /** Writes luma into the alpha channel in place. Pure, so it is the part under test. */
 export function alphaFromLuma(data: Uint8ClampedArray, gain: number, whiten: boolean): void {
@@ -38,49 +66,4 @@ export function alphaFromLuma(data: Uint8ClampedArray, gain: number, whiten: boo
     data[p + 1] = Math.min(255, g / k)
     data[p + 2] = Math.min(255, b / k)
   }
-}
-
-/** Bakes the source image once and resolves with an object URL for the layer. */
-export async function bakeCloudPlate(source: HTMLImageElement, plate: Plate): Promise<string> {
-  const iw = source.naturalWidth
-  const ih = source.naturalHeight
-  if (!iw || !ih) return Promise.reject(new Error('the cloud source has not decoded yet'))
-  const canvas = document.createElement('canvas')
-  canvas.width = iw
-  canvas.height = ih
-  const g = canvas.getContext('2d')
-  if (!g) return Promise.reject(new Error('the cloud plate needs a 2d canvas context'))
-  g.filter = plate.levels
-  g.drawImage(source, 0, 0)
-
-  const blurred = document.createElement('canvas')
-  blurred.width = iw
-  blurred.height = ih
-  const bg = blurred.getContext('2d')
-  if (!bg) return Promise.reject(new Error('the cloud plate needs a 2d canvas context'))
-  const blur = (DOF_BLUR_PX * iw) / (CLOUD_SPAN * PARA_REF_W)
-  bg.filter = `${plate.levels === 'none' ? '' : `${plate.levels} `}blur(${blur.toFixed(2)}px)`
-  bg.drawImage(source, 0, 0)
-  bg.filter = 'none'
-  bg.globalCompositeOperation = 'destination-in'
-  const band = bg.createLinearGradient(0, 0, 0, ih)
-  for (const [stop, alpha] of DOF_STOPS) band.addColorStop(stop, `rgba(0,0,0,${alpha})`)
-  bg.fillStyle = band
-  bg.fillRect(0, 0, iw, ih)
-  bg.globalCompositeOperation = 'source-over'
-  g.filter = 'none'
-  g.drawImage(blurred, 0, 0)
-
-  const image = g.getImageData(0, 0, iw, ih)
-  alphaFromLuma(image.data, plate.gain, plate.whiten)
-  g.putImageData(image, 0, 0)
-
-  const url = await new Promise<string>((resolve, reject) => {
-    // PNG, because the plate needs its alpha channel.
-    canvas.toBlob((blob) => {
-      if (blob) resolve(URL.createObjectURL(blob))
-      else reject(new Error('the cloud plate did not encode'))
-    }, 'image/png')
-  })
-  return url
 }

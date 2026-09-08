@@ -308,10 +308,6 @@ html[data-has-hero] .page > .header {
   opacity: 0.85;
 }
 
-.nh3-cloud-source {
-  display: none;
-}
-
 /* The canvas overhangs the stage by `BLEED` on every side inside a layer that overhangs by
    `GROW / 2`, so the gap per side is (0.04 - 0.035) / 1.08 of the layer. */
 .nh3-fx {

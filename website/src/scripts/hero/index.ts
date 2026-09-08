@@ -29,7 +29,6 @@ import {
   toCanvas,
   toStagePoint,
 } from './parallax'
-import { bakeCloudPlate, CLOUD_PLATE } from './plates'
 import { anchorCard, leaderAnchors, type ReadoutElements, segBox, updateReadout } from './readout'
 import {
   bleedOf,
@@ -70,33 +69,11 @@ export function start(): void {
   const idOut = card.querySelector<HTMLElement>('.nh3-id')
   if (!call || !idOut) return
   const readoutEls: ReadoutElements = { card, call, id: idOut, announce: announceEl }
-  const cloudSource = document.querySelector<HTMLImageElement>('.nh3-cloud-source')
-  const cloudPlate = document.querySelector<HTMLImageElement>('.nh3-cloud-plate')
 
   const params = new URLSearchParams(location.search)
   const perfLog = params.get('heroPerf') === '1'
   const debug = params.get('heroDebug') === '1'
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches
-
-  let plateUrl: string | null = null
-  const bake = (): void => {
-    if (!cloudSource || !cloudPlate) return
-    void bakeCloudPlate(cloudSource, CLOUD_PLATE).then(
-      (url) => {
-        if (plateUrl) URL.revokeObjectURL(plateUrl)
-        plateUrl = url
-        cloudPlate.src = url
-      },
-      // The stage never depends on the plate, so a failed bake leaves the layer empty and says so.
-      (error: unknown) => {
-        console.warn('the hero cloud plate did not bake', error)
-      },
-    )
-  }
-  if (cloudSource) {
-    if (cloudSource.complete) bake()
-    else cloudSource.addEventListener('load', bake, { once: true })
-  }
 
   const grid = document.createElement('canvas')
   const mask = document.createElement('canvas')

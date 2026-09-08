@@ -1,5 +1,13 @@
 import { describe, expect, test } from 'bun:test'
-import { alphaFromLuma, CLOUD_PLATE, DOF_BLUR_PX, DOF_STOPS } from './plates'
+import {
+  alphaFromLuma,
+  bandAlphaAt,
+  CLOUD_PLATE,
+  CLOUD_SPAN,
+  cloudBlurPx,
+  DOF_BLUR_PX,
+  DOF_STOPS,
+} from './plates'
 
 const pixels = (...rgb: number[][]): Uint8ClampedArray => {
   const data = new Uint8ClampedArray(rgb.length * 4)
@@ -38,10 +46,33 @@ describe('alphaFromLuma', () => {
   })
 })
 
+describe('bandAlphaAt', () => {
+  test('returns the stop values at the stops themselves', () => {
+    for (const [stop, alpha] of DOF_STOPS) expect(bandAlphaAt(stop)).toBeCloseTo(alpha, 12)
+  })
+
+  test('keeps the blurred copy out of the band between the two zeroes', () => {
+    expect(bandAlphaAt(0.3)).toBe(0)
+    expect(bandAlphaAt(0.5)).toBe(0)
+    expect(bandAlphaAt(0.7)).toBe(0)
+  })
+
+  test('ramps linearly out of the band towards both edges', () => {
+    expect(bandAlphaAt(0.16)).toBeCloseTo(0.5, 12)
+    expect(bandAlphaAt(0.865)).toBeCloseTo(0.5, 12)
+  })
+
+  test('clamps outside the stop range instead of extrapolating', () => {
+    expect(bandAlphaAt(-1)).toBe(1)
+    expect(bandAlphaAt(2)).toBe(1)
+  })
+})
+
 describe('the shipped plate', () => {
   test('carries the mask preset of the spec', () => {
     expect(CLOUD_PLATE).toEqual({ levels: 'none', whiten: false, gain: 1 })
     expect(DOF_BLUR_PX).toBe(6)
+    expect(CLOUD_SPAN).toBe(1.12)
     expect(DOF_STOPS).toEqual([
       [0, 1],
       [0.07, 1],
@@ -49,5 +80,10 @@ describe('the shipped plate', () => {
       [0.73, 0],
       [1, 1],
     ])
+  })
+
+  test('scales the blur from the reference stage to image pixels', () => {
+    expect(cloudBlurPx(1024)).toBeCloseTo(3.28, 2)
+    expect(cloudBlurPx(2048)).toBeCloseTo(2 * cloudBlurPx(1024), 12)
   })
 })
