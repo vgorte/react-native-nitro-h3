@@ -16,6 +16,8 @@ export type InputPort = {
   updateReadout: (announce: boolean) => void
   pulse: () => void
   setOnStage: (on: boolean) => void
+  /** Zeroes the normalised pointer, so the layers ease home when the pointer leaves the stage. */
+  clearPointer: () => void
   isDocked: () => boolean
   reduced: boolean
 }
@@ -88,6 +90,7 @@ export function attachInput(
   })
 
   stage.addEventListener('pointerleave', () => {
+    port.clearPointer()
     if (!down) port.setOnStage(false)
   })
 

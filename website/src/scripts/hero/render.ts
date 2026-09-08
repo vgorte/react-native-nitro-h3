@@ -121,6 +121,18 @@ export function maskGeometry(scene: Calibrated): {
   }
 }
 
+/** What the two mask gradients leave of a cell at a canvas point, as the two factors. */
+export function maskFactors(
+  scene: Calibrated,
+  x: number,
+  y: number,
+): { fade: number; radial: number } {
+  const m = maskGeometry(scene)
+  const fade = Math.min(1, Math.max(0.04, 0.04 + (0.96 * (y - m.fy0)) / (m.fy1 - m.fy0)))
+  const dist = Math.hypot(x - m.cx, y - m.cy)
+  return { fade, radial: Math.min(1, Math.max(0, 1 - (dist - m.r0) / (m.r1 - m.r0))) }
+}
+
 function pickLitCells(scene: Calibrated, s: number): LitCell[] {
   const rnd = lcg(40 + Math.round(s * 10000))
   const cells: LitCell[] = []
