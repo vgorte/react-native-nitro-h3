@@ -36,6 +36,39 @@ function tracePolygon(g: CanvasRenderingContext2D, points: readonly Point[]): vo
   g.closePath()
 }
 
+/**
+ * The build's depth ramp, resolved to this many steps and precomputed once. A cell then costs a
+ * table lookup instead of two colour strings, and the state only changes where the step does.
+ * Sixteen keeps the quantisation invisible: the stroke alpha step is 0.013 and the blur step
+ * 0.44 px.
+ */
+const DEPTH_STEPS = 16
+
+type DepthStyle = {
+  stroke: string
+  dot: string
+  lineWidth: number
+  blur: number
+  dotRadius: number
+}
+
+function depthStyle(d: number): DepthStyle {
+  return {
+    stroke: `rgba(80,160,255,${(0.13 + 0.21 * d).toFixed(3)})`,
+    dot: `rgba(170,215,255,${(0.05 + 0.09 * d).toFixed(3)})`,
+    lineWidth: 0.8 + 1.1 * d,
+    blur: 3 + 7 * d,
+    dotRadius: 0.9 + 0.9 * d,
+  }
+}
+
+const DEPTH_STYLES: readonly DepthStyle[] = Array.from({ length: DEPTH_STEPS }, (_, i) =>
+  depthStyle((i + 0.5) / DEPTH_STEPS),
+)
+
+/** Stands in for an index the clamp cannot produce, so the sweep never carries an optional. */
+const FAR_STYLE = depthStyle(0)
+
 /** The bleed margin in canvas pixels, rounded so the drawing origin lands on whole pixels. */
 export function bleedOf(W: number, H: number): Point {
   return [Math.round(BLEED * W), Math.round(BLEED * H)]
@@ -183,6 +216,9 @@ export function buildGrid(
   const q0 = Math.floor(scene.PU_MIN / (1.5 * s)) - 1
   const q1 = Math.ceil(scene.PU_MAX / (1.5 * s)) + 1
   const kk = s * Math.sqrt(3)
+  g.shadowColor = '#2f7dff'
+  let step = -1
+  let style = FAR_STYLE
   for (let q = q0; q <= q1; q++) {
     const r0 = Math.floor(scene.PV_MIN2 / kk - q / 2) - 1
     const r1 = Math.ceil(scene.PV_MAX2 / kk - q / 2) + 1
@@ -197,22 +233,31 @@ export function buildGrid(
       // A cell narrower than this is texture, not a hexagon, and only costs build time.
       if (Math.abs(points[0][0] - points[3][0]) < MIN_HEX_PX) continue
       const d = depth(scene, centre[1])
+      const next = Math.min(DEPTH_STEPS - 1, (d * DEPTH_STEPS) | 0)
+      if (next !== step) {
+        step = next
+        style = DEPTH_STYLES[next] ?? FAR_STYLE
+        g.strokeStyle = style.stroke
+        g.lineWidth = style.lineWidth
+        g.fillStyle = style.dot
+      }
       tracePolygon(g, points)
-      g.strokeStyle = `rgba(80,160,255,${(0.13 + 0.21 * d).toFixed(3)})`
-      g.lineWidth = 0.8 + 1.1 * d
       // The glow and the vertex dots are what make the build expensive, and neither reads at the
       // far end, so distant cells are a plain hairline.
       if (d > FAR_PLAIN) {
-        g.shadowColor = '#2f7dff'
-        g.shadowBlur = 3 + 7 * d
+        g.shadowBlur = style.blur
         g.stroke()
         g.shadowBlur = 0
-        g.fillStyle = `rgba(170,215,255,${(0.05 + 0.09 * d).toFixed(3)})`
+        const rr = style.dotRadius
+        // One path for the six dots of this cell, but not one across cells: neighbouring cells put
+        // a dot on the same lattice vertex, and under `'lighter'` those add.
+        g.beginPath()
         for (const [x, y] of points) {
-          g.beginPath()
-          g.arc(x, y, 0.9 + 0.9 * d, 0, 6.29)
-          g.fill()
+          // Without the moveTo the arcs are joined by a line.
+          g.moveTo(x + rr, y)
+          g.arc(x, y, rr, 0, 6.29)
         }
+        g.fill()
       } else {
         g.stroke()
       }
