@@ -18,6 +18,7 @@ export default defineConfig({
       ],
       components: {
         Footer: './src/components/Footer.astro',
+        Header: './src/components/Header.astro',
         Hero: './src/components/Hero.astro',
         ThemeProvider: './src/components/ThemeProvider.astro',
         ThemeSelect: './src/components/ThemeSelect.astro',

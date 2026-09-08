@@ -60,11 +60,163 @@ html[data-has-hero] .content-panel > .sl-container > :is(footer, .site-footer) {
   padding-bottom: 3vh;
 }
 
+/* `Header.astro` appends the tabs after Starlight's own header, so the fixed bar becomes the row
+   that holds both. Starlight's header keeps its grid and only gives up the width the tabs take. */
+.page > .header {
+  display: flex;
+  align-items: center;
+  gap: var(--sl-nav-gap);
+}
+
+.page > .header > .header {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The chevron takes its width from the site title, so the narrow row halves the gap and the
+   wordmark still fits at 430px. */
+@media (max-width: 49.9375rem) {
+  .page > .header {
+    gap: 0.5rem;
+  }
+}
+
 /* The body ground is the same near-black the hero starts from, so the strip above the stage
    reads as one dark field. The header keeps its z-index and stays above the canvas. */
 html[data-has-hero] .page > .header {
   background-color: transparent;
   border-bottom-color: transparent;
+}
+
+.nh3-tabs {
+  display: none;
+  flex: none;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.nh3-tabs a {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-sm);
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.nh3-tabs a:hover,
+.nh3-tabs a:focus-visible {
+  color: var(--sl-color-white);
+}
+
+.nh3-tabs a[aria-current="page"] {
+  text-decoration: underline;
+  text-decoration-color: var(--sl-color-accent);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.5rem;
+}
+
+/* The chevron and the panel are the narrow layout; the link row is the wide one. */
+.nh3-tabs-toggle {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  border: 1px solid var(--sl-color-hairline-light);
+  border-radius: 0.75rem;
+  background: transparent;
+  color: var(--sl-color-gray-2);
+  cursor: pointer;
+}
+
+.nh3-tabs-toggle:hover {
+  color: var(--sl-color-white);
+}
+
+.nh3-tabs-toggle svg {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.nh3-tabs-toggle[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+
+.nh3-tabs-panel {
+  position: absolute;
+  inset-inline: 0;
+  inset-block-start: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 1rem 1.25rem 1.25rem;
+  border-bottom: 1px solid var(--sl-color-hairline-light);
+  border-radius: 0 0 1rem 1rem;
+  background: var(--sl-color-gray-6);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+
+.nh3-tabs-panel.open {
+  opacity: 1;
+}
+
+.nh3-tabs-panel[hidden] {
+  display: none;
+}
+
+.nh3-tabs-panel a {
+  padding: 0.5rem 0;
+  color: var(--sl-color-gray-1);
+  font-size: var(--sl-text-lg);
+  text-decoration: none;
+}
+
+.nh3-tabs-panel a[aria-current="page"] {
+  color: var(--sl-color-white);
+}
+
+/* Starlight hides its own social row below 50rem, so the panel carries the two icons. */
+.nh3-tabs-social {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 0.75rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--sl-color-hairline-light);
+}
+
+.nh3-tabs-social a {
+  color: var(--sl-color-gray-2);
+}
+
+.nh3-tabs-social a:hover {
+  color: var(--sl-color-white);
+}
+
+/* `Icon.astro` pins `--sl-icon-size` inline, so the size has to be set on the icon itself. */
+.nh3-tabs-social svg {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+@media (min-width: 50rem) {
+  .nh3-tabs {
+    display: flex;
+  }
+
+  .nh3-tabs-toggle,
+  .nh3-tabs-panel {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nh3-tabs-panel {
+    transition: none;
+  }
 }
 
 .nh3-hero {

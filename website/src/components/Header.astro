@@ -1,0 +1,113 @@
+---
+import Default from '@astrojs/starlight/components/Header.astro'
+import SocialIcons from '@astrojs/starlight/components/SocialIcons.astro'
+import { BASE, PAGES } from '../../pages'
+
+/* The labels are the header's own; the routes must exist in `PAGES`, so a rename fails the build
+   instead of shipping a dead tab. */
+const TABS = [
+  { label: 'API reference', route: '/api/' },
+  { label: 'Migrating from h3-js', route: '/migrating-from-h3-js/' },
+]
+
+const withoutTrailingSlash = (path: string) => path.replace(/\/+$/, '')
+const here = withoutTrailingSlash(Astro.url.pathname)
+
+const tabs = TABS.map(({ label, route }) => {
+  if (!PAGES.some((page) => page.route === route)) {
+    throw new Error(`Header tab route ${route} is missing from PAGES`)
+  }
+  const href = `${BASE}${route}`
+  return { label, href, current: withoutTrailingSlash(href) === here }
+})
+---
+
+<Default {...Astro.props}><slot /></Default>
+
+<nav class="nh3-tabs" aria-label="Site sections">
+  {
+    tabs.map(({ label, href, current }) => (
+      <a href={href} aria-current={current ? 'page' : undefined}>
+        {label}
+      </a>
+    ))
+  }
+</nav>
+
+<button
+  class="nh3-tabs-toggle"
+  type="button"
+  aria-expanded="false"
+  aria-controls="nh3-tabs-panel"
+  aria-label="Site sections"
+>
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg
+  >
+</button>
+
+<div id="nh3-tabs-panel" class="nh3-tabs-panel" hidden>
+  {
+    tabs.map(({ label, href, current }) => (
+      <a href={href} aria-current={current ? 'page' : undefined}>
+        {label}
+      </a>
+    ))
+  }
+  <div class="nh3-tabs-social"><SocialIcons /></div>
+</div>
+
+<script>
+  const toggle = document.querySelector<HTMLButtonElement>('.nh3-tabs-toggle')
+  const panel = document.getElementById('nh3-tabs-panel')
+  const header = toggle?.closest('header')
+
+  if (toggle && panel && header) {
+    const reduced = matchMedia('(prefers-reduced-motion: reduce)')
+    let hideTimer = 0
+
+    // The panel stays in the DOM while it fades, so `hidden` follows the transition on close.
+    const setOpen = (open: boolean) => {
+      clearTimeout(hideTimer)
+      toggle.setAttribute('aria-expanded', String(open))
+      if (open) {
+        panel.hidden = false
+        // Settle the layout at opacity 0 first, so the fade in runs from there.
+        void panel.offsetHeight
+        panel.classList.add('open')
+        return
+      }
+      panel.classList.remove('open')
+      hideTimer = window.setTimeout(
+        () => {
+          panel.hidden = true
+        },
+        reduced.matches ? 0 : 150
+      )
+    }
+
+    const isOpen = () => toggle.getAttribute('aria-expanded') === 'true'
+
+    toggle.addEventListener('click', () => setOpen(!isOpen()))
+
+    panel.addEventListener('click', (event) => {
+      if ((event.target as Element).closest('a')) setOpen(false)
+    })
+
+    document.addEventListener('click', (event) => {
+      if (isOpen() && !header.contains(event.target as Node)) setOpen(false)
+    })
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape' || !isOpen()) return
+      setOpen(false)
+      toggle.focus()
+    })
+  }
+</script>
