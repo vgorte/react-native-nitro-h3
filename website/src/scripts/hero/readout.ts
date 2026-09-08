@@ -115,7 +115,9 @@ export function anchorCard(input: AnchorInput): Anchor {
     // here, where the side can still be swapped.
     const ax = side > 0 ? x : x + w
     const cross = segBox(v[0], v[1], ax, y + h, input.copy) ? 1 : 0
-    return { x, y, side, blocked, cross, off: Math.abs(ax - v[0]) }
+    // Bounded into its band: on a very wide stage a clamp can push the card far enough that a raw
+    // distance would outweigh `blocked` and land the card on the copy block.
+    return { x, y, side, blocked, cross, off: Math.min(9999, Math.abs(ax - v[0])) }
   }
   const score = (p: { blocked: number; cross: number; off: number }): number =>
     p.cross * 1e6 + p.blocked * 1e4 + p.off
