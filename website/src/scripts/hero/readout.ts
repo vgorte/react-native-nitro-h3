@@ -4,7 +4,6 @@ import { centerOf, type Hexagon, type Point, RES, type Rect } from './geometry'
 export type ReadoutElements = {
   card: HTMLElement
   call: HTMLElement
-  chip: HTMLElement
   id: HTMLElement
   /** The visually hidden live region, absent when the page does not render one. */
   announce: HTMLElement | null
@@ -32,7 +31,6 @@ export function updateReadout(
   const [lat, lng] = cellToLatLng(id)
   const call = `latLngToCell(${lat.toFixed(4)}, ${lng.toFixed(4)}, ${RES})`
   const hex = `0x${id.toLowerCase()}n`
-  el.chip.textContent = `res ${RES}`
   el.call.textContent = call
   el.id.textContent = hex
   // pointer motion would flood the live region

@@ -1,12 +1,26 @@
 ---
+import { Image } from 'astro:assets'
 import { LinkButton } from '@astrojs/starlight/components'
+import clouds from '../assets/hero/clouds-layer.webp'
+import terrain from '../assets/hero/terrain-layer-2.webp'
 
 const { data } = Astro.locals.starlightRoute.entry
 const { title = data.title, tagline, actions = [] } = data.hero ?? {}
 ---
 
 <section class="nh3-hero" tabindex="0" aria-label="Interactive H3 grid">
-  <canvas class="nh3-fx" aria-hidden="true"></canvas>
+  <div class="nh3-layer nh3-terrain" aria-hidden="true">
+    <Image src={terrain} alt="" aria-hidden="true" loading="eager" decoding="async" />
+    <canvas class="nh3-fx" aria-hidden="true"></canvas>
+  </div>
+
+  <div class="nh3-layer nh3-clouds" aria-hidden="true">
+    <img class="nh3-cloud-plate" alt="" aria-hidden="true" />
+  </div>
+
+  {/* The unbaked plate. `plates.ts` reads its pixels once and writes the result to the layer. */}
+  <Image class="nh3-cloud-source" src={clouds} alt="" aria-hidden="true" loading="eager" decoding="async" />
+
   <div class="nh3-vignette" aria-hidden="true"></div>
 
   <div class="nh3-copy">
@@ -31,7 +45,6 @@ const { title = data.title, tagline, actions = [] } = data.hero ?? {}
   <div class="nh3-readout">
     <div class="nh3-line">
       <span class="nh3-call">latLngToCell(37.7749, -122.4194, 12)</span>
-      <span class="nh3-chip">res 12</span>
     </div>
     <div class="nh3-line nh3-out">
       <span class="nh3-arrow">&#8594;</span><span class="nh3-id">0x8c283082803ffffn</span>

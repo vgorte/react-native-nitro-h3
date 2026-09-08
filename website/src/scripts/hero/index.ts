@@ -46,10 +46,9 @@ export function start(): void {
   const announceEl = document.querySelector<HTMLElement>('.nh3-announce')
   if (!stage || !canvas || !copy || !card) return
   const call = card.querySelector<HTMLElement>('.nh3-call')
-  const chip = card.querySelector<HTMLElement>('.nh3-chip')
   const idOut = card.querySelector<HTMLElement>('.nh3-id')
-  if (!call || !chip || !idOut) return
-  const readoutEls: ReadoutElements = { card, call, chip, id: idOut, announce: announceEl }
+  if (!call || !idOut) return
+  const readoutEls: ReadoutElements = { card, call, id: idOut, announce: announceEl }
 
   const params = new URLSearchParams(location.search)
   const debug = params.get('heroDebug') === '1'

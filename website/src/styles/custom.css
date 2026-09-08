@@ -68,9 +68,6 @@ html[data-has-hero] .page > .header {
 }
 
 .nh3-hero {
-  --nh3-glow-x: 63%;
-  --nh3-glow-y: 70%;
-  --nh3-horizon: 41.4%;
   position: relative;
   overflow: hidden;
   isolation: isolate;
@@ -79,18 +76,8 @@ html[data-has-hero] .page > .header {
   -webkit-user-select: none;
   /* Not `none`: a vertical drag still scrolls the page down to the footer. */
   touch-action: pan-y;
-  background:
-    radial-gradient(
-      120% 70% at var(--nh3-glow-x) var(--nh3-glow-y),
-      rgba(24, 54, 110, 0.55) 0%,
-      rgba(8, 16, 34, 0) 62%
-    ),
-    linear-gradient(180deg, #04060b 0%, #060b18 var(--nh3-horizon), #081226 100%);
-}
-
-.nh3-hero.mob {
-  --nh3-glow-x: 70%;
-  --nh3-glow-y: 69%;
+  /* A photograph carries the ground now, so the stage is the flat near-black behind it. */
+  background: var(--sl-color-black);
 }
 
 @media (min-width: 50rem) and (orientation: landscape) {
@@ -110,11 +97,44 @@ html[data-has-hero] .page > .header {
   }
 }
 
-.nh3-fx {
+/* Both layers are larger than the stage and centred, so a shift never uncovers an edge. The grid
+   canvas rides inside the terrain layer, which is what makes the grid move with the photograph. */
+.nh3-layer {
+  position: absolute;
+  inset: -4%;
+  pointer-events: none;
+  will-change: transform;
+}
+
+.nh3-layer.nh3-clouds {
+  inset: -6%;
+}
+
+.nh3-layer img {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
+  object-fit: cover;
+  object-position: 50% 50%;
+  display: block;
+}
+
+.nh3-clouds {
+  opacity: 0.85;
+}
+
+.nh3-cloud-source {
+  display: none;
+}
+
+/* The canvas overhangs the stage by `BLEED` on every side inside a layer that overhangs by
+   `GROW / 2`, so the gap per side is (0.04 - 0.035) / 1.08 of the layer. */
+.nh3-fx {
+  position: absolute;
+  inset: 0.46296%;
+  width: 99.07407%;
+  height: 99.07407%;
   pointer-events: none;
 }
 
@@ -239,17 +259,6 @@ html[data-has-hero] .page > .header {
 .nh3-id {
   color: #8fb6ee;
   letter-spacing: 0.02em;
-}
-
-.nh3-chip {
-  margin-left: auto;
-  padding: 0.1rem 0.4rem;
-  border: 1px solid rgba(120, 170, 255, 0.3);
-  border-radius: 0.375rem;
-  font-family: var(--sl-font-mono);
-  font-size: 0.75rem;
-  color: #bcd2f5;
-  background: var(--sl-color-bg-inline-code);
 }
 
 .nh3-hero.mob .nh3-readout {
