@@ -40,6 +40,7 @@ import {
   drawLeader,
   drawScene,
   type LitCell,
+  type MaskExtent,
   makeSparkles,
   maskFactors,
   type Pulse,
@@ -113,6 +114,8 @@ export function start(): void {
   let column: Rect | null = null
   let ctx: CanvasRenderingContext2D | null = null
   let ko: Rect | null = null
+  /** The part of the mask canvas the punch has to composite. Null while there is no column. */
+  let maskExtent: MaskExtent | null = null
   let litCells: LitCell[] = []
   let gridCells = 0
   let gridMs = 0
@@ -199,11 +202,11 @@ export function start(): void {
     const gridCtx = sizeCanvas(grid, scene.W, scene.H, dpr)
     ko = nextKo
     shiftColumn()
-    buildKeepOut(mask, scene.W, scene.H, ko)
+    maskExtent = buildKeepOut(mask, scene.W, scene.H, ko)
     sparkles = makeSparkles(scene)
     // The hole is baked at the column's rest position. The layer moves it by at most 8 px, which
     // lies inside the 40 px feather, and the per-frame punch carries the live offset.
-    const build = buildGrid(gridCtx, scene, sTarget, mask, ko, [0, 0])
+    const build = buildGrid(gridCtx, scene, sTarget, mask, maskExtent, [0, 0])
     litCells = build.litCells
     gridCells = build.cells
     gridMs = build.buildMs
@@ -324,6 +327,7 @@ export function start(): void {
       ctx,
       grid,
       mask,
+      maskExtent,
       scene,
       ko: column,
       koOffset,

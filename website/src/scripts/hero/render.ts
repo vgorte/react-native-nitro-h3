@@ -102,36 +102,68 @@ export function clearAll(g: CanvasRenderingContext2D): void {
   g.restore()
 }
 
+/** The part of the mask canvas that carries anything, in mask pixels. */
+export type MaskExtent = { x: number; y: number; w: number; h: number }
+
 /**
- * Paints the keep-out mask over the bled canvas box. The blur eats into the rectangle from both
- * sides, so the rectangle is grown by the feather before it is drawn.
+ * Paints the keep-out mask over the bled canvas box and returns the box it actually covered. The
+ * blur eats into the rectangle from both sides, so the rectangle is grown by the feather before it
+ * is drawn, and the extent adds the blur's own spread on top.
  */
-export function buildKeepOut(mask: HTMLCanvasElement, W: number, H: number, ko: Rect | null): void {
+export function buildKeepOut(
+  mask: HTMLCanvasElement,
+  W: number,
+  H: number,
+  ko: Rect | null,
+): MaskExtent | null {
   const [bx, by] = bleedOf(W, H)
   // The same rounding `sizeCanvas` applies, so the mask cannot end up a pixel short of the canvas.
   mask.width = Math.round(W + 2 * bx)
   mask.height = Math.round(H + 2 * by)
-  if (!ko) return
+  if (!ko) return null
   const g = mask.getContext('2d')
-  if (!g) return
+  if (!g) return null
   g.setTransform(1, 0, 0, 1, bx, by)
   const o = KO_FEATHER
-  g.filter = `blur(${KO_FEATHER / 2}px)`
+  const sigma = KO_FEATHER / 2
+  g.filter = `blur(${sigma}px)`
   g.fillStyle = '#000'
   g.fillRect(ko.left - o, ko.top - o, ko.right - ko.left + o * 2, ko.bottom - ko.top + o * 2)
   g.filter = 'none'
+  // Three sigma leaves under one part in 255 of the fill, and two more pixels cover the rounding.
+  const spread = Math.ceil(3 * sigma) + 2
+  const x0 = Math.max(0, Math.floor(ko.left - o + bx - spread))
+  const y0 = Math.max(0, Math.floor(ko.top - o + by - spread))
+  const x1 = Math.min(mask.width, Math.ceil(ko.right + o + bx + spread))
+  const y1 = Math.min(mask.height, Math.ceil(ko.bottom + o + by + spread))
+  if (x1 <= x0 || y1 <= y0) return null
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
 }
 
+/**
+ * Erases the copy column from the canvas. The mask is transparent outside its extent, so the punch
+ * reads and blends that box only instead of the whole surface.
+ */
 export function punchKeepOut(
   g: CanvasRenderingContext2D,
   mask: HTMLCanvasElement,
-  ko: Rect | null,
+  extent: MaskExtent | null,
   bleed: Point,
   offset: Point,
 ): void {
-  if (!ko) return
+  if (!extent) return
   g.globalCompositeOperation = 'destination-out'
-  g.drawImage(mask, offset[0] - bleed[0], offset[1] - bleed[1])
+  g.drawImage(
+    mask,
+    extent.x,
+    extent.y,
+    extent.w,
+    extent.h,
+    offset[0] - bleed[0] + extent.x,
+    offset[1] - bleed[1] + extent.y,
+    extent.w,
+    extent.h,
+  )
   g.globalCompositeOperation = 'source-over'
 }
 
@@ -204,7 +236,7 @@ export function buildGrid(
   scene: Calibrated,
   s: number,
   mask: HTMLCanvasElement,
-  ko: Rect | null,
+  maskExtent: MaskExtent | null,
   koOffset: Point,
 ): GridBuild {
   const { W, H } = scene
@@ -277,7 +309,7 @@ export function buildGrid(
   g.fillStyle = linear
   g.fillRect(-bx, -by, W + 2 * bx, H + 2 * by)
   g.globalCompositeOperation = 'source-over'
-  punchKeepOut(g, mask, ko, [bx, by], koOffset)
+  punchKeepOut(g, mask, maskExtent, [bx, by], koOffset)
   return {
     litCells: pickLitCells(scene, s),
     cells: drawn,
@@ -310,6 +342,7 @@ export type FrameInput = {
   ctx: CanvasRenderingContext2D
   grid: HTMLCanvasElement
   mask: HTMLCanvasElement
+  maskExtent: MaskExtent | null
   scene: Calibrated
   ko: Rect | null
   koOffset: Point
@@ -422,7 +455,7 @@ export function drawScene(input: FrameInput): Hexagon {
   }
 
   ctx.globalCompositeOperation = 'source-over'
-  punchKeepOut(ctx, input.mask, input.ko, [bx, by], input.koOffset)
+  punchKeepOut(ctx, input.mask, input.maskExtent, [bx, by], input.koOffset)
   return fp
 }
 
