@@ -36,6 +36,7 @@ import {
   bleedOf,
   buildGrid,
   buildKeepOut,
+  buildSignature,
   drawLeader,
   drawScene,
   type LitCell,
@@ -133,6 +134,8 @@ export function start(): void {
   let cardSide: 1 | -1 = 1
   let lastT = 0
   let resetT = true
+  /** The signature of the plate currently on the grid canvas. Empty until the first build. */
+  let buildSig = ''
   let openingPending = false
   let raf = 0
   let frames = 0
@@ -184,11 +187,17 @@ export function start(): void {
   const rebuild = (): boolean => {
     const stageRect = stage.getBoundingClientRect()
     if (stageRect.width < 1 || stageRect.height < 1) return false
-    dpr = Math.min(window.devicePixelRatio || 1, DPR_CAP)
+    const nextDpr = Math.min(window.devicePixelRatio || 1, DPR_CAP)
+    const nextKo = copyColumn(rectOf(copy, stageRect))
+    // All three rebuild triggers stay; a trigger that reports the same box does no work twice.
+    const sig = buildSignature(mode, stageRect.width, stageRect.height, nextDpr, nextKo)
+    if (sig === buildSig) return true
+    buildSig = sig
+    dpr = nextDpr
     scene = calibrate(SCENES[mode], stageRect.width, stageRect.height)
     ctx = sizeCanvas(canvas, scene.W, scene.H, dpr)
     const gridCtx = sizeCanvas(grid, scene.W, scene.H, dpr)
-    ko = copyColumn(rectOf(copy, stageRect))
+    ko = nextKo
     shiftColumn()
     buildKeepOut(mask, scene.W, scene.H, ko)
     sparkles = makeSparkles(scene)
@@ -233,6 +242,8 @@ export function start(): void {
     cardSide = 1
     card.style.left = ''
     card.style.top = ''
+    // The mode is part of the signature; this is what also carries the reset state into the plate.
+    buildSig = ''
     const ready = rebuild()
     placeOpening()
     // Without a laid out stage the opening cell came from the placeholder scene, so the first

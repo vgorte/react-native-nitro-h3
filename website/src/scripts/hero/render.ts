@@ -146,6 +146,25 @@ function pickLitCells(scene: Calibrated, s: number): LitCell[] {
   return cells
 }
 
+/**
+ * Everything the grid canvas, the keep-out mask and the sparkles are derived from. Two builds with
+ * the same signature produce the same plate, so the second one can be skipped. Rounded to whole
+ * pixels: a sub-pixel box change moves nothing that is visible, and it is exactly the noise a
+ * `ResizeObserver` reports when only a scrollbar or a font swap touches the layout.
+ */
+export function buildSignature(
+  mode: string,
+  W: number,
+  H: number,
+  dpr: number,
+  ko: Rect | null,
+): string {
+  const column = ko
+    ? `${Math.round(ko.left)},${Math.round(ko.top)},${Math.round(ko.right)},${Math.round(ko.bottom)}`
+    : 'none'
+  return `${mode}|${Math.round(W)}|${Math.round(H)}|${dpr}|${column}`
+}
+
 /** Draws the static grid into its own canvas and records what the build cost. */
 export function buildGrid(
   g: CanvasRenderingContext2D,
