@@ -116,6 +116,10 @@ export function start(): void {
   let column: Rect | null = null
   let ctx: CanvasRenderingContext2D | null = null
   let ko: Rect | null = null
+  /** The copy block and the hint pill in stage coordinates, both measured on a rebuild. */
+  let copyRect: Rect = { left: 0, top: 0, right: 0, bottom: 0 }
+  let hintRect: Rect | null = null
+  let hintHidden = true
   /** The part of the mask canvas the punch has to composite. Null while there is no column. */
   let maskExtent: MaskExtent | null = null
   let litCells: LitCell[] = []
@@ -195,11 +199,15 @@ export function start(): void {
     const stageRect = stage.getBoundingClientRect()
     if (stageRect.width < 1 || stageRect.height < 1) return false
     const nextDpr = Math.min(window.devicePixelRatio || 1, DPR_CAP)
-    const nextKo = copyColumn(rectOf(copy, stageRect))
+    const nextCopy = rectOf(copy, stageRect)
+    const nextKo = copyColumn(nextCopy)
     // All three rebuild triggers stay; a trigger that reports the same box does no work twice.
     const sig = buildSignature(mode, stageRect.width, stageRect.height, nextDpr, nextKo)
     if (sig === buildSig) return true
     buildSig = sig
+    copyRect = nextCopy
+    hintHidden = !hintEl || Boolean(hintEl.hidden)
+    hintRect = hintHidden || !hintEl ? null : rectOf(hintEl, stageRect)
     dpr = nextDpr
     scene = calibrate(SCENES[mode], stageRect.width, stageRect.height)
     ctx = sizeCanvas(canvas, scene.W, scene.H, dpr)
@@ -351,9 +359,13 @@ export function start(): void {
     // forcing a synchronous layout.
     const cardClient = card.getBoundingClientRect()
     const cardRect = rectIn(cardClient, stageRect)
-    const hintRect = hintEl && !hintEl.hidden ? rectOf(hintEl, stageRect) : null
-    const copyRect = rectOf(copy, stageRect)
-    ko = copyColumn(copyRect)
+    // The copy block and the hint pill only move on a rebuild, so their boxes are cached there.
+    // The pill's one other move is being hidden, and that is a property read, not a layout one.
+    const nowHidden = !hintEl || Boolean(hintEl.hidden)
+    if (nowHidden !== hintHidden) {
+      hintHidden = nowHidden
+      hintRect = nowHidden || !hintEl ? null : rectOf(hintEl, stageRect)
+    }
     const copyBox = shiftRect(copyRect, koOffset[0], koOffset[1])
     const hintBox = hintRect ? shiftRect(hintRect, koOffset[0], koOffset[1]) : null
     const cardWidth = cardRect.right - cardRect.left
