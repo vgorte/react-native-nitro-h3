@@ -73,6 +73,29 @@ html[data-has-hero] .content-panel > .sl-container > :is(footer, .site-footer) {
   min-width: 0;
 }
 
+/* Starlight lines the search box up with the content column through `--__main-column-fr`, which it
+   derives from `100%` of its own header. That header is now a flex item and lost the tabs' width,
+   so the same formula reads the full bar through `cqw` and the search box keeps its column. */
+@media (min-width: 50rem) {
+  .page > .header {
+    container-type: inline-size;
+  }
+
+  .page > .header > .header {
+    --__main-column-fr: calc(
+      (
+        100cqw +
+        var(--__sidebar-pad, 0rem) -
+        var(--__toc-width, var(--sl-sidebar-width)) -
+        (2 * var(--__toc-width, var(--sl-nav-pad-x))) -
+        var(--sl-content-inline-start, 0rem) -
+        var(--sl-content-width)
+      ) /
+      2
+    );
+  }
+}
+
 /* The chevron takes its width from the site title, so the narrow row halves the gap and the
    wordmark still fits at 430px. */
 @media (max-width: 49.9375rem) {
