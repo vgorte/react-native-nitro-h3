@@ -398,11 +398,14 @@ html[data-has-hero] .page > .header {
   }
 }
 
+/* The card is moved with a transform, so it stays on its own layer instead of being promoted on
+   the first pointer move. */
 .nh3-readout {
   position: absolute;
   left: 0;
   top: 0;
   z-index: 3;
+  will-change: transform;
   width: max-content;
   max-width: min(42vw, 30rem);
   padding: 0.7rem 0.85rem;
@@ -442,6 +445,7 @@ html[data-has-hero] .page > .header {
 }
 
 .nh3-hero.mob .nh3-readout {
+  transform: none;
   left: 4.5vw;
   right: 4.5vw;
   top: auto;
