@@ -2,21 +2,16 @@ import type { EnergyState } from './energy'
 import {
   centerOf,
   depth,
-  type Fit,
   type Hexagon,
   hexPts,
   inKeepOut,
   KO_FEATHER,
   type Point,
-  PU_MAX,
-  PU_MIN,
-  PV_MAX2,
-  PV_MIN2,
   proj,
   type Rect,
   screenOf,
 } from './geometry'
-import type { Scene } from './scene'
+import { BLEED, type Calibrated } from './scene'
 
 export type Sparkle = { x: number; y: number; ph: number; sp: number; r: number; d: number }
 export type LitCell = { q: number; r: number; ph: number; sp: number }
@@ -40,24 +35,32 @@ function tracePolygon(g: CanvasRenderingContext2D, points: readonly Point[]): vo
   g.closePath()
 }
 
-/** Sizes the backing store to the stage and lays the cover fit onto the context. */
+/** The bleed margin in canvas pixels, rounded so the drawing origin lands on whole pixels. */
+export function bleedOf(W: number, H: number): Point {
+  return [Math.round(BLEED * W), Math.round(BLEED * H)]
+}
+
+/**
+ * Sizes the backing store to the bled stage box and leaves the context in stage CSS pixels, with
+ * the stage's own top left at the origin and the bled area simply negative.
+ */
 export function sizeCanvas(
   canvas: HTMLCanvasElement,
-  cssWidth: number,
-  cssHeight: number,
-  fit: Fit,
+  W: number,
+  H: number,
   dpr: number,
 ): CanvasRenderingContext2D {
-  canvas.width = Math.round(cssWidth * dpr)
-  canvas.height = Math.round(cssHeight * dpr)
+  const [bx, by] = bleedOf(W, H)
+  canvas.width = Math.round((W + 2 * bx) * dpr)
+  canvas.height = Math.round((H + 2 * by) * dpr)
   const g = canvas.getContext('2d')
   if (!g) throw new Error('the hero needs a 2d canvas context')
-  const k = fit.scale * dpr
-  g.setTransform(k, 0, 0, k, -fit.offsetX * k, -fit.offsetY * k)
+  g.setTransform(dpr, 0, 0, dpr, 0, 0)
+  g.translate(bx, by)
   return g
 }
 
-/** Clears the whole backing store, ignoring the cover-fit transform. */
+/** Clears the whole backing store, ignoring the drawing transform. */
 export function clearAll(g: CanvasRenderingContext2D): void {
   g.save()
   g.setTransform(1, 0, 0, 1, 0, 0)
@@ -66,15 +69,17 @@ export function clearAll(g: CanvasRenderingContext2D): void {
 }
 
 /**
- * Paints the keep-out mask at design size. The blur eats into the rectangle from both sides, so
- * the rectangle is grown by the feather before it is drawn.
+ * Paints the keep-out mask over the bled canvas box. The blur eats into the rectangle from both
+ * sides, so the rectangle is grown by the feather before it is drawn.
  */
 export function buildKeepOut(mask: HTMLCanvasElement, W: number, H: number, ko: Rect | null): void {
-  mask.width = W
-  mask.height = H
+  const [bx, by] = bleedOf(W, H)
+  mask.width = W + 2 * bx
+  mask.height = H + 2 * by
   if (!ko) return
   const g = mask.getContext('2d')
   if (!g) return
+  g.setTransform(1, 0, 0, 1, bx, by)
   const o = KO_FEATHER
   g.filter = `blur(${KO_FEATHER / 2}px)`
   g.fillStyle = '#000'
@@ -86,19 +91,40 @@ export function punchKeepOut(
   g: CanvasRenderingContext2D,
   mask: HTMLCanvasElement,
   ko: Rect | null,
+  bleed: Point,
+  offset: Point,
 ): void {
   if (!ko) return
   g.globalCompositeOperation = 'destination-out'
-  g.drawImage(mask, 0, 0)
+  g.drawImage(mask, offset[0] - bleed[0], offset[1] - bleed[1])
   g.globalCompositeOperation = 'source-over'
 }
 
-function pickLitCells(scene: Scene, s: number): LitCell[] {
+/** The mask in canvas pixels: the radial fade's centre and radii, and the two linear fade rows. */
+export function maskGeometry(scene: Calibrated): {
+  cx: number
+  cy: number
+  r0: number
+  r1: number
+  fy0: number
+  fy1: number
+} {
+  return {
+    cx: scene.mask.cx * scene.W,
+    cy: scene.mask.cy * scene.H,
+    r0: scene.mask.r0 * scene.W,
+    r1: scene.mask.r1 * scene.W,
+    fy0: scene.fy0,
+    fy1: scene.fy1,
+  }
+}
+
+function pickLitCells(scene: Calibrated, s: number): LitCell[] {
   const rnd = lcg(40 + Math.round(s * 10000))
   const cells: LitCell[] = []
   for (let i = 0; i < 5; i++) {
     const pu = scene.clampU[0] + rnd() * (scene.clampU[1] - scene.clampU[0])
-    const pv = -0.1 + rnd() * 0.3
+    const pv = scene.PVMIN + rnd() * (scene.PVMAX - scene.PVMIN)
     const q = Math.round(pu / (1.5 * s))
     const r = Math.round(pv / (s * Math.sqrt(3)) - q / 2)
     cells.push({ q, r, ph: rnd() * 6.28, sp: 0.25 + rnd() * 0.5 })
@@ -109,30 +135,31 @@ function pickLitCells(scene: Scene, s: number): LitCell[] {
 /** Draws the static grid into its own canvas and returns the five slow-breathing lit cells. */
 export function buildGrid(
   g: CanvasRenderingContext2D,
-  scene: Scene,
+  scene: Calibrated,
   s: number,
   mask: HTMLCanvasElement,
   ko: Rect | null,
+  koOffset: Point,
 ): LitCell[] {
+  const { W, H } = scene
+  const [bx, by] = bleedOf(W, H)
   clearAll(g)
   g.globalCompositeOperation = 'lighter'
-  const q0 = Math.floor(PU_MIN / (1.5 * s)) - 1
-  const q1 = Math.ceil(PU_MAX / (1.5 * s)) + 1
+  const q0 = Math.floor(scene.PU_MIN / (1.5 * s)) - 1
+  const q1 = Math.ceil(scene.PU_MAX / (1.5 * s)) + 1
   const kk = s * Math.sqrt(3)
   for (let q = q0; q <= q1; q++) {
-    const r0 = Math.floor(PV_MIN2 / kk - q / 2) - 1
-    const r1 = Math.ceil(PV_MAX2 / kk - q / 2) + 1
+    const r0 = Math.floor(scene.PV_MIN2 / kk - q / 2) - 1
+    const r1 = Math.ceil(scene.PV_MAX2 / kk - q / 2) + 1
     for (let r = r0; r <= r1; r++) {
       const centre = centerOf(q, r, s)
-      if (centre[0] < PU_MIN || centre[0] > PU_MAX) continue
-      if (centre[1] < PV_MIN2 || centre[1] > PV_MAX2) continue
-      const points = hexPts(scene.Hm, centre[0], centre[1], s * 0.985)
-      // The cull uses the design space, not the crop, so a resize never forces a rebuild.
-      const visible = points.some(
-        ([x, y]) => x > -60 && x < scene.W + 60 && y > -60 && y < scene.H + 60,
-      )
-      if (!visible) continue
-      const d = depth(centre[1])
+      if (centre[0] < scene.PU_MIN || centre[0] > scene.PU_MAX) continue
+      if (centre[1] < scene.PV_MIN2 || centre[1] > scene.PV_MAX2) continue
+      const screen = screenOf(scene, centre[0], centre[1])
+      if (screen[0] < -bx - 120 || screen[0] > W + bx + 120) continue
+      if (screen[1] < -by - 120 || screen[1] > H + by + 120) continue
+      const points = hexPts(scene, centre[0], centre[1], s * 0.985)
+      const d = depth(scene, centre[1])
       tracePolygon(g, points)
       g.strokeStyle = `rgba(80,160,255,${(0.13 + 0.21 * d).toFixed(3)})`
       g.lineWidth = 0.8 + 1.1 * d
@@ -149,23 +176,23 @@ export function buildGrid(
     }
   }
   g.globalCompositeOperation = 'destination-in'
-  const mk = scene.mask
+  const mk = maskGeometry(scene)
   const radial = g.createRadialGradient(mk.cx, mk.cy, mk.r0, mk.cx, mk.cy, mk.r1)
   radial.addColorStop(0, 'rgba(0,0,0,1)')
   radial.addColorStop(1, 'rgba(0,0,0,0)')
   g.fillStyle = radial
-  g.fillRect(0, 0, scene.W, scene.H)
+  g.fillRect(-bx, -by, W + 2 * bx, H + 2 * by)
   const linear = g.createLinearGradient(0, mk.fy0, 0, mk.fy1)
   linear.addColorStop(0, 'rgba(0,0,0,0.04)')
   linear.addColorStop(1, 'rgba(0,0,0,1)')
   g.fillStyle = linear
-  g.fillRect(0, 0, scene.W, scene.H)
+  g.fillRect(-bx, -by, W + 2 * bx, H + 2 * by)
   g.globalCompositeOperation = 'source-over'
-  punchKeepOut(g, mask, ko)
+  punchKeepOut(g, mask, ko, [bx, by], koOffset)
   return pickLitCells(scene, s)
 }
 
-export function makeSparkles(scene: Scene): Sparkle[] {
+export function makeSparkles(scene: Calibrated): Sparkle[] {
   const rnd = lcg(7)
   const sparkles: Sparkle[] = []
   for (let i = 0; i < 18; i++) {
@@ -190,8 +217,9 @@ export type FrameInput = {
   ctx: CanvasRenderingContext2D
   grid: HTMLCanvasElement
   mask: HTMLCanvasElement
-  scene: Scene
+  scene: Calibrated
   ko: Rect | null
+  koOffset: Point
   energy: EnergyState
   sparkles: readonly Sparkle[]
   litCells: readonly LitCell[]
@@ -206,7 +234,9 @@ export type FrameInput = {
 export function drawScene(input: FrameInput): Hexagon {
   const { ctx, scene, t, reduced } = input
   clearAll(ctx)
-  // The grid canvas already carries the cover fit, so it is blitted device pixel for device pixel.
+  const [bx, by] = bleedOf(scene.W, scene.H)
+  // The plate is the same backing store, so it is blitted device pixel for device pixel; drawing
+  // it under the scaled transform would apply the device ratio a second time.
   ctx.save()
   ctx.setTransform(1, 0, 0, 1, 0, 0)
   ctx.drawImage(input.grid, 0, 0)
@@ -229,9 +259,9 @@ export function drawScene(input: FrameInput): Hexagon {
 
   for (const lit of input.litCells) {
     const centre = centerOf(lit.q, lit.r, input.focus.s)
-    const d = depth(centre[1])
+    const d = depth(scene, centre[1])
     const osc = reduced ? 0.7 : 0.35 + 0.65 * (0.5 + 0.5 * Math.sin((t / 1000) * lit.sp + lit.ph))
-    tracePolygon(ctx, hexPts(scene.Hm, centre[0], centre[1], input.focus.s * 0.985))
+    tracePolygon(ctx, hexPts(scene, centre[0], centre[1], input.focus.s * 0.985))
     ctx.fillStyle = `rgba(60,140,255,${((0.05 + 0.11 * d) * osc).toFixed(3)})`
     ctx.fill()
   }
@@ -239,13 +269,13 @@ export function drawScene(input: FrameInput): Hexagon {
   ctx.shadowColor = '#3d8bff'
   for (const cell of input.energy.cells.values()) {
     const centre = centerOf(cell.q, cell.r, input.focus.s)
-    if (centre[0] < PU_MIN || centre[0] > PU_MAX) continue
-    if (centre[1] < PV_MIN2 || centre[1] > PV_MAX2) continue
-    const screen = screenOf(scene.Hm, centre[0], centre[1])
+    if (centre[0] < scene.PU_MIN || centre[0] > scene.PU_MAX) continue
+    if (centre[1] < scene.PV_MIN2 || centre[1] > scene.PV_MAX2) continue
+    const screen = screenOf(scene, centre[0], centre[1])
     if (inKeepOut(input.ko, screen[0], screen[1], 0)) continue
     const e = cell.e
-    const d = depth(centre[1])
-    tracePolygon(ctx, hexPts(scene.Hm, centre[0], centre[1], input.focus.s * 0.985))
+    const d = depth(scene, centre[1])
+    tracePolygon(ctx, hexPts(scene, centre[0], centre[1], input.focus.s * 0.985))
     ctx.fillStyle = `rgba(60,140,255,${(0.06 + 0.3 * e * d).toFixed(3)})`
     ctx.strokeStyle = `rgba(140,195,255,${(0.15 + 0.6 * e).toFixed(3)})`
     ctx.lineWidth = 0.8 + 2.2 * e
@@ -256,8 +286,8 @@ export function drawScene(input: FrameInput): Hexagon {
   ctx.shadowBlur = 0
 
   const { cu, cv, s } = input.focus
-  const fd = depth(cv)
-  const fp = hexPts(scene.Hm, cu, cv, s)
+  const fd = depth(scene, cv)
+  const fp = hexPts(scene, cu, cv, s)
   tracePolygon(ctx, fp)
   ctx.strokeStyle = `rgba(168,212,255,${input.breath.toFixed(3)})`
   ctx.lineWidth = 1.5 + 1.1 * fd
@@ -273,7 +303,7 @@ export function drawScene(input: FrameInput): Hexagon {
     ctx.arc(x, y, 1.7 + 1.3 * fd, 0, 6.29)
     ctx.fill()
   }
-  const centreScreen = screenOf(scene.Hm, cu, cv)
+  const centreScreen = screenOf(scene, cu, cv)
   ctx.fillStyle = 'rgba(240,248,255,0.95)'
   ctx.shadowColor = '#9fd0ff'
   ctx.shadowBlur = 10 + 10 * fd
@@ -290,14 +320,14 @@ export function drawScene(input: FrameInput): Hexagon {
       input.pulses.splice(i, 1)
       continue
     }
-    tracePolygon(ctx, hexPts(scene.Hm, cu, cv, s * (1 + e * 1.5)))
+    tracePolygon(ctx, hexPts(scene, cu, cv, s * (1 + e * 1.5)))
     ctx.strokeStyle = `rgba(140,195,255,${(0.55 * pulse.a * (1 - e)).toFixed(3)})`
     ctx.lineWidth = 2
     ctx.stroke()
   }
 
   ctx.globalCompositeOperation = 'source-over'
-  punchKeepOut(ctx, input.mask, input.ko)
+  punchKeepOut(ctx, input.mask, input.ko, [bx, by], input.koOffset)
   return fp
 }
 

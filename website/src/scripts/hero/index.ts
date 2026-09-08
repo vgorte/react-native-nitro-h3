@@ -3,18 +3,16 @@ import {
   axialAt,
   type ClearContext,
   centerOf,
-  coverFit,
-  type Fit,
   growRect,
   KO_PAD,
+  type Point,
   planeOf,
   pushOut,
   RES,
   type Rect,
   SIZES,
   screenOf,
-  toDesign,
-  toStage,
+  shiftRect,
 } from './geometry'
 import { attachInput, createHint } from './input'
 import { anchorCard, leaderAnchors, type ReadoutElements, updateReadout } from './readout'
@@ -29,13 +27,13 @@ import {
   type Sparkle,
   sizeCanvas,
 } from './render'
-import { type Mode, pickMode, SCENES, type Scene } from './scene'
+import { type Calibrated, calibrate, type Mode, pickMode, SCENES } from './scene'
 
 const RESIZE_DEBOUNCE_MS = 150
 const BREATH_RAMP_MS = 600
 const PULSE_MS = 620
 const PERF_SAMPLE = 300
-const DPR_CAP = 2
+const DPR_CAP = 1
 
 export function start(): void {
   const stage = document.querySelector<HTMLElement>('.nh3-hero')
@@ -51,7 +49,6 @@ export function start(): void {
   const readoutEls: ReadoutElements = { card, call, id: idOut, announce: announceEl }
 
   const params = new URLSearchParams(location.search)
-  const debug = params.get('heroDebug') === '1'
   const perfLog = params.get('heroPerf') === '1'
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches
 
@@ -60,9 +57,11 @@ export function start(): void {
   const hint = createHint(hintEl)
 
   let mode: Mode = pickMode(params)
-  let scene: Scene = SCENES[mode]
+  let scene: Calibrated = calibrate(SCENES[mode], 1, 1)
   let dpr = 1
-  let fit: Fit = coverFit(scene.W, scene.H, scene.W, scene.H)
+  const koOffset: Point = [0, 0]
+  /** `ko` is the column at rest; `column` is it in canvas space, shifted once per frame. */
+  let column: Rect | null = null
   let ctx: CanvasRenderingContext2D | null = null
   let ko: Rect | null = null
   let litCells: LitCell[] = []
@@ -88,26 +87,43 @@ export function start(): void {
   let frames = 0
   let costSum = 0
 
-  const rectOf = (el: Element, stageRect: DOMRect): Rect => {
-    const r = el.getBoundingClientRect()
-    const topLeft = toDesign(fit, r.left - stageRect.left, r.top - stageRect.top)
-    const bottomRight = toDesign(fit, r.right - stageRect.left, r.bottom - stageRect.top)
-    return { left: topLeft[0], top: topLeft[1], right: bottomRight[0], bottom: bottomRight[1] }
+  const rectIn = (r: DOMRect, stageRect: DOMRect): Rect => ({
+    left: r.left - stageRect.left,
+    top: r.top - stageRect.top,
+    right: r.right - stageRect.left,
+    bottom: r.bottom - stageRect.top,
+  })
+
+  const rectOf = (el: Element, stageRect: DOMRect): Rect =>
+    rectIn(el.getBoundingClientRect(), stageRect)
+
+  /** The single place the layer offset is applied to the keep-out. */
+  const shiftColumn = (): void => {
+    column = ko ? shiftRect(ko, koOffset[0], koOffset[1]) : null
   }
 
-  const clearContext = (): ClearContext => ({ Hm: scene.Hm, s: sTarget, ko, vis: fit.vis })
+  const clearContext = (): ClearContext => ({
+    plane: scene,
+    s: sTarget,
+    ko: column,
+    W: scene.W,
+    H: scene.H,
+  })
 
   const rebuild = (): void => {
     const stageRect = stage.getBoundingClientRect()
     if (stageRect.width < 1 || stageRect.height < 1) return
     dpr = Math.min(window.devicePixelRatio || 1, DPR_CAP)
-    fit = coverFit(scene.W, scene.H, stageRect.width, stageRect.height)
-    ctx = sizeCanvas(canvas, stageRect.width, stageRect.height, fit, dpr)
-    const gridCtx = sizeCanvas(grid, stageRect.width, stageRect.height, fit, dpr)
+    scene = calibrate(SCENES[mode], stageRect.width, stageRect.height)
+    ctx = sizeCanvas(canvas, scene.W, scene.H, dpr)
+    const gridCtx = sizeCanvas(grid, scene.W, scene.H, dpr)
     ko = growRect(rectOf(copy, stageRect), KO_PAD)
+    shiftColumn()
     buildKeepOut(mask, scene.W, scene.H, ko)
     sparkles = makeSparkles(scene)
-    litCells = buildGrid(gridCtx, scene, sTarget, mask, ko)
+    // The hole is baked at the column's rest position. The layer moves it by at most 8 px, which
+    // lies inside the 40 px feather, and the per-frame punch carries the live offset.
+    litCells = buildGrid(gridCtx, scene, sTarget, mask, ko, [0, 0])
   }
 
   const refreshReadout = (announce: boolean): void => {
@@ -119,7 +135,6 @@ export function start(): void {
 
   const applyMode = (next: Mode): void => {
     mode = next
-    scene = SCENES[next]
     stage.classList.toggle('mob', next === 'mob')
     energy = createEnergy()
     cardX = null
@@ -128,7 +143,11 @@ export function start(): void {
     card.style.left = ''
     card.style.top = ''
     rebuild()
-    const start0 = pushOut(clearContext(), 0, 0, scene.W / 2, scene.H / 2)
+    const pu = Math.min(Math.max(0, scene.clampU[0]), scene.clampU[1])
+    const pv = Math.min(Math.max(0, scene.clampV[0]), scene.clampV[1])
+    const opening = screenOf(scene, pu, pv)
+    const axial = axialAt(pu, pv, sTarget)
+    const start0 = pushOut(clearContext(), axial[0], axial[1], opening[0], opening[1])
     focusQ = start0[0]
     focusR = start0[1]
     const centre = centerOf(focusQ, focusR, sTarget)
@@ -141,26 +160,27 @@ export function start(): void {
     updateReadout(readoutEls, focusQ, focusR, sTarget, false)
   }
 
-  const setFocusFromPoint = (clientX: number, clientY: number): void => {
-    const stageRect = stage.getBoundingClientRect()
-    const design = toDesign(fit, clientX - stageRect.left, clientY - stageRect.top)
-    const y = Math.max(design[1], scene.horizonY)
-    const plane = planeOf(scene.Hi, design[0], y)
+  /** The one canvas point to focus cell path. The pointer and the keyboard both go through it. */
+  const resolveFocus = (px: number, py: number): void => {
+    const y = Math.max(py, scene.horizonY)
+    const plane = planeOf(scene, px, y)
     const pu = Math.min(Math.max(plane[0], scene.clampU[0]), scene.clampU[1])
     const pv = Math.min(Math.max(plane[1], scene.clampV[0]), scene.clampV[1])
-    if (debug) console.log(`hero plane ${pu.toFixed(4)} ${pv.toFixed(4)}`)
     const axial = axialAt(pu, pv, sTarget)
-    const cell = pushOut(clearContext(), axial[0], axial[1], design[0], y)
+    const cell = pushOut(clearContext(), axial[0], axial[1], px, y)
     focusQ = cell[0]
     focusR = cell[1]
   }
 
+  const setFocusFromPoint = (clientX: number, clientY: number): void => {
+    const stageRect = stage.getBoundingClientRect()
+    resolveFocus(clientX - stageRect.left, clientY - stageRect.top)
+  }
+
   const stepFocus = (dq: number, dr: number): void => {
     const centre = centerOf(focusQ + dq, focusR + dr, sTarget)
-    const screen = screenOf(scene.Hm, centre[0], centre[1])
-    const cell = pushOut(clearContext(), focusQ + dq, focusR + dr, screen[0], screen[1])
-    focusQ = cell[0]
-    focusR = cell[1]
+    const screen = screenOf(scene, centre[0], centre[1])
+    resolveFocus(screen[0], screen[1])
   }
 
   const frame = (t: number): void => {
@@ -188,7 +208,8 @@ export function start(): void {
       grid,
       mask,
       scene,
-      ko,
+      ko: column,
+      koOffset,
       energy,
       sparkles,
       litCells,
@@ -202,17 +223,19 @@ export function start(): void {
     // The two layout reads of the frame. The card rect is read before it is moved, so the leader
     // trails by one frame instead of forcing a synchronous layout.
     const stageRect = stage.getBoundingClientRect()
-    const cardRect = rectOf(card, stageRect)
+    const cardClient = card.getBoundingClientRect()
+    const cardRect = rectIn(cardClient, stageRect)
     const hintRect = hintEl && !hintEl.hidden ? rectOf(hintEl, stageRect) : null
 
     if (!scene.dock) {
       const keepOuts: { box: Rect; push: 1 | -1 }[] = [{ box: rectOf(copy, stageRect), push: 1 }]
       if (hintRect) keepOuts.push({ box: hintRect, push: -1 })
-      const centreScreen = screenOf(scene.Hm, curU, curV)
+      const centreScreen = screenOf(scene, curU, curV)
       const anchor = anchorCard({
         fp,
         cellCenterX: centreScreen[0],
-        vis: fit.vis,
+        W: scene.W,
+        H: scene.H,
         cardWidth: cardRect.right - cardRect.left,
         cardHeight: cardRect.bottom - cardRect.top,
         hint: hintRect,
@@ -226,9 +249,8 @@ export function start(): void {
       const k = reduced ? 1 : Math.min(1, dt * 9)
       cardX += (anchor.x - cardX) * k
       cardY += (anchor.y - cardY) * k
-      const placed = toStage(fit, cardX, cardY)
-      card.style.left = `${placed[0]}px`
-      card.style.top = `${placed[1]}px`
+      card.style.left = `${cardX}px`
+      card.style.top = `${cardY}px`
     }
 
     const anchors = leaderAnchors(fp, cardRect, cardSide, scene.dock)

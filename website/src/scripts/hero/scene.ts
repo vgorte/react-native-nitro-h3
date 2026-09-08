@@ -1,72 +1,157 @@
-import type { Matrix3, Resolution } from './geometry'
+import {
+  type Camera,
+  homographyFrom,
+  type Matrix3,
+  matInv,
+  matMul,
+  proj,
+  type Quad,
+  type Resolution,
+  SIZES,
+  U0,
+  unproj,
+  V0,
+  vsFor,
+} from './geometry'
 
 export type Mode = 'desk' | 'mob'
 
-export type Mask = { cx: number; cy: number; r0: number; r1: number; fy0: number; fy1: number }
-
 export type Scene = {
-  /** Design space, which is also the size the background image is authored at. */
-  W: number
-  H: number
-  image?: ImageMetadata
-  /** Ground plane to design space, and back. */
-  Hm: Matrix3
-  Hi: Matrix3
-  clampU: readonly [number, number]
-  clampV: readonly [number, number]
-  /** The highest screen row the pointer may unproject from, not the mathematical horizon. */
-  horizonY: number
-  mask: Mask
+  /** Radial mountain fade, as fractions: the centre of x by W and y by H, both radii by W. */
+  mask: { cx: number; cy: number; r0: number; r1: number }
   litR: Record<Resolution, number>
   litCap: number
   dock: boolean
 }
 
+export type Calibrated = Scene & {
+  W: number
+  H: number
+  Hm: Matrix3
+  Hi: Matrix3
+  VS: number
+  PVMIN: number
+  PVMAX: number
+  PU_MIN: number
+  PU_MAX: number
+  PV_MIN2: number
+  PV_MAX2: number
+  clampU: readonly [number, number]
+  clampV: readonly [number, number]
+  horizonY: number
+  /** The vertical fade ends of the grid mask, in canvas pixels. */
+  fy0: number
+  fy1: number
+}
+
 export const SCENES: Record<Mode, Scene> = {
   desk: {
-    W: 1672,
-    H: 941,
-    Hm: [
-      [935.0, -596.8246445498, 650.0],
-      [0.0, 55.3436018957, 390.0],
-      [0.0, -0.5568720379, 1.0],
-    ],
-    Hi: [
-      [0.001069518717, 0.000921699057, -1.054649797835],
-      [0.0, 0.003669405678, -1.431068214425],
-      [0.0, 0.002043389418, 0.203078127038],
-    ],
-    clampU: [-0.36, 0.56],
-    clampV: [-0.2, 0.3],
-    horizonY: 400,
-    mask: { cx: 1055, cy: 655, r0: 140, r1: 790, fy0: 388, fy1: 486 },
+    mask: { cx: 0.281, cy: 1.063, r0: 0.34, r1: 0.777 },
     // Rings of ground lit around the pointer, per resolution, so the patch keeps its screen size.
-    litR: { 6: 2, 9: 3, 12: 4 },
+    litR: { 6: 1, 9: 2, 12: 3 },
     litCap: 600,
     dock: false,
   },
   mob: {
-    W: 868,
-    H: 1882,
-    Hm: [
-      [1870.0, -425.1658767976, -80.0],
-      [0.0, 110.6872037914, 780.0],
-      [0.0, -0.5568720379, 1.0],
-    ],
-    Hi: [
-      [0.000534759358, 0.000460849528, -0.316681883419],
-      [0.0, 0.001834702839, -1.431068214456],
-      [0.0, 0.001021694709, 0.203078127042],
-    ],
-    clampU: [-0.16, 0.09],
-    clampV: [-0.2, 0.3],
-    horizonY: 800,
-    mask: { cx: 610, cy: 1290, r0: 280, r1: 1580, fy0: 776, fy1: 972 },
+    mask: { cx: 0.5, cy: 0.829, r0: 0.876, r1: 2.304 },
     // The portrait crop is narrow, so the patch stays a small cluster around the pressed cell.
     litR: { 6: 1, 9: 1, 12: 2 },
     litCap: 300,
     dock: true,
   },
+}
+
+/** The ground rectangle on the terrain plate, in image pixels, far edge first. */
+export const QUAD: Quad = [
+  [509, 265],
+  [914, 265],
+  [1576, 850],
+  [-16, 850],
+]
+
+export const CAMERA: Camera = { yHorizon: 65, xVp: 688, focal: 1032 }
+
+/** The image the four reference points were measured on. */
+export const IMG_W = 1376
+export const IMG_H = 768
+
+/** The terrain layer is this much larger than the stage on every side. */
+export const GROW = 0.08
+/** The canvas overhangs the stage by this fraction. It has to stay under `GROW / 2`. */
+export const BLEED = 0.035
+
+/** The far `v` the grid is built to, a little past the reference rectangle. */
+export const V_BUILD_FAR = -0.6
+/** The lateral rail, past which far cells cost time and draw nothing. */
+export const PU_LIMIT = 3.2
+/** A cell whose screen width falls below this many canvas pixels is not drawn. */
+export const MIN_HEX_PX = 5
+/** Below this depth a cell is a plain hairline, without glow and without vertex dots. */
+export const FAR_PLAIN = 0.16
+
+/** Image pixels to canvas pixels: the cover fit the layer uses, grown by `GROW`. */
+export function imageCoverFit(W: number, H: number): Matrix3 {
+  const s = Math.max(W / IMG_W, H / IMG_H)
+  const k = 1 + GROW
+  return [
+    [k * s, 0, (k * (W - IMG_W * s)) / 2 - (GROW / 2) * W],
+    [0, k * s, (k * (H - IMG_H * s)) / 2 - (GROW / 2) * H],
+    [0, 0, 1],
+  ]
+}
+
+/**
+ * Everything that depends on the four reference points and the measured stage box, so the only
+ * hand-set numbers left are those points, the camera and the mask shape.
+ */
+export function calibrate(scene: Scene, W: number, H: number): Calibrated {
+  const VS = vsFor(CAMERA, QUAD)
+  const Hm = matMul(imageCoverFit(W, H), homographyFrom(QUAD))
+  const Hi = matInv(Hm)
+  const span = 1 / VS
+  const pvFar = (0 - V0) / VS
+  const pvNear = (1 - V0) / VS
+  // The plane is sampled depth by depth: the widest u range sits at the far end, where a row
+  // spans a fraction of the frame and a screen-row sampler would step straight over it.
+  const spanOver = (vFrom: number, vTo: number): readonly [number, number] => {
+    let lo = Number.POSITIVE_INFINITY
+    let hi = Number.NEGATIVE_INFINITY
+    for (let i = 0; i <= 24; i++) {
+      const v = vFrom + ((vTo - vFrom) * i) / 24
+      const y = proj(Hm, 0.5, v)[1]
+      const a = unproj(Hi, 0, y)[0]
+      const b = unproj(Hi, W, y)[0]
+      lo = Math.min(lo, a - U0, b - U0)
+      hi = Math.max(hi, a - U0, b - U0)
+    }
+    return [lo, hi]
+  }
+  const wide = spanOver(V_BUILD_FAR, 1)
+  const near = spanOver(0.35, 1)
+  // One extra ring on each side, so the grid runs off both stage edges instead of ending inside.
+  const ring = 1.5 * SIZES[12]
+  const PU_MIN = Math.max(wide[0] - ring, -PU_LIMIT)
+  const PU_MAX = Math.min(wide[1] + ring, PU_LIMIT)
+  return {
+    ...scene,
+    W,
+    H,
+    Hm,
+    Hi,
+    VS,
+    PVMIN: pvFar + 0.03 * span,
+    PVMAX: pvNear - 0.025 * span,
+    PU_MIN,
+    PU_MAX,
+    PV_MIN2: (V_BUILD_FAR - V0) / VS,
+    PV_MAX2: pvNear + 0.02 * span,
+    // The 0.02 inset keeps the pointer clamp inside the near field, not on its very edge.
+    clampU: [Math.max(near[0] + 0.02, PU_MIN), Math.min(near[1] - 0.02, PU_MAX)],
+    clampV: [(0.028 - V0) / VS, (0.934 - V0) / VS],
+    horizonY: proj(Hm, 0.5, V_BUILD_FAR - 0.7)[1],
+    fy0: proj(Hm, 0.5, V_BUILD_FAR)[1],
+    fy1: proj(Hm, 0.5, 0.35)[1],
+  }
 }
 
 /** The one query that decides the mode. The CSS uses the same string, so they cannot disagree. */

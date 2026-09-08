@@ -39,9 +39,10 @@ export function updateReadout(
 
 export type AnchorInput = {
   fp: Hexagon
-  /** Screen `x` of the focus cell's centre, in design units. */
+  /** Screen `x` of the focus cell's centre, in canvas pixels. */
   cellCenterX: number
-  vis: Rect
+  W: number
+  H: number
   cardWidth: number
   cardHeight: number
   hint: Rect | null
@@ -52,8 +53,8 @@ export type Anchor = { x: number; y: number; side: 1 | -1 }
 
 /** Hangs the card off the upper vertex facing it and pushes it clear of the copy and the hint. */
 export function anchorCard(input: AnchorInput): Anchor {
-  const { fp, vis, cardWidth: w, cardHeight: h } = input
-  const clampX = (x: number): number => Math.min(Math.max(x, vis.left + 24), vis.right - w - 24)
+  const { fp, cardWidth: w, cardHeight: h } = input
+  const clampX = (x: number): number => Math.min(Math.max(x, 24), input.W - w - 24)
   const hitOf = (x: number, y: number): { box: Rect; push: 1 | -1 } | null => {
     for (const entry of input.keepOuts) {
       const b = entry.box
@@ -69,7 +70,7 @@ export function anchorCard(input: AnchorInput): Anchor {
     // Only lift the card when it would actually run into the hint pill.
     if (hint && x < hint.right && x + w > hint.left) y = Math.min(y, hint.top - h - 12)
     x = clampX(x)
-    y = Math.min(Math.max(y, vis.top + 24), vis.bottom - h - 24)
+    y = Math.min(Math.max(y, 24), input.H - h - 24)
     const hit = hitOf(x, y)
     let blocked = 0
     if (hit) {
@@ -78,7 +79,7 @@ export function anchorCard(input: AnchorInput): Anchor {
     }
     return { x, y, side, blocked, off: Math.abs((side > 0 ? x : x + w) - v[0]) }
   }
-  const first: 1 | -1 = input.cellCenterX > (vis.left + vis.right) / 2 ? -1 : 1
+  const first: 1 | -1 = input.cellCenterX > input.W / 2 ? -1 : 1
   let pos = resolve(first)
   if (pos.blocked) {
     const alt = resolve(first === 1 ? -1 : 1)

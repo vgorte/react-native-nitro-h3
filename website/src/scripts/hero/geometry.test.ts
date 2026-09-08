@@ -3,21 +3,20 @@ import {
   axialAt,
   cellClear,
   centerOf,
-  coverFit,
   hexPts,
+  homographyFrom,
   KO_CLEAR,
+  type Matrix3,
+  matInv,
+  matMul,
   planeOf,
   proj,
   pushOut,
   SIZES,
   screenOf,
-  toDesign,
-  toStage,
-  U0,
   unproj,
-  V0,
 } from './geometry'
-import { SCENES } from './scene'
+import { calibrate, QUAD, SCENES } from './scene'
 
 /** The prototype's Lehmer generator, so every sampled point is reproducible. */
 function lcg(seed: number): () => number {
@@ -28,36 +27,49 @@ function lcg(seed: number): () => number {
   }
 }
 
-const CORNERS = {
-  desk: [
-    [0, 0, 650, 390],
-    [1, 0, 1585, 390],
-    [0, 1, 120, 1005],
-    [1, 1, 2230, 1005],
-    [U0, V0, 1010, 538],
-  ],
-  mob: [
-    [0, 0, -80, 780],
-    [1, 0, 1790, 780],
-    [0, 1, -1140, 2010],
-    [1, 1, 3080, 2010],
-    [U0, V0, 640, 1076],
-  ],
-} as const
+const desk = calibrate(SCENES.desk, 1440, 810)
+const mob = calibrate(SCENES.mob, 430, 800)
+const BOXES = [desk, mob] as const
 
-describe('proj and unproj', () => {
-  test('proj returns the calibration reference points in both modes', () => {
-    for (const mode of ['desk', 'mob'] as const) {
-      for (const [u, v, x, y] of CORNERS[mode]) {
-        const point = proj(SCENES[mode].Hm, u, v)
-        expect(Math.abs(point[0] - x)).toBeLessThan(1e-6)
-        expect(Math.abs(point[1] - y)).toBeLessThan(1e-6)
+describe('the homography', () => {
+  test('maps the unit square onto the four reference points', () => {
+    const m = homographyFrom(QUAD)
+    const corners = [
+      [0, 0],
+      [1, 0],
+      [1, 1],
+      [0, 1],
+    ] as const
+    for (const [i, corner] of corners.entries()) {
+      const point = proj(m, corner[0], corner[1])
+      const want = QUAD[i]
+      if (!want) throw new Error('the reference quad has four points')
+      expect(Math.abs(point[0] - want[0])).toBeLessThan(1e-6)
+      expect(Math.abs(point[1] - want[1])).toBeLessThan(1e-6)
+    }
+  })
+
+  test('matMul of a calibrated matrix with its inverse is the identity', () => {
+    const identity: Matrix3 = [
+      [1, 0, 0],
+      [0, 1, 0],
+      [0, 0, 1],
+    ]
+    for (const scene of BOXES) {
+      const product = matMul(scene.Hm, matInv(scene.Hm))
+      for (let i = 0; i < 3; i++) {
+        for (let j = 0; j < 3; j++) {
+          const row = product[i]
+          const want = identity[i]
+          if (!row || !want) throw new Error('a 3x3 matrix has three rows')
+          expect(Math.abs((row[j] ?? 0) - (want[j] ?? 0))).toBeLessThan(1e-12)
+        }
       }
     }
   })
 
-  test('unproj inverts proj at the corners and at twenty seeded points', () => {
-    for (const mode of ['desk', 'mob'] as const) {
+  test('unproj inverts proj over the unit square and twenty seeded points', () => {
+    for (const scene of BOXES) {
       const rnd = lcg(12345)
       const points: [number, number][] = [
         [0, 0],
@@ -67,23 +79,65 @@ describe('proj and unproj', () => {
       ]
       for (let i = 0; i < 20; i++) points.push([rnd(), rnd()])
       for (const [u, v] of points) {
-        const screen = proj(SCENES[mode].Hm, u, v)
-        const back = unproj(SCENES[mode].Hi, screen[0], screen[1])
+        const screen = proj(scene.Hm, u, v)
+        const back = unproj(scene.Hi, screen[0], screen[1])
         expect(Math.abs(back[0] - u)).toBeLessThan(1e-9)
         expect(Math.abs(back[1] - v)).toBeLessThan(1e-9)
       }
     }
   })
+})
 
+describe('calibrate', () => {
+  test('the box independent values hold in both modes', () => {
+    for (const scene of BOXES) {
+      expect(scene.VS).toBeCloseTo(0.5274, 3)
+      expect(scene.PVMIN).toBeCloseTo(-0.7337, 3)
+      expect(scene.PVMAX).toBeCloseTo(1.0581, 3)
+      expect(scene.PV_MIN2).toBeCloseTo(-1.9283, 3)
+      expect(scene.PV_MAX2).toBeCloseTo(1.1434, 3)
+      expect(scene.clampV[0]).toBeCloseTo(-0.7375, 3)
+      expect(scene.clampV[1]).toBeCloseTo(0.9803, 3)
+    }
+  })
+
+  test('desk at 1440 x 810 derives the spec table', () => {
+    expect(desk.PU_MIN).toBeCloseTo(-2.2617, 3)
+    expect(desk.PU_MAX).toBeCloseTo(2.3447, 3)
+    expect(desk.clampU[0]).toBeCloseTo(-1.0917, 3)
+    expect(desk.clampU[1]).toBeCloseTo(1.1751, 3)
+    expect(desk.horizonY).toBeCloseTo(157.5463, 3)
+    expect(desk.fy0).toBeCloseTo(199.1784, 3)
+    expect(desk.fy1).toBeCloseTo(349.7332, 3)
+  })
+
+  test('mob at 430 x 800 derives the spec table', () => {
+    expect(mob.PU_MIN).toBeCloseTo(-0.6858, 3)
+    expect(mob.PU_MAX).toBeCloseTo(0.7687, 3)
+    expect(mob.clampU[0]).toBeCloseTo(-0.287, 3)
+    expect(mob.clampU[1]).toBeCloseTo(0.3704, 3)
+    expect(mob.horizonY).toBeCloseTo(155.6013, 3)
+    expect(mob.fy0).toBeCloseTo(196.7194, 3)
+    expect(mob.fy1).toBeCloseTo(345.4155, 3)
+  })
+
+  test('the lateral rail clamps neither box', () => {
+    for (const scene of BOXES) {
+      expect(scene.PU_MIN).toBeGreaterThan(-3.2)
+      expect(scene.PU_MAX).toBeLessThan(3.2)
+    }
+  })
+})
+
+describe('the plane mapping', () => {
   test('planeOf inverts screenOf across the clamped plane box', () => {
-    for (const mode of ['desk', 'mob'] as const) {
-      const scene = SCENES[mode]
+    for (const scene of BOXES) {
       for (let i = 0; i <= 10; i++) {
         for (let j = 0; j <= 10; j++) {
           const pu = scene.clampU[0] + (scene.clampU[1] - scene.clampU[0]) * (i / 10)
           const pv = scene.clampV[0] + (scene.clampV[1] - scene.clampV[0]) * (j / 10)
-          const screen = screenOf(scene.Hm, pu, pv)
-          const back = planeOf(scene.Hi, screen[0], screen[1])
+          const screen = screenOf(scene, pu, pv)
+          const back = planeOf(scene, screen[0], screen[1])
           expect(Math.abs(back[0] - pu)).toBeLessThan(1e-9)
           expect(Math.abs(back[1] - pv)).toBeLessThan(1e-9)
         }
@@ -106,59 +160,29 @@ describe('the axial lattice', () => {
 
   test('hexPts returns six points and starts at the vertex on the plane u axis', () => {
     const s = SIZES[12]
-    const points = hexPts(SCENES.desk.Hm, 0.1, 0.05, s)
+    const points = hexPts(desk, 0.1, 0.05, s)
     expect(points).toHaveLength(6)
-    expect(points[0]).toEqual(screenOf(SCENES.desk.Hm, 0.1 + s, 0.05))
-  })
-})
-
-describe('coverFit', () => {
-  test('a stage wider than the design space fills the width and crops the height', () => {
-    const fit = coverFit(1672, 941, 3000, 400)
-    expect(fit.scale).toBeCloseTo(3000 / 1672, 12)
-    expect(fit.offsetX).toBeCloseTo(0, 12)
-    expect(fit.vis.left).toBeCloseTo(0, 12)
-    expect(fit.vis.right).toBeCloseTo(1672, 12)
-    expect((fit.vis.top + fit.vis.bottom) / 2).toBeCloseTo(941 / 2, 12)
-  })
-
-  test('a stage narrower than the design space fills the height and crops the width', () => {
-    const fit = coverFit(1672, 941, 430, 932)
-    expect(fit.scale).toBeCloseTo(932 / 941, 12)
-    expect(fit.offsetY).toBeCloseTo(0, 12)
-    expect(fit.vis.top).toBeCloseTo(0, 12)
-    expect(fit.vis.bottom).toBeCloseTo(941, 12)
-    expect((fit.vis.left + fit.vis.right) / 2).toBeCloseTo(1672 / 2, 12)
-  })
-
-  test('toDesign and toStage are inverses', () => {
-    const fit = coverFit(1672, 941, 1440, 900)
-    const design = toDesign(fit, 512, 333)
-    const stage = toStage(fit, design[0], design[1])
-    expect(Math.abs(stage[0] - 512)).toBeLessThan(1e-9)
-    expect(Math.abs(stage[1] - 333)).toBeLessThan(1e-9)
+    expect(points[0]).toEqual(screenOf(desk, 0.1 + s, 0.05))
   })
 })
 
 describe('pushOut', () => {
-  const scene = SCENES.desk
-  const fit = coverFit(scene.W, scene.H, scene.W, scene.H)
   const s = SIZES[12]
 
   test('returns its input when no keep-out is set', () => {
-    const context = { Hm: scene.Hm, s, ko: null, vis: fit.vis }
+    const context = { plane: desk, s, ko: null, W: desk.W, H: desk.H }
     expect(pushOut(context, 2, -3, 0, 0)).toEqual([2, -3])
   })
 
   test('leaves the keep-out box behind, feather included', () => {
-    const ko = { left: 800, top: 500, right: 1300, bottom: 800 }
-    const context = { Hm: scene.Hm, s, ko, vis: fit.vis }
-    const plane = planeOf(scene.Hi, 1050, 650)
+    const ko = { left: 620, top: 330, right: 900, bottom: 500 }
+    const context = { plane: desk, s, ko, W: desk.W, H: desk.H }
+    const plane = planeOf(desk, 760, 415)
     const startCell = axialAt(plane[0], plane[1], s)
-    const moved = pushOut(context, startCell[0], startCell[1], 1050, 650)
+    const moved = pushOut(context, startCell[0], startCell[1], 760, 415)
     expect(cellClear(context, moved[0], moved[1])).toBeGreaterThanOrEqual(0)
     const centre = centerOf(moved[0], moved[1], s)
-    for (const point of hexPts(scene.Hm, centre[0], centre[1], s)) {
+    for (const point of hexPts(desk, centre[0], centre[1], s)) {
       const insideX = point[0] > ko.left - KO_CLEAR && point[0] < ko.right + KO_CLEAR
       const insideY = point[1] > ko.top - KO_CLEAR && point[1] < ko.bottom + KO_CLEAR
       expect(insideX && insideY).toBe(false)
