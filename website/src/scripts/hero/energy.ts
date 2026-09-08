@@ -7,14 +7,26 @@ export const ENERGY_FLOOR = 0.02
 
 export type EnergyCell = { q: number; r: number; e: number; target: number; stamp: number }
 
-export type EnergyState = { cells: Map<string, EnergyCell>; stamp: number }
+export type EnergyState = { cells: Map<number, EnergyCell>; stamp: number }
+
+/**
+ * A cell's map key, in place of the `${q},${r}` string a touch used to allocate. The grid reaches
+ * about 75 rings from the origin in either direction, so the 4096 offset and the 8192 stride cannot
+ * collide and stay well inside the safe integer range.
+ */
+export const ENERGY_KEY_ORIGIN = 4096
+const ENERGY_KEY_STRIDE = 8192
+
+export function energyKey(q: number, r: number): number {
+  return (q + ENERGY_KEY_ORIGIN) * ENERGY_KEY_STRIDE + (r + ENERGY_KEY_ORIGIN)
+}
 
 export function createEnergy(): EnergyState {
   return { cells: new Map(), stamp: 0 }
 }
 
 function touch(state: EnergyState, q: number, r: number, target: number): void {
-  const key = `${q},${r}`
+  const key = energyKey(q, r)
   const cell = state.cells.get(key)
   if (cell) {
     cell.target = target

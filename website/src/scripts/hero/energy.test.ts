@@ -3,13 +3,33 @@ import {
   createEnergy,
   decayEnergy,
   ENERGY_FLOOR,
+  ENERGY_KEY_ORIGIN,
   ENERGY_TAU,
   type EnergyState,
+  energyKey,
   markPatch,
 } from './energy'
 
 const targetAt = (state: EnergyState, q: number, r: number): number | undefined =>
-  state.cells.get(`${q},${r}`)?.target
+  state.cells.get(energyKey(q, r))?.target
+
+describe('energyKey', () => {
+  test('is collision free well past the range the grid reaches', () => {
+    const seen = new Set<number>()
+    for (let q = -400; q <= 400; q += 7) {
+      for (let r = -400; r <= 400; r += 7) {
+        const key = energyKey(q, r)
+        expect(Number.isSafeInteger(key)).toBe(true)
+        expect(seen.has(key)).toBe(false)
+        seen.add(key)
+      }
+    }
+  })
+
+  test('never runs a coordinate off the negative end of its offset', () => {
+    expect(energyKey(-ENERGY_KEY_ORIGIN, -ENERGY_KEY_ORIGIN)).toBe(0)
+  })
+})
 
 describe('markPatch', () => {
   test('sets the centre to 1 and each ring to its cubed falloff', () => {
@@ -34,23 +54,29 @@ describe('decayEnergy', () => {
     const state = createEnergy()
     markPatch(state, 0, 0, 0)
     decayEnergy(state, ENERGY_TAU * Math.LN2, 600, false)
-    expect(state.cells.get('0,0')?.e).toBeCloseTo(0.5, 12)
+    expect(state.cells.get(energyKey(0, 0))?.e).toBeCloseTo(0.5, 12)
   })
 
   test('drops a cell whose target is 0 once it falls below the floor', () => {
     const state = createEnergy()
-    state.cells.set('0,0', { q: 0, r: 0, e: ENERGY_FLOOR * 1.2, target: 0, stamp: -1 })
+    state.cells.set(energyKey(0, 0), { q: 0, r: 0, e: ENERGY_FLOOR * 1.2, target: 0, stamp: -1 })
     decayEnergy(state, 1, 600, false)
-    expect(state.cells.has('0,0')).toBe(false)
+    expect(state.cells.has(energyKey(0, 0))).toBe(false)
   })
 
   test('cuts the lowest-energy cells down to the cap', () => {
     const state = createEnergy()
     for (let i = 1; i <= 10; i++) {
-      state.cells.set(`${i},0`, { q: i, r: 0, e: i / 10, target: i / 10, stamp: state.stamp })
+      state.cells.set(energyKey(i, 0), {
+        q: i,
+        r: 0,
+        e: i / 10,
+        target: i / 10,
+        stamp: state.stamp,
+      })
     }
     decayEnergy(state, 0.016, 4, false)
     expect(state.cells.size).toBe(4)
-    expect([...state.cells.keys()].sort()).toEqual(['10,0', '7,0', '8,0', '9,0'])
+    expect([...state.cells.values()].map((cell) => cell.q).sort()).toEqual([10, 7, 8, 9].sort())
   })
 })
