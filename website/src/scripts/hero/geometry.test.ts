@@ -170,6 +170,29 @@ describe('the axial lattice', () => {
     expect(points).toHaveLength(6)
     expect(points[0]).toEqual(screenOf(desk, 0.1 + s, 0.05))
   })
+
+  test('the direction table matches the trigonometry it replaced', () => {
+    // What `hexPts` computed per call before the table was hoisted to module scope.
+    const trig = (plane: typeof desk, cu: number, cv: number, s: number): Point[] =>
+      [0, 1, 2, 3, 4, 5].map((k) => {
+        const a = (Math.PI / 180) * (60 * k)
+        return screenOf(plane, cu + s * Math.cos(a), cv + s * Math.sin(a))
+      })
+    for (const scene of BOXES) {
+      const rnd = lcg(99)
+      for (let i = 0; i < 50; i++) {
+        const cu = scene.clampU[0] + rnd() * (scene.clampU[1] - scene.clampU[0])
+        const cv = scene.clampV[0] + rnd() * (scene.clampV[1] - scene.clampV[0])
+        const s = SIZES[12] * (0.5 + rnd())
+        const table = hexPts(scene, cu, cv, s)
+        const want = trig(scene, cu, cv, s)
+        for (const [k, point] of table.entries()) {
+          expect(Math.abs(point[0] - (want[k]?.[0] ?? 0))).toBeLessThan(1e-9)
+          expect(Math.abs(point[1] - (want[k]?.[1] ?? 0))).toBeLessThan(1e-9)
+        }
+      }
+    }
+  })
 })
 
 describe('pushOut', () => {

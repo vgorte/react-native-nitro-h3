@@ -164,12 +164,24 @@ export function centerOf(q: number, r: number, s: number): Point {
   return [s * 1.5 * q, s * Math.sqrt(3) * (r + q / 2)]
 }
 
+function hexDir(k: number): Point {
+  const a = (Math.PI / 180) * (60 * k)
+  return [Math.cos(a), Math.sin(a)]
+}
+
+/** The six vertices of a unit hexagon at the origin. The build calls `hexPts` per cell. */
+const HEX_DIRS: Hexagon = [hexDir(0), hexDir(1), hexDir(2), hexDir(3), hexDir(4), hexDir(5)]
+
 export function hexPts(plane: Plane, cu: number, cv: number, s: number): Hexagon {
-  const at = (k: number): Point => {
-    const a = (Math.PI / 180) * (60 * k)
-    return screenOf(plane, cu + s * Math.cos(a), cv + s * Math.sin(a))
-  }
-  return [at(0), at(1), at(2), at(3), at(4), at(5)]
+  const [d0, d1, d2, d3, d4, d5] = HEX_DIRS
+  return [
+    screenOf(plane, cu + s * d0[0], cv + s * d0[1]),
+    screenOf(plane, cu + s * d1[0], cv + s * d1[1]),
+    screenOf(plane, cu + s * d2[0], cv + s * d2[1]),
+    screenOf(plane, cu + s * d3[0], cv + s * d3[1]),
+    screenOf(plane, cu + s * d4[0], cv + s * d4[1]),
+    screenOf(plane, cu + s * d5[0], cv + s * d5[1]),
+  ]
 }
 
 /** The overlays sit outside the moving layer, so their boxes enter canvas space shifted. */
