@@ -47,9 +47,43 @@ export type AnchorInput = {
   cardHeight: number
   hint: Rect | null
   keepOuts: readonly { box: Rect; push: 1 | -1 }[]
+  /** The copy block, in canvas units. A leader that would cross it loses the side. */
+  copy: Rect | null
 }
 
 export type Anchor = { x: number; y: number; side: 1 | -1 }
+
+/** Liang-Barsky segment against an axis aligned box, so the leader can keep off the copy block. */
+export function segBox(x1: number, y1: number, x2: number, y2: number, b: Rect | null): boolean {
+  if (!b) return false
+  if (Math.max(x1, x2) < b.left || Math.min(x1, x2) > b.right) return false
+  if (Math.max(y1, y2) < b.top || Math.min(y1, y2) > b.bottom) return false
+  if (x1 > b.left && x1 < b.right && y1 > b.top && y1 < b.bottom) return true
+  if (x2 > b.left && x2 < b.right && y2 > b.top && y2 < b.bottom) return true
+  const dx = x2 - x1
+  const dy = y2 - y1
+  const ps = [-dx, dx, -dy, dy]
+  const qs = [x1 - b.left, b.right - x1, y1 - b.top, b.bottom - y1]
+  let t0 = 0
+  let t1 = 1
+  for (let i = 0; i < 4; i++) {
+    const p = ps[i] ?? 0
+    const q = qs[i] ?? 0
+    if (p === 0) {
+      if (q < 0) return false
+      continue
+    }
+    const r = q / p
+    if (p < 0) {
+      if (r > t1) return false
+      if (r > t0) t0 = r
+    } else {
+      if (r < t0) return false
+      if (r < t1) t1 = r
+    }
+  }
+  return t0 <= t1
+}
 
 /** Hangs the card off the upper vertex facing it and pushes it clear of the copy and the hint. */
 export function anchorCard(input: AnchorInput): Anchor {
@@ -77,13 +111,19 @@ export function anchorCard(input: AnchorInput): Anchor {
       x = clampX(hit.push > 0 ? hit.box.right + 8 : hit.box.left - 8 - w)
       blocked = hitOf(x, y) ? 2 : 1
     }
-    return { x, y, side, blocked, off: Math.abs((side > 0 ? x : x + w) - v[0]) }
+    // The leader runs from this vertex to the card corner facing it, so the crossing test belongs
+    // here, where the side can still be swapped.
+    const ax = side > 0 ? x : x + w
+    const cross = segBox(v[0], v[1], ax, y + h, input.copy) ? 1 : 0
+    return { x, y, side, blocked, cross, off: Math.abs(ax - v[0]) }
   }
+  const score = (p: { blocked: number; cross: number; off: number }): number =>
+    p.cross * 1e6 + p.blocked * 1e4 + p.off
   const first: 1 | -1 = input.cellCenterX > input.W / 2 ? -1 : 1
   let pos = resolve(first)
-  if (pos.blocked) {
+  if (pos.blocked || pos.cross) {
     const alt = resolve(first === 1 ? -1 : 1)
-    if (alt.blocked * 10000 + alt.off < pos.blocked * 10000 + pos.off) pos = alt
+    if (score(alt) < score(pos)) pos = alt
   }
   return { x: pos.x, y: pos.y, side: pos.side }
 }

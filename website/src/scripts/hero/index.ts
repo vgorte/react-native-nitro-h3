@@ -66,6 +66,8 @@ export function start(): void {
   let ctx: CanvasRenderingContext2D | null = null
   let ko: Rect | null = null
   let litCells: LitCell[] = []
+  let gridCells = 0
+  let gridMs = 0
   let sparkles: Sparkle[] = []
   const pulses: Pulse[] = []
   let energy = createEnergy()
@@ -124,7 +126,10 @@ export function start(): void {
     sparkles = makeSparkles(scene)
     // The hole is baked at the column's rest position. The layer moves it by at most 8 px, which
     // lies inside the 40 px feather, and the per-frame punch carries the live offset.
-    litCells = buildGrid(gridCtx, scene, sTarget, mask, ko, [0, 0])
+    const build = buildGrid(gridCtx, scene, sTarget, mask, ko, [0, 0])
+    litCells = build.litCells
+    gridCells = build.cells
+    gridMs = build.buildMs
   }
 
   const refreshReadout = (announce: boolean): void => {
@@ -232,7 +237,8 @@ export function start(): void {
     const hintRect = hintEl && !hintEl.hidden ? rectOf(hintEl, stageRect) : null
 
     if (!scene.dock) {
-      const keepOuts: { box: Rect; push: 1 | -1 }[] = [{ box: rectOf(copy, stageRect), push: 1 }]
+      const copyBox = rectOf(copy, stageRect)
+      const keepOuts: { box: Rect; push: 1 | -1 }[] = [{ box: copyBox, push: 1 }]
       if (hintRect) keepOuts.push({ box: hintRect, push: -1 })
       const centreScreen = screenOf(scene, curU, curV)
       const anchor = anchorCard({
@@ -244,6 +250,7 @@ export function start(): void {
         cardHeight: cardRect.bottom - cardRect.top,
         hint: hintRect,
         keepOuts,
+        copy: copyBox,
       })
       cardSide = anchor.side
       if (cardX === null || cardY === null) {

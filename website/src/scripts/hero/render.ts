@@ -11,11 +11,12 @@ import {
   type Rect,
   screenOf,
 } from './geometry'
-import { BLEED, type Calibrated } from './scene'
+import { BLEED, type Calibrated, FAR_PLAIN, MIN_HEX_PX } from './scene'
 
 export type Sparkle = { x: number; y: number; ph: number; sp: number; r: number; d: number }
 export type LitCell = { q: number; r: number; ph: number; sp: number }
 export type Pulse = { t: number; a: number; d: number }
+export type GridBuild = { litCells: LitCell[]; cells: number; buildMs: number }
 
 /** The prototype's Lehmer generator, so the picked cells and sparkles reproduce exactly. */
 function lcg(seed: number): () => number {
@@ -74,8 +75,9 @@ export function clearAll(g: CanvasRenderingContext2D): void {
  */
 export function buildKeepOut(mask: HTMLCanvasElement, W: number, H: number, ko: Rect | null): void {
   const [bx, by] = bleedOf(W, H)
-  mask.width = W + 2 * bx
-  mask.height = H + 2 * by
+  // The same rounding `sizeCanvas` applies, so the mask cannot end up a pixel short of the canvas.
+  mask.width = Math.round(W + 2 * bx)
+  mask.height = Math.round(H + 2 * by)
   if (!ko) return
   const g = mask.getContext('2d')
   if (!g) return
@@ -132,7 +134,7 @@ function pickLitCells(scene: Calibrated, s: number): LitCell[] {
   return cells
 }
 
-/** Draws the static grid into its own canvas and returns the five slow-breathing lit cells. */
+/** Draws the static grid into its own canvas and records what the build cost. */
 export function buildGrid(
   g: CanvasRenderingContext2D,
   scene: Calibrated,
@@ -140,8 +142,10 @@ export function buildGrid(
   mask: HTMLCanvasElement,
   ko: Rect | null,
   koOffset: Point,
-): LitCell[] {
+): GridBuild {
   const { W, H } = scene
+  const started = performance.now()
+  let drawn = 0
   const [bx, by] = bleedOf(W, H)
   clearAll(g)
   g.globalCompositeOperation = 'lighter'
@@ -159,20 +163,29 @@ export function buildGrid(
       if (screen[0] < -bx - 120 || screen[0] > W + bx + 120) continue
       if (screen[1] < -by - 120 || screen[1] > H + by + 120) continue
       const points = hexPts(scene, centre[0], centre[1], s * 0.985)
+      // A cell narrower than this is texture, not a hexagon, and only costs build time.
+      if (Math.abs(points[0][0] - points[3][0]) < MIN_HEX_PX) continue
       const d = depth(scene, centre[1])
       tracePolygon(g, points)
       g.strokeStyle = `rgba(80,160,255,${(0.13 + 0.21 * d).toFixed(3)})`
       g.lineWidth = 0.8 + 1.1 * d
-      g.shadowColor = '#2f7dff'
-      g.shadowBlur = 3 + 7 * d
-      g.stroke()
-      g.shadowBlur = 0
-      g.fillStyle = `rgba(170,215,255,${(0.05 + 0.09 * d).toFixed(3)})`
-      for (const [x, y] of points) {
-        g.beginPath()
-        g.arc(x, y, 0.9 + 0.9 * d, 0, 6.29)
-        g.fill()
+      // The glow and the vertex dots are what make the build expensive, and neither reads at the
+      // far end, so distant cells are a plain hairline.
+      if (d > FAR_PLAIN) {
+        g.shadowColor = '#2f7dff'
+        g.shadowBlur = 3 + 7 * d
+        g.stroke()
+        g.shadowBlur = 0
+        g.fillStyle = `rgba(170,215,255,${(0.05 + 0.09 * d).toFixed(3)})`
+        for (const [x, y] of points) {
+          g.beginPath()
+          g.arc(x, y, 0.9 + 0.9 * d, 0, 6.29)
+          g.fill()
+        }
+      } else {
+        g.stroke()
       }
+      drawn += 1
     }
   }
   g.globalCompositeOperation = 'destination-in'
@@ -189,7 +202,11 @@ export function buildGrid(
   g.fillRect(-bx, -by, W + 2 * bx, H + 2 * by)
   g.globalCompositeOperation = 'source-over'
   punchKeepOut(g, mask, ko, [bx, by], koOffset)
-  return pickLitCells(scene, s)
+  return {
+    litCells: pickLitCells(scene, s),
+    cells: drawn,
+    buildMs: Number((performance.now() - started).toFixed(1)),
+  }
 }
 
 export function makeSparkles(scene: Calibrated): Sparkle[] {
@@ -276,10 +293,12 @@ export function drawScene(input: FrameInput): Hexagon {
     const e = cell.e
     const d = depth(scene, centre[1])
     tracePolygon(ctx, hexPts(scene, centre[0], centre[1], input.focus.s * 0.985))
-    ctx.fillStyle = `rgba(60,140,255,${(0.06 + 0.3 * e * d).toFixed(3)})`
-    ctx.strokeStyle = `rgba(140,195,255,${(0.15 + 0.6 * e).toFixed(3)})`
-    ctx.lineWidth = 0.8 + 2.2 * e
-    ctx.shadowBlur = 4 + 14 * e
+    // The step from an unlit cell to a lit one is what read as a slab, so the fill peak is low
+    // and most of the highlight is carried by the outline and its glow.
+    ctx.fillStyle = `rgba(60,140,255,${(0.02 + 0.15 * e * d).toFixed(3)})`
+    ctx.strokeStyle = `rgba(140,195,255,${(0.12 + 0.45 * e).toFixed(3)})`
+    ctx.lineWidth = 0.8 + 1.8 * e
+    ctx.shadowBlur = 3 + 12 * e
     ctx.fill()
     ctx.stroke()
   }
@@ -337,14 +356,21 @@ export function drawLeader(
   cardAnchor: Point,
   docked: boolean,
 ): void {
-  g.strokeStyle = 'rgba(150,195,255,0.5)'
-  g.lineWidth = docked ? 2 : 1.2
+  g.save()
+  g.strokeStyle = 'rgba(180,215,255,0.95)'
+  g.lineWidth = docked ? 2.2 : 1.8
+  g.shadowColor = '#3d8bff'
+  g.shadowBlur = 10
   g.beginPath()
   g.moveTo(hexAnchor[0], hexAnchor[1])
   g.lineTo(cardAnchor[0], cardAnchor[1])
   g.stroke()
   g.fillStyle = 'rgba(190,220,255,0.85)'
   g.beginPath()
-  g.arc(hexAnchor[0], hexAnchor[1], docked ? 3.5 : 2.2, 0, 6.29)
+  g.arc(hexAnchor[0], hexAnchor[1], 3, 0, 6.29)
   g.fill()
+  g.beginPath()
+  g.arc(cardAnchor[0], cardAnchor[1], 2.5, 0, 6.29)
+  g.fill()
+  g.restore()
 }

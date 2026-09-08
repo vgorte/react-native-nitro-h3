@@ -1,7 +1,7 @@
 import { NBR } from './geometry'
 
 /** Time constant of the exponential approach, in seconds. */
-export const ENERGY_TAU = 0.35
+export const ENERGY_TAU = 0.2
 /** Below this an untouched cell is dropped rather than kept for an invisible amount of light. */
 export const ENERGY_FLOOR = 0.02
 
@@ -29,8 +29,9 @@ export function markPatch(state: EnergyState, q: number, r: number, ringRadius: 
   state.stamp += 1
   touch(state, q, r, 1)
   for (let d = 1; d <= ringRadius; d++) {
+    // Cubic falloff, so the patch reaches zero at its own edge instead of ending on a plateau.
     const falloff = 1 - d / (ringRadius + 1)
-    const target = falloff * falloff
+    const target = falloff * falloff * falloff
     let cq = q + NBR[4][0] * d
     let cr = r + NBR[4][1] * d
     for (const step of NBR) {

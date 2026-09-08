@@ -12,20 +12,20 @@ const targetAt = (state: EnergyState, q: number, r: number): number | undefined 
   state.cells.get(`${q},${r}`)?.target
 
 describe('markPatch', () => {
-  test('sets the centre to 1 and each ring to its squared falloff', () => {
+  test('sets the centre to 1 and each ring to its cubed falloff', () => {
     const state = createEnergy()
-    markPatch(state, 0, 0, 4)
+    markPatch(state, 0, 0, 3)
+    const cubed = (d: number): number => (1 - d / 4) ** 3
     expect(targetAt(state, 0, 0)).toBe(1)
-    expect(targetAt(state, -1, 1)).toBeCloseTo(0.64, 12)
-    expect(targetAt(state, -2, 2)).toBeCloseTo(0.36, 12)
-    expect(targetAt(state, -3, 3)).toBeCloseTo(0.16, 12)
-    expect(targetAt(state, -4, 4)).toBeCloseTo(0.04, 12)
+    expect(targetAt(state, -1, 1)).toBeCloseTo(cubed(1), 12)
+    expect(targetAt(state, -2, 2)).toBeCloseTo(cubed(2), 12)
+    expect(targetAt(state, -3, 3)).toBeCloseTo(cubed(3), 12)
   })
 
-  test('touches the centre and four full rings', () => {
+  test('touches the centre and three full rings', () => {
     const state = createEnergy()
-    markPatch(state, 3, -2, 4)
-    expect(state.cells.size).toBe(1 + 6 + 12 + 18 + 24)
+    markPatch(state, 3, -2, 3)
+    expect(state.cells.size).toBe(1 + 6 + 12 + 18)
   })
 })
 
