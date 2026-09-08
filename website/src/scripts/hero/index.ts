@@ -39,8 +39,10 @@ import {
   buildSignature,
   drawLeader,
   drawScene,
+  type GlowSprites,
   type LitCell,
   type MaskExtent,
+  makeGlows,
   makeSparkles,
   maskFactors,
   type Pulse,
@@ -120,6 +122,8 @@ export function start(): void {
   let gridCells = 0
   let gridMs = 0
   let sparkles: Sparkle[] = []
+  /** Baked with the sparkles, and only ever read after a rebuild has produced a context. */
+  let glows: GlowSprites = { sparkle: [], vertex: [], centre: [] }
   const pulses: Pulse[] = []
   let energy = createEnergy()
   let focusQ = 0
@@ -204,6 +208,7 @@ export function start(): void {
     shiftColumn()
     maskExtent = buildKeepOut(mask, scene.W, scene.H, ko)
     sparkles = makeSparkles(scene)
+    glows = makeGlows(sparkles, dpr)
     // The hole is baked at the column's rest position. The layer moves it by at most 8 px, which
     // lies inside the 40 px feather, and the per-frame punch carries the live offset.
     const build = buildGrid(gridCtx, scene, sTarget, mask, maskExtent, [0, 0])
@@ -328,6 +333,7 @@ export function start(): void {
       grid,
       mask,
       maskExtent,
+      glows,
       scene,
       ko: column,
       koOffset,

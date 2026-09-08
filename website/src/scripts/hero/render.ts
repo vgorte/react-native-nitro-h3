@@ -69,6 +69,151 @@ const DEPTH_STYLES: readonly DepthStyle[] = Array.from({ length: DEPTH_STEPS }, 
 /** Stands in for an index the clamp cannot produce, so the sweep never carries an optional. */
 const FAR_STYLE = depthStyle(0)
 
+/**
+ * A blurred draw under `'lighter'` is what the frame's cost is made of: measured in the page, the
+ * frame interval's p95 falls from 33 ms to 9 ms with `shadowBlur` forced to zero. So nothing in the
+ * frame blurs. A disc and its glow are the same shape every frame, so they are baked once into a
+ * sprite; an outline's glow is approximated by two wider strokes at a fraction of the alpha.
+ */
+export type GlowSprite = { canvas: HTMLCanvasElement; half: number }
+
+export type GlowSprites = {
+  sparkle: readonly GlowSprite[]
+  vertex: readonly GlowSprite[]
+  centre: readonly GlowSprite[]
+}
+
+/** Steps the focus depth is resolved to for the two sprite banks that follow it. */
+const GLOW_STEPS = 8
+
+/**
+ * Bakes a disc and its glow at full alpha. Both the shadow and the disc scale linearly with the
+ * source alpha, so drawing the sprite with `globalAlpha` reproduces what the blurred draw did at
+ * that alpha. The bake composites with `'lighter'` for the same reason the frame does.
+ */
+function bakeGlow(
+  radius: number,
+  blur: number,
+  fill: string,
+  shadow: string,
+  dpr: number,
+): GlowSprite {
+  // `shadowBlur` is twice the Gaussian's standard deviation, so three sigma is 1.5 blur widths.
+  const half = Math.ceil(radius + 1.5 * blur + 2)
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.round(half * 2 * dpr)
+  canvas.height = Math.round(half * 2 * dpr)
+  const g = canvas.getContext('2d')
+  if (g) {
+    g.setTransform(dpr, 0, 0, dpr, 0, 0)
+    g.globalCompositeOperation = 'lighter'
+    g.fillStyle = fill
+    g.shadowColor = shadow
+    g.shadowBlur = blur
+    g.beginPath()
+    g.arc(half, half, radius, 0, 6.29)
+    g.fill()
+  }
+  return { canvas, half }
+}
+
+/** The frame's three families of glowing disc, baked for the current sparkles and device ratio. */
+export function makeGlows(sparkles: readonly Sparkle[], dpr: number): GlowSprites {
+  const byDepth = (
+    radius: (fd: number) => number,
+    blur: (fd: number) => number,
+    fill: string,
+    shadow: string,
+  ): GlowSprite[] =>
+    Array.from({ length: GLOW_STEPS }, (_, i) => {
+      const fd = (i + 0.5) / GLOW_STEPS
+      return bakeGlow(radius(fd), blur(fd), fill, shadow, dpr)
+    })
+  return {
+    // A sparkle keeps one radius for the life of the plate, so it gets its own sprite.
+    sparkle: sparkles.map((sparkle) => bakeGlow(sparkle.r, 8, 'rgb(190,225,255)', '#5fb0ff', dpr)),
+    vertex: byDepth(
+      (fd) => 1.7 + 1.3 * fd,
+      (fd) => 6 + 6 * fd,
+      'rgb(232,244,255)',
+      '#8ec5ff',
+    ),
+    centre: byDepth(
+      (fd) => 2.6 + 1.2 * fd,
+      (fd) => 10 + 10 * fd,
+      'rgb(240,248,255)',
+      '#9fd0ff',
+    ),
+  }
+}
+
+function drawGlow(
+  g: CanvasRenderingContext2D,
+  sprite: GlowSprite | undefined,
+  x: number,
+  y: number,
+  alpha: number,
+): void {
+  if (!sprite) return
+  g.globalAlpha = alpha
+  g.drawImage(sprite.canvas, x - sprite.half, y - sprite.half, sprite.half * 2, sprite.half * 2)
+}
+
+const glowStep = (fd: number): number => Math.min(GLOW_STEPS - 1, (fd * GLOW_STEPS) | 0)
+
+/**
+ * The three passes that stand in for a blurred stroke, as a staircase under the bell the shadow
+ * would have drawn. `shadowBlur` is twice the Gaussian's standard deviation, so a stroke of width
+ * `w` blurred by `b` keeps a peak of `w / (sqrt(2 pi) * b / 2)` of its own alpha and reaches about
+ * `b` pixels to each side. The three widths sample that bell at roughly 0.7, 1.3 and 2.2 sigma, and
+ * the three shares add up to its peak.
+ */
+const GLOW_PASSES = [
+  { width: 2, share: 0.34 },
+  { width: 1.1, share: 0.39 },
+  { width: 0.5, share: 0.27 },
+] as const
+
+type GlowPass = { colour: string; lineWidth: number }
+
+function glowPasses(rgb: string, alpha: number, lineWidth: number, blur: number): GlowPass[] {
+  const peak = (0.798 * alpha * lineWidth) / blur
+  return GLOW_PASSES.map((pass) => ({
+    colour: `rgba(${rgb},${(peak * pass.share).toFixed(4)})`,
+    lineWidth: lineWidth + pass.width * blur,
+  }))
+}
+
+/** The energy patch's alpha ramp, resolved to this many steps and precomputed once. */
+const ENERGY_STEPS = 16
+
+type EnergyStyle = { stroke: string; lineWidth: number; glow: readonly GlowPass[] }
+
+const ENERGY_STYLES: readonly EnergyStyle[] = Array.from({ length: ENERGY_STEPS }, (_, i) => {
+  const e = (i + 0.5) / ENERGY_STEPS
+  const alpha = 0.12 + 0.45 * e
+  const lineWidth = 0.8 + 1.8 * e
+  return {
+    stroke: `rgba(140,195,255,${alpha.toFixed(3)})`,
+    lineWidth,
+    glow: glowPasses('61,139,255', alpha, lineWidth, 3 + 12 * e),
+  }
+})
+
+/** The fill follows the product of energy and depth, so it gets its own ramp of the same size. */
+const ENERGY_FILLS: readonly string[] = Array.from(
+  { length: ENERGY_STEPS },
+  (_, i) => `rgba(60,140,255,${(0.02 + (0.15 * (i + 0.5)) / ENERGY_STEPS).toFixed(3)})`,
+)
+
+function addPolygon(path: Path2D, points: readonly Point[]): void {
+  for (const [i, point] of points.entries()) {
+    if (i === 0) path.moveTo(point[0], point[1])
+    else path.lineTo(point[0], point[1])
+  }
+  path.closePath()
+}
+
 /** The bleed margin in canvas pixels, rounded so the drawing origin lands on whole pixels. */
 export function bleedOf(W: number, H: number): Point {
   return [Math.round(BLEED * W), Math.round(BLEED * H)]
@@ -343,6 +488,7 @@ export type FrameInput = {
   grid: HTMLCanvasElement
   mask: HTMLCanvasElement
   maskExtent: MaskExtent | null
+  glows: GlowSprites
   scene: Calibrated
   ko: Rect | null
   koOffset: Point
@@ -369,19 +515,13 @@ export function drawScene(input: FrameInput): Hexagon {
   ctx.restore()
   ctx.globalCompositeOperation = 'lighter'
 
-  for (const sparkle of input.sparkles) {
+  for (const [i, sparkle] of input.sparkles.entries()) {
     const osc = reduced
       ? 0.35
       : 0.22 + 0.28 * (0.5 + 0.5 * Math.sin((t / 1000) * sparkle.sp + sparkle.ph))
-    const a = osc * (0.45 + 0.55 * sparkle.d)
-    ctx.shadowColor = '#5fb0ff'
-    ctx.shadowBlur = 8
-    ctx.fillStyle = `rgba(190,225,255,${a.toFixed(3)})`
-    ctx.beginPath()
-    ctx.arc(sparkle.x, sparkle.y, sparkle.r, 0, 6.29)
-    ctx.fill()
+    drawGlow(ctx, input.glows.sparkle[i], sparkle.x, sparkle.y, osc * (0.45 + 0.55 * sparkle.d))
   }
-  ctx.shadowBlur = 0
+  ctx.globalAlpha = 1
 
   for (const lit of input.litCells) {
     const centre = centerOf(lit.q, lit.r, input.focus.s)
@@ -392,7 +532,10 @@ export function drawScene(input: FrameInput): Hexagon {
     ctx.fill()
   }
 
-  ctx.shadowColor = '#3d8bff'
+  // The patch is collected into one path per step of the ramp. Addition is commutative, so the
+  // cells may be reordered freely, and the whole pass then costs a few state changes.
+  const fillPaths: (Path2D | undefined)[] = []
+  const strokePaths: (Path2D | undefined)[] = []
   for (const cell of input.energy.cells.values()) {
     const centre = centerOf(cell.q, cell.r, input.focus.s)
     if (centre[0] < scene.PU_MIN || centre[0] > scene.PU_MAX) continue
@@ -401,44 +544,58 @@ export function drawScene(input: FrameInput): Hexagon {
     if (inKeepOut(input.ko, screen[0], screen[1], 0)) continue
     const e = cell.e
     const d = depth(scene, centre[1])
-    tracePolygon(ctx, hexPts(scene, centre[0], centre[1], input.focus.s * 0.985))
-    // The step from an unlit cell to a lit one is what read as a slab, so the fill peak is low
-    // and most of the highlight is carried by the outline and its glow.
-    ctx.fillStyle = `rgba(60,140,255,${(0.02 + 0.15 * e * d).toFixed(3)})`
-    ctx.strokeStyle = `rgba(140,195,255,${(0.12 + 0.45 * e).toFixed(3)})`
-    ctx.lineWidth = 0.8 + 1.8 * e
-    ctx.shadowBlur = 3 + 12 * e
-    ctx.fill()
-    ctx.stroke()
+    const hex = new Path2D()
+    addPolygon(hex, hexPts(scene, centre[0], centre[1], input.focus.s * 0.985))
+    const fillStep = Math.min(ENERGY_STEPS - 1, (e * d * ENERGY_STEPS) | 0)
+    const strokeStep = Math.min(ENERGY_STEPS - 1, (e * ENERGY_STEPS) | 0)
+    const intoFill = fillPaths[fillStep] ?? new Path2D()
+    intoFill.addPath(hex)
+    fillPaths[fillStep] = intoFill
+    const intoStroke = strokePaths[strokeStep] ?? new Path2D()
+    intoStroke.addPath(hex)
+    strokePaths[strokeStep] = intoStroke
   }
-  ctx.shadowBlur = 0
+  // The step from an unlit cell to a lit one is what read as a slab, so the fill peak is low and
+  // most of the highlight is carried by the outline and its glow.
+  for (const [i, colour] of ENERGY_FILLS.entries()) {
+    const path = fillPaths[i]
+    if (!path) continue
+    ctx.fillStyle = colour
+    ctx.fill(path)
+  }
+  for (const [i, style] of ENERGY_STYLES.entries()) {
+    const path = strokePaths[i]
+    if (!path) continue
+    for (const pass of style.glow) {
+      ctx.strokeStyle = pass.colour
+      ctx.lineWidth = pass.lineWidth
+      ctx.stroke(path)
+    }
+    ctx.strokeStyle = style.stroke
+    ctx.lineWidth = style.lineWidth
+    ctx.stroke(path)
+  }
 
   const { cu, cv, s } = input.focus
   const fd = depth(scene, cv)
   const fp = hexPts(scene, cu, cv, s)
   tracePolygon(ctx, fp)
+  const focusWidth = 1.5 + 1.1 * fd
+  for (const pass of glowPasses('108,180,255', input.breath, focusWidth, 9 + 9 * fd)) {
+    ctx.strokeStyle = pass.colour
+    ctx.lineWidth = pass.lineWidth
+    ctx.stroke()
+  }
   ctx.strokeStyle = `rgba(168,212,255,${input.breath.toFixed(3)})`
-  ctx.lineWidth = 1.5 + 1.1 * fd
-  ctx.shadowColor = '#6cb4ff'
-  ctx.shadowBlur = 9 + 9 * fd
+  ctx.lineWidth = focusWidth
   ctx.stroke()
 
-  for (const [x, y] of fp) {
-    ctx.fillStyle = `rgba(232,244,255,${((0.55 + 0.35 * fd) * input.breath).toFixed(3)})`
-    ctx.shadowColor = '#8ec5ff'
-    ctx.shadowBlur = 6 + 6 * fd
-    ctx.beginPath()
-    ctx.arc(x, y, 1.7 + 1.3 * fd, 0, 6.29)
-    ctx.fill()
-  }
+  const step = glowStep(fd)
+  const vertexAlpha = (0.55 + 0.35 * fd) * input.breath
+  for (const [x, y] of fp) drawGlow(ctx, input.glows.vertex[step], x, y, vertexAlpha)
   const centreScreen = screenOf(scene, cu, cv)
-  ctx.fillStyle = 'rgba(240,248,255,0.95)'
-  ctx.shadowColor = '#9fd0ff'
-  ctx.shadowBlur = 10 + 10 * fd
-  ctx.beginPath()
-  ctx.arc(centreScreen[0], centreScreen[1], 2.6 + 1.2 * fd, 0, 6.29)
-  ctx.fill()
-  ctx.shadowBlur = 0
+  drawGlow(ctx, input.glows.centre[step], centreScreen[0], centreScreen[1], 0.95)
+  ctx.globalAlpha = 1
 
   for (let i = input.pulses.length - 1; i >= 0; i--) {
     const pulse = input.pulses[i]
