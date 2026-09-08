@@ -3,8 +3,8 @@ import {
   axialAt,
   type ClearContext,
   centerOf,
-  growRect,
-  KO_PAD,
+  copyColumn,
+  escapeKeepOut,
   type Point,
   planeOf,
   pushOut,
@@ -13,6 +13,7 @@ import {
   SIZES,
   screenOf,
   shiftRect,
+  slideRight,
 } from './geometry'
 import { attachInput, createHint } from './input'
 import { anchorCard, leaderAnchors, type ReadoutElements, updateReadout } from './readout'
@@ -117,7 +118,7 @@ export function start(): void {
     scene = calibrate(SCENES[mode], stageRect.width, stageRect.height)
     ctx = sizeCanvas(canvas, scene.W, scene.H, dpr)
     const gridCtx = sizeCanvas(grid, scene.W, scene.H, dpr)
-    ko = growRect(rectOf(copy, stageRect), KO_PAD)
+    ko = copyColumn(rectOf(copy, stageRect))
     shiftColumn()
     buildKeepOut(mask, scene.W, scene.H, ko)
     sparkles = makeSparkles(scene)
@@ -162,12 +163,15 @@ export function start(): void {
 
   /** The one canvas point to focus cell path. The pointer and the keyboard both go through it. */
   const resolveFocus = (px: number, py: number): void => {
-    const y = Math.max(py, scene.horizonY)
-    const plane = planeOf(scene, px, y)
+    const escaped = escapeKeepOut(column, px, py)
+    const x = escaped[0]
+    const y = Math.max(escaped[1], scene.horizonY)
+    const plane = planeOf(scene, x, y)
     const pu = Math.min(Math.max(plane[0], scene.clampU[0]), scene.clampU[1])
     const pv = Math.min(Math.max(plane[1], scene.clampV[0]), scene.clampV[1])
     const axial = axialAt(pu, pv, sTarget)
-    const cell = pushOut(clearContext(), axial[0], axial[1], px, y)
+    const slid = slideRight(clearContext(), axial[0], axial[1])
+    const cell = pushOut(clearContext(), slid[0], slid[1], x, y)
     focusQ = cell[0]
     focusR = cell[1]
   }

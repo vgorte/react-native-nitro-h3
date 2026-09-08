@@ -39,12 +39,12 @@ export const NBR = [
   [0, 1],
 ] as const satisfies readonly Point[]
 
-/** Canvas pixels the copy block's box grows by before it becomes the keep-out. */
-export const KO_PAD = 40
+/** Canvas pixels the copy block's box grows by before it becomes the keep-out column. */
+export const KO_PAD = 16
 /** Blur width of the keep-out mask edge. */
-export const KO_FEATHER = 60
-/** The blurred edge still dims what it touches, so a clear cell has to stay this far out. */
-export const KO_CLEAR = KO_FEATHER * 2
+export const KO_FEATHER = 40
+/** One feather width, not two: two ate the whole band under the copy block. */
+export const KO_CLEAR = KO_FEATHER
 
 /** The homography that maps the unit square onto the four reference points, far edge first. */
 export function homographyFrom(quad: Quad): Matrix3 {
@@ -172,15 +172,6 @@ export function hexPts(plane: Plane, cu: number, cv: number, s: number): Hexagon
   return [at(0), at(1), at(2), at(3), at(4), at(5)]
 }
 
-export function growRect(rect: Rect, pad: number): Rect {
-  return {
-    left: rect.left - pad,
-    top: rect.top - pad,
-    right: rect.right + pad,
-    bottom: rect.bottom + pad,
-  }
-}
-
 /** The overlays sit outside the moving layer, so their boxes enter canvas space shifted. */
 export function shiftRect(rect: Rect, dx: number, dy: number): Rect {
   return {
@@ -209,6 +200,46 @@ export function cellClear(cx: ClearContext, q: number, r: number): -1 | 0 | 1 {
     if (y < 4 || y > cx.H - 4) whole = false
   }
   return whole ? 1 : 0
+}
+
+/**
+ * The keep-out is the column the copy block stands in, sideways only: from off the left edge of
+ * the canvas to the block's right edge plus the pad, over the block's own height plus the pad.
+ */
+export function copyColumn(copy: Rect): Rect {
+  return {
+    left: -3 * KO_FEATHER,
+    top: copy.top - KO_PAD,
+    right: copy.right + KO_PAD,
+    bottom: copy.bottom + KO_PAD,
+  }
+}
+
+/** True when the canvas point lies inside the column, feather included. */
+export function inCopyColumn(ko: Rect | null, px: number, py: number): boolean {
+  return inKeepOut(ko, px, py, KO_CLEAR)
+}
+
+/** Moves a sampled canvas point right, on the same row, out of the column. */
+export function escapeKeepOut(ko: Rect | null, px: number, py: number): Point {
+  if (!ko || !inCopyColumn(ko, px, py)) return [px, py]
+  return [ko.right + KO_CLEAR + 1, py]
+}
+
+/**
+ * Walks a cell right along its own row until it clears the column. Stepping `[1, 0]` and
+ * `[1, -1]` alternately advances `pu` while `pv` stays put, so the focus keeps the row the
+ * pointer is on instead of being dragged toward the camera.
+ */
+export function slideRight(cx: ClearContext, q: number, r: number): Point {
+  let cq = q
+  let cr = r
+  for (let k = 0; k < 16; k++) {
+    if (cellClear(cx, cq, cr) >= 0) return [cq, cr]
+    cq += 1
+    if (k % 2) cr -= 1
+  }
+  return [cq, cr]
 }
 
 /** The focus cell always renders whole, so the nearest fully clear cell to the pointer wins. */

@@ -3,17 +3,23 @@ import {
   axialAt,
   cellClear,
   centerOf,
+  copyColumn,
+  escapeKeepOut,
   hexPts,
   homographyFrom,
+  inCopyColumn,
   KO_CLEAR,
+  KO_PAD,
   type Matrix3,
   matInv,
   matMul,
+  type Point,
   planeOf,
   proj,
   pushOut,
   SIZES,
   screenOf,
+  slideRight,
   unproj,
 } from './geometry'
 import { calibrate, QUAD, SCENES } from './scene'
@@ -186,6 +192,63 @@ describe('pushOut', () => {
       const insideX = point[0] > ko.left - KO_CLEAR && point[0] < ko.right + KO_CLEAR
       const insideY = point[1] > ko.top - KO_CLEAR && point[1] < ko.bottom + KO_CLEAR
       expect(insideX && insideY).toBe(false)
+    }
+  })
+})
+
+describe('the copy column', () => {
+  // The copy block measured on the real page at 1440 x 900, in canvas units.
+  const page = calibrate(SCENES.desk, 1440, 900)
+  const copy = { left: 77.6, top: 280.3, right: 477.3, bottom: 589.4 }
+  const column = copyColumn(copy)
+  const s = SIZES[12]
+  const context = { plane: page, s, ko: column, W: page.W, H: page.H }
+
+  const resolveCell = (px: number, py: number): { cell: Point; escaped: Point } => {
+    const escaped = escapeKeepOut(column, px, py)
+    const y = Math.max(escaped[1], page.horizonY)
+    const plane = planeOf(page, escaped[0], y)
+    const pu = Math.min(Math.max(plane[0], page.clampU[0]), page.clampU[1])
+    const pv = Math.min(Math.max(plane[1], page.clampV[0]), page.clampV[1])
+    const axial = axialAt(pu, pv, s)
+    return { cell: slideRight(context, axial[0], axial[1]), escaped }
+  }
+
+  test('the column runs off the left edge and stops at the block plus the pad', () => {
+    expect(column.left).toBe(-120)
+    expect(column.top).toBeCloseTo(copy.top - KO_PAD, 9)
+    expect(column.right).toBeCloseTo(copy.right + KO_PAD, 9)
+    expect(column.bottom).toBeCloseTo(copy.bottom + KO_PAD, 9)
+  })
+
+  test('a point beside the copy block moves right on its own row', () => {
+    for (const fy of [0.35, 0.55]) {
+      for (const fx of [0.05, 0.15, 0.25]) {
+        const { escaped } = resolveCell(fx * 1440, fy * 900)
+        expect(escaped[1]).toBeCloseTo(fy * 900, 9)
+        expect(escaped[0]).toBeGreaterThan(copy.right + KO_PAD)
+      }
+    }
+  })
+
+  test('a point below the copy block is returned unchanged', () => {
+    for (const fx of [0.05, 0.15, 0.25]) {
+      const px = fx * 1440
+      const { escaped } = resolveCell(px, 0.85 * 900)
+      expect(escaped[0]).toBeCloseTo(px, 9)
+      expect(escaped[1]).toBeCloseTo(0.85 * 900, 9)
+    }
+  })
+
+  test('none of the nine pointer points resolves into the column', () => {
+    for (const fy of [0.35, 0.55, 0.85]) {
+      for (const fx of [0.05, 0.15, 0.25]) {
+        const { cell } = resolveCell(fx * 1440, fy * 900)
+        const centre = centerOf(cell[0], cell[1], s)
+        const screen = screenOf(page, centre[0], centre[1])
+        expect(inCopyColumn(column, screen[0], screen[1])).toBe(false)
+        expect(cellClear(context, cell[0], cell[1])).toBeGreaterThanOrEqual(0)
+      }
     }
   })
 })
