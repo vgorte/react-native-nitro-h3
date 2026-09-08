@@ -184,11 +184,16 @@ html[data-has-hero] .page > .header {
   align-items: center;
   gap: 1rem;
   margin-top: 0.75rem;
-  padding-top: 1rem;
+  padding-top: 0.75rem;
   border-top: 1px solid var(--sl-color-hairline-light);
 }
 
+/* `SocialIcons.astro` gives every link `padding: 0.5em; margin: -0.5em`, which cancels the row's
+   gap and pulls the first icon off the panel's inline padding. The panel keeps the taller target
+   the links above it have and drops the inline part. */
 .nh3-tabs-social a {
+  padding: 0.5rem 0;
+  margin: 0;
   color: var(--sl-color-gray-2);
 }
 
