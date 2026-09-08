@@ -258,6 +258,10 @@ html[data-has-hero] .page > .header {
   touch-action: pan-y;
   /* A photograph carries the ground now, so the stage is the flat near-black behind it. */
   background: var(--sl-color-black);
+  /* Both height rules below sit in a media query and a fractional viewport width can fall between
+     them. Every child is absolutely positioned, so without this floor the stage collapses to zero
+     there. The cap keeps the floor under the narrow layout's own `max-height`. */
+  min-height: min(34rem, calc(100dvh - var(--sl-nav-height)));
 }
 
 @media (min-width: 50rem) and (orientation: landscape) {
