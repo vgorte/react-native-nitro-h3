@@ -104,6 +104,10 @@ const tabs = TABS.map(({ label, route }) => {
       if (isOpen() && !header.contains(event.target as Node)) setOpen(false)
     })
 
+    // The wide layout hides both the toggle and the panel, so an open state must not survive the
+    // breakpoint and come back on the way down.
+    matchMedia('(min-width: 50rem)').addEventListener('change', () => setOpen(false))
+
     document.addEventListener('keydown', (event) => {
       if (event.key !== 'Escape' || !isOpen()) return
       setOpen(false)
