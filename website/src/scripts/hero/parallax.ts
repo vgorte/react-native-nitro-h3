@@ -36,7 +36,9 @@ export type LayerState = {
   tiltY: number
   idleX: number
   idleY: number
-  /** The inverse of the terrain layer's own transform, for `toCanvas`. */
+  /** The terrain layer's own transform, for `toStagePoint`. */
+  matrix: Matrix3
+  /** Its inverse, for `toCanvas`. */
   inverse: Matrix3
 }
 
@@ -50,6 +52,7 @@ export function createLayerState(): LayerState {
     tiltY: 0,
     idleX: 0,
     idleY: 0,
+    matrix: IDENTITY,
     inverse: IDENTITY,
   }
 }
@@ -102,20 +105,14 @@ export function stepParallax(state: LayerState, input: ParallaxInput): void {
   const nx = input.live ? input.pointNX : 0
   const ny = input.live ? input.pointNY : 0
   const k = input.reduced ? 1 : 1 - Math.exp(-input.dt / p.tau)
-  const target = {
-    terX: p.terrain * p.tSign * amp * nx,
-    terY: p.terrain * p.tSign * amp * ny,
-    cloX: p.clouds * p.cSign * amp * nx,
-    cloY: p.clouds * p.cSign * amp * ny,
-    tiltX: input.live ? -p.tilt * ny : 0,
-    tiltY: input.live ? p.tilt * nx : 0,
-  }
-  state.terX += (target.terX - state.terX) * k
-  state.terY += (target.terY - state.terY) * k
-  state.cloX += (target.cloX - state.cloX) * k
-  state.cloY += (target.cloY - state.cloY) * k
-  state.tiltX += (target.tiltX - state.tiltX) * k
-  state.tiltY += (target.tiltY - state.tiltY) * k
+  const terrain = p.terrain * p.tSign * amp
+  const clouds = p.clouds * p.cSign * amp
+  state.terX += (terrain * nx - state.terX) * k
+  state.terY += (terrain * ny - state.terY) * k
+  state.cloX += (clouds * nx - state.cloX) * k
+  state.cloY += (clouds * ny - state.cloY) * k
+  state.tiltX += ((input.live ? -p.tilt * ny : 0) - state.tiltX) * k
+  state.tiltY += ((input.live ? p.tilt * nx : 0) - state.tiltY) * k
   if (input.idle && !input.reduced) {
     const drift = idleOffset(input.t, amp * (input.half ? 0.5 : 1))
     state.idleX = drift[0]
@@ -124,7 +121,9 @@ export function stepParallax(state: LayerState, input: ParallaxInput): void {
     state.idleX = 0
     state.idleY = 0
   }
-  state.inverse = matInv(layerMatrix(state))
+  // The forward matrix is kept because `toStagePoint` needs it later in the same frame.
+  state.matrix = layerMatrix(state)
+  state.inverse = matInv(state.matrix)
 }
 
 export function terrainTransform(state: LayerState, tilted: boolean): string {
@@ -161,6 +160,6 @@ export function toCanvas(
 
 /** The forward twin of `toCanvas`: a canvas point to the stage pixel the layer puts it at. */
 export function toStagePoint(state: LayerState, x: number, y: number, rect: StageRect): Point {
-  const p = proj(layerMatrix(state), x - rect.width / 2, y - rect.height / 2)
+  const p = proj(state.matrix, x - rect.width / 2, y - rect.height / 2)
   return [p[0] + rect.width / 2, p[1] + rect.height / 2]
 }

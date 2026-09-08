@@ -214,9 +214,22 @@ function addPolygon(path: Path2D, points: readonly Point[]): void {
   path.closePath()
 }
 
-/** The bleed margin in canvas pixels, rounded so the drawing origin lands on whole pixels. */
+let bleedW = Number.NaN
+let bleedH = Number.NaN
+let bleedValue: Point = [0, 0]
+
+/**
+ * The bleed margin in canvas pixels, rounded so the drawing origin lands on whole pixels. The
+ * result is kept for the box it was computed from: the frame asks for it once and the box only
+ * changes on a rebuild. A `Point` is read only, so the shared value cannot be written back.
+ */
 export function bleedOf(W: number, H: number): Point {
-  return [Math.round(BLEED * W), Math.round(BLEED * H)]
+  if (W !== bleedW || H !== bleedH) {
+    bleedW = W
+    bleedH = H
+    bleedValue = [Math.round(BLEED * W), Math.round(BLEED * H)]
+  }
+  return bleedValue
 }
 
 /**

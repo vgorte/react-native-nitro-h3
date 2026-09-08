@@ -15,7 +15,6 @@ import {
   type Rect,
   SIZES,
   screenOf,
-  shiftRect,
   slideRight,
 } from './geometry'
 import { attachInput, createHint } from './input'
@@ -114,6 +113,13 @@ export function start(): void {
   let koOffset: Point = [0, 0]
   /** `ko` is the column at rest; `column` is it in canvas space, shifted once per frame. */
   let column: Rect | null = null
+  // The rectangles the loop rewrites every frame instead of allocating. `columnRect` is the one
+  // that outlives the frame, and it is the only rectangle `column` is ever allowed to point at.
+  const columnRect: Rect = { left: 0, top: 0, right: 0, bottom: 0 }
+  const cardScratch: Rect = { left: 0, top: 0, right: 0, bottom: 0 }
+  const copyScratch: Rect = { left: 0, top: 0, right: 0, bottom: 0 }
+  const hintScratch: Rect = { left: 0, top: 0, right: 0, bottom: 0 }
+  const boxScratch: Rect = { left: 0, top: 0, right: 0, bottom: 0 }
   let ctx: CanvasRenderingContext2D | null = null
   let ko: Rect | null = null
   /** The copy block and the hint pill in stage coordinates, both measured on a rebuild. */
@@ -147,6 +153,9 @@ export function start(): void {
   let resetT = true
   /** The signature of the plate currently on the grid canvas. Empty until the first build. */
   let buildSig = ''
+  /** The last transform written to each layer, so an unchanged one is not written again. */
+  let lastTerrain = ''
+  let lastClouds = ''
   let openingPending = false
   let raf = 0
   let frames = 0
@@ -162,9 +171,18 @@ export function start(): void {
   const rectOf = (el: Element, stageRect: DOMRect): Rect =>
     rectIn(el.getBoundingClientRect(), stageRect)
 
+  /** Writes a shifted copy of a rectangle into an existing one, so the loop allocates none. */
+  const intoRect = (out: Rect, r: Rect | DOMRect, dx: number, dy: number): Rect => {
+    out.left = r.left + dx
+    out.top = r.top + dy
+    out.right = r.right + dx
+    out.bottom = r.bottom + dy
+    return out
+  }
+
   /** The single place the layer offset is applied to the keep-out. */
   const shiftColumn = (): void => {
-    column = ko ? shiftRect(ko, koOffset[0], koOffset[1]) : null
+    column = ko ? intoRect(columnRect, ko, koOffset[0], koOffset[1]) : null
   }
 
   const clearContext = (): ClearContext => ({
@@ -251,7 +269,8 @@ export function start(): void {
     layers.idleY = 0
     // Every component is zero on the line above, so the forward matrix is the identity and is
     // its own inverse.
-    layers.inverse = layerMatrix(layers)
+    layers.matrix = layerMatrix(layers)
+    layers.inverse = layers.matrix
     koOffset = [0, 0]
     cardX = null
     cardY = null
@@ -358,7 +377,7 @@ export function start(): void {
     // The card rect is read before it is moved, so the leader trails by one frame instead of
     // forcing a synchronous layout.
     const cardClient = card.getBoundingClientRect()
-    const cardRect = rectIn(cardClient, stageRect)
+    const cardRect = intoRect(cardScratch, cardClient, -stageRect.left, -stageRect.top)
     // The copy block and the hint pill only move on a rebuild, so their boxes are cached there.
     // The pill's one other move is being hidden, and that is a property read, not a layout one.
     const nowHidden = !hintEl || Boolean(hintEl.hidden)
@@ -366,8 +385,8 @@ export function start(): void {
       hintHidden = nowHidden
       hintRect = nowHidden || !hintEl ? null : rectOf(hintEl, stageRect)
     }
-    const copyBox = shiftRect(copyRect, koOffset[0], koOffset[1])
-    const hintBox = hintRect ? shiftRect(hintRect, koOffset[0], koOffset[1]) : null
+    const copyBox = intoRect(copyScratch, copyRect, koOffset[0], koOffset[1])
+    const hintBox = hintRect ? intoRect(hintScratch, hintRect, koOffset[0], koOffset[1]) : null
     const cardWidth = cardRect.right - cardRect.left
     const cardHeight = cardRect.bottom - cardRect.top
 
@@ -377,7 +396,11 @@ export function start(): void {
       // goes through the exact inverse instead of the translation-only offset.
       const tl = toCanvas(layers.inverse, cardClient.left, cardClient.top, stageRect)
       const br = toCanvas(layers.inverse, cardClient.right, cardClient.bottom, stageRect)
-      cardBox = { left: tl[0], top: tl[1], right: br[0], bottom: br[1] }
+      boxScratch.left = tl[0]
+      boxScratch.top = tl[1]
+      boxScratch.right = br[0]
+      boxScratch.bottom = br[1]
+      cardBox = boxScratch
     } else {
       const keepOuts: { box: Rect; push: 1 | -1 }[] = [{ box: copyBox, push: 1 }]
       if (hintBox) keepOuts.push({ box: hintBox, push: -1 })
@@ -406,7 +429,11 @@ export function start(): void {
       // property would dirty layout for its subtree on every frame. The anchoring maths above is
       // unchanged, only the write is.
       card.style.transform = `translate3d(${placed[0].toFixed(1)}px,${placed[1].toFixed(1)}px,0)`
-      cardBox = { left: cardX, top: cardY, right: cardX + cardWidth, bottom: cardY + cardHeight }
+      boxScratch.left = cardX
+      boxScratch.top = cardY
+      boxScratch.right = cardX + cardWidth
+      boxScratch.bottom = cardY + cardHeight
+      cardBox = boxScratch
     }
 
     const anchors = leaderAnchors(fp, cardBox, cardSide, scene.dock)
@@ -417,8 +444,18 @@ export function start(): void {
     }
     drawLeader(ctx, hex, tip, scene.dock)
 
-    terrainLayer.style.transform = terrainTransform(layers, PRESET.tilt > 0)
-    cloudLayer.style.transform = cloudTransform(layers)
+    // Under reduced motion every component is pinned, so neither string ever changes and neither
+    // write happens.
+    const terrain = terrainTransform(layers, PRESET.tilt > 0)
+    if (terrain !== lastTerrain) {
+      lastTerrain = terrain
+      terrainLayer.style.transform = terrain
+    }
+    const clouds = cloudTransform(layers)
+    if (clouds !== lastClouds) {
+      lastClouds = clouds
+      cloudLayer.style.transform = clouds
+    }
 
     if (perfLog) {
       costSum += performance.now() - started

@@ -184,16 +184,6 @@ export function hexPts(plane: Plane, cu: number, cv: number, s: number): Hexagon
   ]
 }
 
-/** The overlays sit outside the moving layer, so their boxes enter canvas space shifted. */
-export function shiftRect(rect: Rect, dx: number, dy: number): Rect {
-  return {
-    left: rect.left + dx,
-    top: rect.top + dy,
-    right: rect.right + dx,
-    bottom: rect.bottom + dy,
-  }
-}
-
 export function inKeepOut(ko: Rect | null, x: number, y: number, grow: number): boolean {
   if (!ko) return false
   return x > ko.left - grow && x < ko.right + grow && y > ko.top - grow && y < ko.bottom + grow
