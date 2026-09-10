@@ -1,6 +1,6 @@
-# H3 Function Reference
+# H3 function reference
 
-> ⚙️ Derived from H3 v4.5.0 and `h3-js` v4.5.0 by reading the pinned upstream sources. Do not edit
+> Derived from H3 v4.5.0 and `h3-js` v4.5.0 by reading the pinned upstream sources. Do not edit
 > ad hoc; rebuild it against the pinned upstream when that version changes.
 
 The authoritative mapping from this package's exported surface to the H3 C library it binds. Every

@@ -26,7 +26,8 @@
   color: var(--sl-color-white);
 }
 
-/* The claim under an act's description stands off by space and its mark alone, in the text colour. */
+/* The claim under an act's description stands off by its space and its weight alone, in the
+   text colour. */
 .sl-markdown-content p.use {
   margin-top: 1.5rem;
 }

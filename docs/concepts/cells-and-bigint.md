@@ -28,7 +28,7 @@ const hex = cellToString(cell)
 const restored = cellFromString(hex)
 ```
 
-> 💡 `JSON.stringify` does not support `bigint` directly.
+> `JSON.stringify` does not support `bigint` directly.
 
 ## API compatibility with `h3-js`
 

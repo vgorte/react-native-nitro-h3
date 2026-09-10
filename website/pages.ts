@@ -3,7 +3,7 @@ export const SITE = 'https://vgorte.github.io'
 export const BASE = '/react-native-nitro-h3'
 export const REPO = 'https://github.com/vgorte/react-native-nitro-h3'
 
-export const GROUPS = ['Start here', 'Core Concepts', 'Performance', 'Reference'] as const
+export const GROUPS = ['Start here', 'Core concepts', 'Performance', 'Reference'] as const
 export type Group = (typeof GROUPS)[number]
 
 export type Page = {
@@ -52,7 +52,7 @@ export const PAGES: readonly Page[] = [
     source: 'docs/concepts/cells-and-bigint.md',
     description:
       'Why an H3 cell is a bigint in react-native-nitro-h3, how to convert at the boundary and how the package covers the h3-js 4.5.0 operation set.',
-    group: 'Core Concepts',
+    group: 'Core concepts',
   },
   {
     route: '/concepts/typed-arrays-and-batch/',
@@ -60,7 +60,7 @@ export const PAGES: readonly Page[] = [
     source: 'docs/concepts/typed-arrays-and-batch.md',
     description:
       'The contract of BigUint64Array cell sets, Float64Array coordinates and the batch calls latLngsToCells, cellsToLatLngs and cellsToBoundaries.',
-    group: 'Core Concepts',
+    group: 'Core concepts',
   },
   {
     route: '/concepts/sync-and-async/',
@@ -68,7 +68,7 @@ export const PAGES: readonly Page[] = [
     source: 'docs/concepts/sync-and-async.md',
     description:
       'Which four H3 operations have async variants in react-native-nitro-h3, what they guarantee and what the thread hop costs.',
-    group: 'Core Concepts',
+    group: 'Core concepts',
   },
   {
     route: '/concepts/errors-and-memory-safety/',
@@ -76,7 +76,7 @@ export const PAGES: readonly Page[] = [
     source: 'docs/concepts/errors-and-memory-safety.md',
     description:
       'H3Error, native error codes and the optional cell ceiling that turns an oversized allocation into a catchable error.',
-    group: 'Core Concepts',
+    group: 'Core concepts',
   },
   {
     route: '/performance/',
@@ -105,7 +105,7 @@ export const PAGES: readonly Page[] = [
   },
   {
     route: '/h3-function-table/',
-    label: 'H3 function table',
+    label: 'H3 function reference',
     source: 'docs/h3-function-table.md',
     description:
       'Every react-native-nitro-h3 export mapped to the H3 v4.5.0 C function it binds, with the header declarations and implementation hazards.',

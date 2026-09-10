@@ -1,4 +1,4 @@
-# 🚀 Release Guide
+# 🚀 Release guide
 
 > [!CAUTION]
 > **Never publish from a local machine.**

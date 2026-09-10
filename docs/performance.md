@@ -1,4 +1,4 @@
-# 🧮 Performance Guide
+# 🧮 Performance guide
 
 > **Audience: package users who want to know where the speed comes from and where it stops.** This
 > page explains the data path that makes a call cheap, when a batch call pays, and how the optional

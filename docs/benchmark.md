@@ -1,4 +1,4 @@
-# 📊 Benchmark Report
+# 📊 Benchmark report
 
 > **Audience: anyone checking the numbers.** This page is the evidence behind the README's
 > performance claims: what was measured, how, on which devices, where the data lives, and how to
