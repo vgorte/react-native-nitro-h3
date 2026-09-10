@@ -84,10 +84,21 @@ html[data-has-hero] .content-panel > .sl-container > .sl-markdown-content:empty 
 
 /* A window still rubber-bands past a page that has nothing to scroll, and on a page that is exactly
    one screen that elastic pull is the only movement there is. The property belongs on the body: the
-   root keeps `auto`, so the body's value is the one that reaches the viewport. */
+   root keeps `auto`, so the body's value is the one that reaches the viewport. `hidden` on the root
+   then takes the scroll port away entirely, which is what the pull needs to grab. Both pages are
+   built to fit the window, so there is nothing below to reach. */
 html[data-has-hero] body,
 html:has(.nh3-404) body {
   overscroll-behavior-y: none;
+}
+
+/* Measured floor: at 340 px of window the copy still ends inside it, at 320 px it does not. Below
+   the floor the page keeps its scroll, because a locked window would put the buttons out of reach. */
+@media (min-height: 22rem) {
+  html[data-has-hero],
+  html:has(.nh3-404) {
+    overflow: hidden;
+  }
 }
 
 /* `Header.astro` appends the tabs after Starlight's own header, so the fixed bar becomes the row
@@ -488,7 +499,9 @@ html[data-has-hero] .page > .header {
 
 .nh3-hero {
   position: relative;
-  overflow: hidden;
+  /* `clip` and not `hidden`: the plates bleed past the stage on purpose, and a hidden box with
+     overflow is still a scroll port that a gesture can take hold of. */
+  overflow: clip;
   isolation: isolate;
   cursor: crosshair;
   user-select: none;
