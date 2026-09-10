@@ -641,6 +641,20 @@ html[data-has-hero] .page > .header {
   margin-top: 2rem;
 }
 
+/* The second action stands on the photograph like the readout card does, so it takes the same
+   glass instead of Starlight's bare minimal link, which left it floating without a shape. */
+.nh3-actions a.minimal {
+  padding-inline: 1.25rem;
+  border-color: var(--sl-color-hairline-light);
+  background: rgba(8, 13, 24, 0.55);
+  backdrop-filter: blur(10px);
+}
+
+.nh3-actions a.minimal:hover {
+  border-color: var(--sl-color-accent-high);
+  background: rgba(12, 20, 36, 0.72);
+}
+
 @media (orientation: portrait), (max-width: 49.9375rem) {
   .nh3-copy {
     left: 6vw;
