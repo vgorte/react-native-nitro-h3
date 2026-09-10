@@ -1028,15 +1028,23 @@ main:has(.nh3-404) .content-panel > .sl-container > :is(footer, .site-footer) {
 
 /* The fade says the table continues past the edge, and drops away once it does not. The scroll
    region itself is focusable, so the far columns are reachable without a pointer. */
-.sl-markdown-content table.nh3-scroll-x {
+.sl-markdown-content .nh3-scroll-x {
+  overflow-x: auto;
   mask-image: linear-gradient(to right, #000 calc(100% - 3rem), transparent);
 }
 
-.sl-markdown-content table.nh3-scroll-x.nh3-scroll-end {
+/* Starlight scrolls the table itself. Inside a region that would be a second scroll port, and the
+   region would never overflow. */
+.sl-markdown-content .nh3-scroll-x > table {
+  display: table;
+  overflow: visible;
+}
+
+.sl-markdown-content .nh3-scroll-x.nh3-scroll-end {
   mask-image: none;
 }
 
-.sl-markdown-content table.nh3-scroll-x:focus-visible {
+.sl-markdown-content .nh3-scroll-x:focus-visible {
   outline: 2px solid var(--sl-color-accent);
   outline-offset: 2px;
 }

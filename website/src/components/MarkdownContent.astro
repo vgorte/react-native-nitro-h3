@@ -10,20 +10,82 @@ import Default from '@astrojs/starlight/components/MarkdownContent.astro'
   const AT_END = 2
   // Rounding leaves a table a pixel or two over its column; that is not a hidden column.
   const OVERFLOWING = 8
+  const RESIZE_DEBOUNCE_MS = 150
 
-  for (const table of document.querySelectorAll<HTMLTableElement>('.sl-markdown-content table')) {
-    if (table.scrollWidth <= table.clientWidth + OVERFLOWING) continue
+  const tables = [...document.querySelectorAll<HTMLTableElement>('.sl-markdown-content table')]
 
-    table.tabIndex = 0
-    table.setAttribute('role', 'region')
-    table.setAttribute('aria-label', `${table.caption?.textContent ?? 'Table'}, scrolls sideways`)
-    table.classList.add('nh3-scroll-x')
+  const regionOf = (table: HTMLTableElement): HTMLElement | null => {
+    const parent = table.parentElement
+    return parent?.classList.contains('nh3-scroll-x') ? parent : null
+  }
 
-    const settle = () => {
-      const end = table.scrollLeft + table.clientWidth >= table.scrollWidth - AT_END
-      table.classList.toggle('nh3-scroll-end', end)
+  // Starlight wraps a heading in a div to hang its anchor link off, so the heading is one level in.
+  const headingIn = (node: Element): Element | null =>
+    node.matches('h2, h3') ? node : node.querySelector(':scope > h2, :scope > h3')
+
+  // Two regions on the same page both called "Table" tell a screen reader nothing, so the name
+  // comes from the heading the table sits under.
+  const nameOf = (table: HTMLTableElement, index: number): string => {
+    let node: Element | null = table
+    while (node && !node.classList.contains('sl-markdown-content')) {
+      const previous = node.previousElementSibling
+      if (!previous) {
+        node = node.parentElement
+        continue
+      }
+      node = previous
+      const text = headingIn(node)?.textContent?.trim()
+      if (text) return text
     }
-    table.addEventListener('scroll', settle, { passive: true })
+    return `Table ${index + 1}`
+  }
+
+  // Named once, because the heading a table sits under does not change with the window. Two tables
+  // under one heading are numbered within it.
+  const names = tables.map((table, index) => nameOf(table, index))
+  const labels = names.map((name, index) => {
+    if (names.filter((other) => other === name).length < 2) return name
+    const rank = names.slice(0, index + 1).filter((other) => other === name).length
+    return `${name}, table ${rank}`
+  })
+
+  const wrap = (table: HTMLTableElement, index: number): void => {
+    const region = document.createElement('div')
+    region.className = 'nh3-scroll-x'
+    region.tabIndex = 0
+    region.setAttribute('role', 'region')
+    region.setAttribute('aria-label', `${labels[index] ?? 'Table'}, scrolls sideways`)
+    table.replaceWith(region)
+    region.append(table)
+    const settle = () => {
+      const end = region.scrollLeft + region.clientWidth >= region.scrollWidth - AT_END
+      region.classList.toggle('nh3-scroll-end', end)
+    }
+    region.addEventListener('scroll', settle, { passive: true })
     settle()
   }
+
+  // Which tables overflow changes with the window and with the web fonts, so the decision is taken
+  // again rather than once, and it undoes itself when a table fits.
+  const apply = (table: HTMLTableElement, index: number): void => {
+    const region = regionOf(table)
+    const box = region ?? table
+    if (box.scrollWidth <= box.clientWidth + OVERFLOWING) {
+      region?.replaceWith(table)
+      return
+    }
+    if (!region) wrap(table, index)
+  }
+
+  const applyAll = (): void => {
+    for (const [index, table] of tables.entries()) apply(table, index)
+  }
+
+  let timer = 0
+  window.addEventListener('resize', () => {
+    window.clearTimeout(timer)
+    timer = window.setTimeout(applyAll, RESIZE_DEBOUNCE_MS)
+  })
+  void document.fonts.ready.then(applyAll)
+  applyAll()
 </script>
