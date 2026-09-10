@@ -20,8 +20,15 @@
   --sl-font: "Inter Variable";
   --sl-font-mono: "JetBrains Mono Variable";
   /* The three stops are the grid's own: the leader's glow, a sparkle core and a cell core, from
-     `scripts/hero/render.ts`. The word on the hero and the number on the not-found page share it. */
-  --nh3-accent-gradient: linear-gradient(92deg, #2f7dff 0%, #7cbcff 52%, #bee1ff 100%);
+     `scripts/hero/render.ts`. The word on the hero and the number on the not-found page share it,
+     and the primary action takes its light end. */
+  --nh3-accent-light: #bee1ff;
+  --nh3-accent-gradient: linear-gradient(
+    92deg,
+    #2f7dff 0%,
+    #7cbcff 52%,
+    var(--nh3-accent-light) 100%
+  );
 }
 
 /* The header title reads as a wordmark, not a link, so it takes the text colour instead of the accent. */
@@ -639,6 +646,13 @@ html[data-has-hero] .page > .header {
   flex-wrap: wrap;
   gap: 1rem;
   margin-top: 2rem;
+}
+
+/* Starlight tints the primary action with its own accent, which is the one colour on the page that
+   the grid never draws. It takes the light end of the grid gradient instead. */
+.nh3-actions a.primary {
+  border-color: var(--nh3-accent-light);
+  background: var(--nh3-accent-light);
 }
 
 /* The second action stands on the photograph like the readout card does, so it takes the same
