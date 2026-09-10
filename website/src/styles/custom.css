@@ -302,8 +302,7 @@ html[data-has-hero] .page > .header {
 }
 
 /* The bar overlaps the header's own hairline instead of drawing a second one under it, and carries
-   the header's ground: the build emits `backdrop-filter` prefixed only, which current Chrome no
-   longer reads, so a translucent bar would leave the article legible straight through it. */
+   the header's ground so the article does not read through it. */
 .nh3-toc {
   position: fixed;
   z-index: var(--sl-z-index-toc);
@@ -636,7 +635,6 @@ html[data-has-hero] .page > .header {
   pointer-events: none;
   background: rgba(8, 13, 24, 0.78);
   backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
   box-shadow:
     0 0.5rem 1.6rem rgba(0, 0, 0, 0.45),
     inset 0 0 1rem rgba(60, 140, 255, 0.12);
@@ -706,7 +704,6 @@ html[data-has-hero] .page > .header {
   pointer-events: none;
   background: rgba(4, 6, 11, 0.45);
   backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
   transition: opacity 0.4s ease;
 }
 
