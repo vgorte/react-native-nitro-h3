@@ -77,9 +77,17 @@ html[data-has-hero] .content-panel > .sl-container > :is(footer, .site-footer) {
 }
 
 /* The landing has no prose, but Starlight's content block is emitted anyway and its top margin
-   survives an empty box, which left the page 24 px of travel and a rubber-band on every scroll. */
+   survives an empty box, which left the page 24 px of travel. */
 html[data-has-hero] .content-panel > .sl-container > .sl-markdown-content:empty {
   display: none;
+}
+
+/* A window still rubber-bands past a page that has nothing to scroll, and on a page that is exactly
+   one screen that elastic pull is the only movement there is. The property belongs on the body: the
+   root keeps `auto`, so the body's value is the one that reaches the viewport. */
+html[data-has-hero] body,
+html:has(.nh3-404) body {
+  overscroll-behavior-y: none;
 }
 
 /* `Header.astro` appends the tabs after Starlight's own header, so the fixed bar becomes the row
