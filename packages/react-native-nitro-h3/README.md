@@ -41,7 +41,7 @@ bun add react-native-nitro-h3 react-native-nitro-modules
 cd ios && pod install
 ```
 
-[Getting started](https://vgorte.github.io/react-native-nitro-h3/getting-started/) has the npm and Expo commands, the New Architecture note and the requirements.
+[Getting started](https://vgorte.github.io/react-native-nitro-h3/getting-started/) has the npm and Expo commands and the New Architecture note, and [Requirements](https://vgorte.github.io/react-native-nitro-h3/requirements/) has the platform and toolchain versions.
 
 ---
 
@@ -69,7 +69,7 @@ Coming from `h3-js`? Read the **[migration guide](https://vgorte.github.io/react
 - [Documentation](https://vgorte.github.io/react-native-nitro-h3/)
 - [LLMs.txt](https://vgorte.github.io/react-native-nitro-h3/llms.txt): the docs for agents and assistants
 - [Showcase](https://vgorte.github.io/react-native-nitro-h3/showcase/): five acts of one app
-- [Getting started](https://vgorte.github.io/react-native-nitro-h3/getting-started/): install, first call, requirements
+- [Getting started](https://vgorte.github.io/react-native-nitro-h3/getting-started/): install and first call
 - [Migrating from h3-js](https://vgorte.github.io/react-native-nitro-h3/migrating-from-h3-js/)
 - [API reference](https://vgorte.github.io/react-native-nitro-h3/api/): every exported function
 - [Example app](https://github.com/vgorte/react-native-nitro-h3/tree/main/apps/example): the benchmark and harness app

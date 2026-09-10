@@ -27,7 +27,15 @@ export const PAGES: readonly Page[] = [
     label: 'Getting started',
     source: 'docs/getting-started.md',
     description:
-      'Install react-native-nitro-h3 with bun, npm or Expo, make a first H3 call and check the React Native, iOS and Android requirements.',
+      'Install react-native-nitro-h3 with bun, npm or Expo and make a first H3 call on iOS and Android.',
+    group: 'Start here',
+  },
+  {
+    route: '/requirements/',
+    label: 'Requirements',
+    source: 'docs/requirements.md',
+    description:
+      'The React Native, Nitro Modules, iOS, Android and C++ toolchain versions a project needs before react-native-nitro-h3 builds.',
     group: 'Start here',
   },
   {
