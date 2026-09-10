@@ -6,7 +6,7 @@
 
 <video src="/react-native-nitro-h3/img/showcase.mp4" autoplay muted loop playsinline controls style="width: 100%"></video>
 
-[Watch the video](../img/showcase.mp4) (25.6 seconds, no sound).
+[Watch the video](../img/showcase.mp4).
 
 The showcase is not a benchmark. It puts the package where it will actually run: under a map, inside
 a gesture, on a JS thread that also has to animate. It shows what a hexagonal grid buys you once it
