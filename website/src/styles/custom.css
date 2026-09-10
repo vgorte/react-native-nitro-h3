@@ -475,12 +475,14 @@ html[data-has-hero] .page > .header {
   letter-spacing: 0.02em;
 }
 
+/* The card is the point of the hero on a phone, so it keeps clear of the home indicator and of a
+   browser bar that has not finished retracting. */
 .nh3-hero.mob .nh3-readout {
   transform: none;
   left: 4.5vw;
   right: 4.5vw;
   top: auto;
-  bottom: 4vw;
+  bottom: max(1.25rem, env(safe-area-inset-bottom, 0px) + 0.75rem);
   width: auto;
   max-width: none;
   padding: 0.9rem 1.1rem;
@@ -549,7 +551,7 @@ html[data-has-hero] .page > .header {
 .nh3-hero.mob .nh3-hint {
   left: 5vw;
   right: 5vw;
-  bottom: 22vw;
+  bottom: calc(22vw + env(safe-area-inset-bottom, 0px));
 }
 
 .nh3-hero:focus-visible {
