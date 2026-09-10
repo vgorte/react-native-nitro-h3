@@ -54,6 +54,18 @@ html[data-has-hero] .content-panel > .sl-container > :not(.nh3-hero) {
   padding-inline: var(--sl-content-pad-x);
 }
 
+/* JetBrains Mono draws `===` and `->` as one ligature glyph, which reads as a grey bar at inline
+   size. Prose has to spell the operator out; the code blocks keep the ligatures. */
+.sl-markdown-content :not(pre) > code {
+  font-variant-ligatures: none;
+}
+
+/* An inline code chip inherits the heading's size, and its padding then outgrows the line box. */
+.sl-markdown-content :is(h1, h2, h3, h4) code {
+  font-size: 0.85em;
+  padding-block: 0;
+}
+
 /* `Footer.astro` puts its own link row after Starlight's footer, so both carry the breathing room
    and the page ends below the last visible line. */
 html[data-has-hero] .content-panel > .sl-container > :is(footer, .site-footer) {
