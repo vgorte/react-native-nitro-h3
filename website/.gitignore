@@ -3,6 +3,7 @@ dist/
 node_modules/
 src/content/docs/*
 !src/content/docs/index.mdx
+!src/content/docs/404.mdx
 src/assets/*
 !src/assets/hero/
 public/img/

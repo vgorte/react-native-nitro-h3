@@ -7,6 +7,8 @@ import { BASE, EXCLUDED, PAGES, type Page, REPO } from '../pages'
 const WEBSITE = dirname(dirname(fileURLToPath(import.meta.url)))
 const ROOT = dirname(WEBSITE)
 const CONTENT = join(WEBSITE, 'src', 'content', 'docs')
+// The landing and the not-found page are written by hand and live in the generated tree.
+const HAND_WRITTEN = new Set(['index.mdx', '404.mdx'])
 // Leading whitespace is allowed so a fence indented inside a list item toggles the state as well.
 const FENCE = /^\s*(```|~~~)/
 const STEPS_OPEN = '<!-- steps -->'
@@ -319,9 +321,8 @@ async function main() {
   }
 
   await mkdir(CONTENT, { recursive: true })
-  // The landing page is written by hand and lives in the same tree, so only generated pages go.
   for (const entry of await readdir(CONTENT)) {
-    if (entry !== 'index.mdx') await rm(join(CONTENT, entry), { recursive: true, force: true })
+    if (!HAND_WRITTEN.has(entry)) await rm(join(CONTENT, entry), { recursive: true, force: true })
   }
   for (const page of PAGES) {
     const sourcePath = join(ROOT, page.source)

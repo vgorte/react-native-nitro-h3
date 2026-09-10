@@ -21,9 +21,9 @@ const tabs = TABS.map(({ label, route }) => {
   return { label, href, current: withoutTrailingSlash(href) === here }
 })
 
-/* A doc page opens Starlight's own menu, whose sidebar already lists these two pages, so the
-   chevron would be a second menu button beside it. The landing has no sidebar and needs it. */
-const hasHero = Boolean(Astro.locals.starlightRoute.entry.data.hero)
+/* A doc page's sidebar already lists these two pages, so the chevron would be a second menu button
+   beside the one that opens it. A splash page has no sidebar and needs it. */
+const isSplash = Astro.locals.starlightRoute.entry.data.template === 'splash'
 ---
 
 <Default {...Astro.props}><slot /></Default>
@@ -41,7 +41,7 @@ const hasHero = Boolean(Astro.locals.starlightRoute.entry.data.hero)
 <div class="nh3-tabs-social nh3-tabs-social-wide"><SocialIcons /></div>
 
 {
-  hasHero && (
+  isSplash && (
     <>
     <button
       class="nh3-tabs-toggle"
