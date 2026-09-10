@@ -5,21 +5,6 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/vgorte/react-native-nitro-h3/blob/main/LICENSE)
 [![Vendored H3 v4.5.0](https://img.shields.io/badge/h3-v4.5.0-blue.svg)](https://github.com/uber/h3/releases/tag/v4.5.0)
 
-## What you get
-
-- **Native execution.** H3 4.5.0 runs as compiled C++ on iOS and Android, called directly through
-  Nitro Modules.
-- **`bigint` cell indexes.** H3's 64-bit indexes stay numeric, so no hexadecimal strings cross the
-  JavaScript boundary.
-- **Typed-array results.** A cell set arrives as one `BigUint64Array` over the buffer C++ produced,
-  viewed in place instead of copied per element.
-- **Batch calls.** `latLngsToCells`, `cellsToLatLngs` and `cellsToBoundaries` process a whole
-  coordinate or cell array in a single native call.
-- **Async variants.** Four async variants move the expensive calls to a background thread and
-  resolve with the same typed arrays.
-- **Optional cell ceiling.** `configure()` sets a ceiling that rejects an unexpectedly large result
-  before allocation, off by default.
-
 ## 📦 Installation
 
 <!-- tabs -->
