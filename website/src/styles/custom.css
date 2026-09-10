@@ -19,9 +19,10 @@
   --sl-color-hairline: rgba(120, 170, 255, 0.28);
   --sl-font: "Inter Variable";
   --sl-font-mono: "JetBrains Mono Variable";
-  /* The three stops are the grid's own: the leader's glow, a sparkle core and a cell core, from
-     `scripts/hero/render.ts`. The word on the hero and the number on the not-found page share it,
-     and the primary action takes its light end. */
+  /* The two ends are the grid's own, from `scripts/hero/render.ts`: the glow the baked plate draws
+     its cells with, and the bright core of a sparkle sprite. The middle stop sits between them and
+     is the one value here that the grid never draws. The word on the hero and the number on the
+     not-found page share the gradient, and the primary action takes its light end. */
   --nh3-accent-light: #bee1ff;
   --nh3-accent-gradient: linear-gradient(
     92deg,
