@@ -736,6 +736,51 @@ html[data-has-hero] .page > .header {
   padding: 0.9rem 1.1rem;
 }
 
+/* A flat window has no height for all three of copy, grid and card. The copy gives up first: the
+   tagline goes, the heading drops a step and the actions move up under it. */
+@media (max-height: 34rem) {
+  .nh3-copy {
+    top: 8vh;
+  }
+
+  .nh3-copy h1 {
+    font-size: clamp(1.5rem, 4.4vw, 2.4rem);
+  }
+
+  .nh3-tagline {
+    display: none;
+  }
+
+  .nh3-actions {
+    margin-top: 1.1rem;
+  }
+}
+
+/* Flatter still, and the card gives up the call above the cell. What it found is the point, the
+   line that states the question is not, so the card keeps the id alone and sits smaller. */
+@media (max-height: 26rem) {
+  .nh3-hero .nh3-readout {
+    padding: 0.5rem 0.7rem;
+  }
+
+  .nh3-hero.mob .nh3-readout {
+    padding: 0.55rem 0.9rem;
+  }
+
+  .nh3-readout .nh3-line:not(.nh3-out) {
+    display: none;
+  }
+
+  .nh3-readout .nh3-arrow {
+    display: none;
+  }
+
+  .nh3-readout .nh3-out {
+    margin-top: 0;
+    font-size: 0.75rem;
+  }
+}
+
 /* Clipped, not hidden: a display:none region announces nothing. */
 .nh3-announce {
   position: absolute;
