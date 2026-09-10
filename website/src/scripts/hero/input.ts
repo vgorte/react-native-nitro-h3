@@ -1,8 +1,5 @@
 import { NBR, type Point } from './geometry'
 
-const HINT_KEY = 'nh3-hero-hint-seen'
-const HINT_FADE_MS = 400
-
 const KEY_STEPS: Record<string, Point> = {
   ArrowRight: NBR[0],
   ArrowLeft: NBR[3],
@@ -22,41 +19,7 @@ type InputPort = {
   reduced: boolean
 }
 
-/** A browser may refuse session storage, so both accesses are guarded. */
-export function createHint(hint: HTMLElement | null): { hideSoon: () => void } {
-  try {
-    if (hint && sessionStorage.getItem(HINT_KEY) === '1') hint.hidden = true
-  } catch {
-    // Without storage the pill simply shows again, which is the safe direction.
-  }
-  let timer: number | null = null
-  const gone = (): boolean =>
-    hint === null || Boolean(hint.hidden) || hint.classList.contains('gone')
-  const hide = (): void => {
-    if (gone() || !hint) return
-    hint.classList.add('gone')
-    try {
-      sessionStorage.setItem(HINT_KEY, '1')
-    } catch {
-      // Same as above: a refused write only means the pill returns next visit.
-    }
-    window.setTimeout(() => {
-      hint.hidden = true
-    }, HINT_FADE_MS)
-  }
-  return {
-    hideSoon(): void {
-      if (timer !== null || gone()) return
-      timer = window.setTimeout(hide, HINT_FADE_MS)
-    },
-  }
-}
-
-export function attachInput(
-  stage: HTMLElement,
-  port: InputPort,
-  hint: { hideSoon: () => void },
-): void {
+export function attachInput(stage: HTMLElement, port: InputPort): void {
   let down = false
   let moved = false
   // Where the pointer stands, so a drag that is released off the stage still ends the contact.
@@ -74,7 +37,6 @@ export function attachInput(
     port.setOnStage(true)
     port.setFocusFromPoint(event.clientX, event.clientY)
     port.updateReadout(true)
-    hint.hideSoon()
   })
 
   stage.addEventListener('pointermove', (event) => {
@@ -90,7 +52,6 @@ export function attachInput(
     port.setOnStage(true)
     port.setFocusFromPoint(event.clientX, event.clientY)
     port.updateReadout(false)
-    hint.hideSoon()
   })
 
   // A drag that leaves and returns keeps the move handler in its early exit, so the flag is

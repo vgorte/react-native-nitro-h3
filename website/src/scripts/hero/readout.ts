@@ -43,7 +43,6 @@ export type AnchorInput = {
   H: number
   cardWidth: number
   cardHeight: number
-  hint: Rect | null
   keepOuts: readonly { box: Rect; push: 1 | -1 }[]
   /** The copy block, in canvas units. A leader that would cross it loses the side. */
   copy: Rect | null
@@ -84,7 +83,7 @@ export function segBox(x1: number, y1: number, x2: number, y2: number, b: Rect |
   return t0 <= t1
 }
 
-/** Hangs the card off the upper vertex facing it and pushes it clear of the copy and the hint. */
+/** Hangs the card off the upper vertex facing it and pushes it clear of the keep-outs. */
 export function anchorCard(input: AnchorInput): Anchor {
   const { fp, cardWidth: w, cardHeight: h } = input
   const clampX = (x: number): number => Math.min(Math.max(x, 24), input.W - w - 24)
@@ -99,9 +98,6 @@ export function anchorCard(input: AnchorInput): Anchor {
     const v = side > 0 ? fp[5] : fp[4]
     let x = side > 0 ? v[0] + 28 : v[0] - 28 - w
     let y = v[1] - 36 - h
-    const hint = input.hint
-    // Only lift the card when it would actually run into the hint pill.
-    if (hint && x < hint.right && x + w > hint.left) y = Math.min(y, hint.top - h - 12)
     x = clampX(x)
     y = Math.min(Math.max(y, 24), input.H - h - 24)
     const hit = hitOf(x, y)

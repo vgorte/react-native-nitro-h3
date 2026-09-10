@@ -812,57 +812,6 @@ html[data-has-hero] .page > .header {
   white-space: nowrap;
 }
 
-.nh3-hint {
-  position: absolute;
-  left: 52%;
-  bottom: 4.6vw;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  padding: 0.5rem 0.9rem;
-  border-radius: 0.75rem;
-  pointer-events: none;
-  background: rgba(4, 6, 11, 0.45);
-  backdrop-filter: blur(4px);
-  transition: opacity 0.4s ease;
-}
-
-.nh3-hint.gone {
-  opacity: 0;
-}
-
-.nh3-hint[hidden] {
-  display: none;
-}
-
-.nh3-hint svg {
-  width: 1.6rem;
-  height: 1.6rem;
-  flex: none;
-  color: #8fb6ee;
-}
-
-.nh3-hint b {
-  display: block;
-  color: var(--sl-color-gray-1);
-  font-size: 0.9rem;
-  font-weight: 600;
-}
-
-.nh3-hint small {
-  display: block;
-  margin-top: 0.1rem;
-  color: #c2ccda;
-  font-size: 0.8rem;
-}
-
-.nh3-hero.mob .nh3-hint {
-  left: 5vw;
-  right: 5vw;
-  bottom: calc(22vw + env(safe-area-inset-bottom, 0px));
-}
-
 .nh3-hero:focus-visible {
   outline: 2px solid #4da3ff;
   outline-offset: -2px;
@@ -874,7 +823,6 @@ html[data-has-hero] .page > .header {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .nh3-hint,
   .nh3-hero .sl-link-button {
     transition: none;
   }

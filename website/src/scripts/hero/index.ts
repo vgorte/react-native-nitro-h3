@@ -15,7 +15,7 @@ import {
   screenOf,
   slideRight,
 } from './geometry'
-import { attachInput, createHint } from './input'
+import { attachInput } from './input'
 import {
   cloudTransform,
   createLayerState,
@@ -57,7 +57,6 @@ export function start(): void {
   const canvas = document.querySelector<HTMLCanvasElement>('.nh3-fx')
   const copy = document.querySelector<HTMLElement>('.nh3-copy')
   const card = document.querySelector<HTMLElement>('.nh3-readout')
-  const hintEl = document.querySelector<HTMLElement>('.nh3-hint')
   const announceEl = document.querySelector<HTMLElement>('.nh3-announce')
   const terrainLayer = document.querySelector<HTMLElement>('.nh3-terrain')
   const cloudLayer = document.querySelector<HTMLElement>('.nh3-clouds')
@@ -74,7 +73,6 @@ export function start(): void {
 
   const grid = document.createElement('canvas')
   const mask = document.createElement('canvas')
-  const hint = createHint(hintEl)
 
   let mode: Mode = pickMode(params)
   let scene: Calibrated = calibrate(SCENES[mode], 1, 1)
@@ -92,14 +90,11 @@ export function start(): void {
   const columnRect: Rect = { left: 0, top: 0, right: 0, bottom: 0 }
   const cardScratch: Rect = { left: 0, top: 0, right: 0, bottom: 0 }
   const copyScratch: Rect = { left: 0, top: 0, right: 0, bottom: 0 }
-  const hintScratch: Rect = { left: 0, top: 0, right: 0, bottom: 0 }
   const boxScratch: Rect = { left: 0, top: 0, right: 0, bottom: 0 }
   let ctx: CanvasRenderingContext2D | null = null
   let ko: Rect | null = null
-  // The copy block and the hint pill in stage coordinates, both measured on a rebuild.
+  // The copy block in stage coordinates, measured on a rebuild.
   let copyRect: Rect = { left: 0, top: 0, right: 0, bottom: 0 }
-  let hintRect: Rect | null = null
-  let hintHidden = true
   // The part of the mask canvas the punch has to composite. Null while there is no column.
   let maskExtent: MaskExtent | null = null
   let litCells: LitCell[] = []
@@ -198,8 +193,6 @@ export function start(): void {
     if (sig === buildSig) return true
     buildSig = sig
     copyRect = nextCopy
-    hintHidden = !hintEl || Boolean(hintEl.hidden)
-    hintRect = hintHidden || !hintEl ? null : rectOf(hintEl, stageRect)
     dpr = nextDpr
     scene = calibrate(SCENES[mode], stageRect.width, stageRect.height)
     ctx = sizeCanvas(canvas, scene.W, scene.H, dpr)
@@ -359,15 +352,8 @@ export function start(): void {
     // The card rect is read before it is moved, so the leader trails by one frame instead of
     // forcing a synchronous layout.
     const cardClient = card.getBoundingClientRect()
-    // The copy block and the hint pill only move on a rebuild, so their boxes are cached there.
-    // The pill's one other move is being hidden, and that is a property read, not a layout one.
-    const nowHidden = !hintEl || Boolean(hintEl.hidden)
-    if (nowHidden !== hintHidden) {
-      hintHidden = nowHidden
-      hintRect = nowHidden || !hintEl ? null : rectOf(hintEl, stageRect)
-    }
+    // The copy block only moves on a rebuild, so its box is cached there.
     const copyBox = intoRect(copyScratch, copyRect, koOffset[0], koOffset[1])
-    const hintBox = hintRect ? intoRect(hintScratch, hintRect, koOffset[0], koOffset[1]) : null
 
     let cardBox: Rect
     if (scene.dock) {
@@ -385,7 +371,6 @@ export function start(): void {
       const cardWidth = cardRect.right - cardRect.left
       const cardHeight = cardRect.bottom - cardRect.top
       const keepOuts: { box: Rect; push: 1 | -1 }[] = [{ box: copyBox, push: 1 }]
-      if (hintBox) keepOuts.push({ box: hintBox, push: -1 })
       const centreScreen = screenOf(scene, curU, curV)
       const anchor = anchorCard({
         fp,
@@ -394,7 +379,6 @@ export function start(): void {
         H: scene.H,
         cardWidth,
         cardHeight,
-        hint: hintBox,
         copy: copyBox,
         keepOuts,
       })
@@ -497,29 +481,25 @@ export function start(): void {
     rebuild()
   })
 
-  attachInput(
-    stage,
-    {
-      setFocusFromPoint,
-      stepFocus,
-      updateReadout: refreshReadout,
-      pulse: () => {
-        pulses.push({ t: performance.now(), a: 1, d: PULSE_MS })
-      },
-      setOnStage: (on) => {
-        if (on === onStage) return
-        onStage = on
-        if (!on) leftStageAt = performance.now()
-      },
-      clearPointer: () => {
-        pointNX = 0
-        pointNY = 0
-      },
-      isDocked: () => scene.dock,
-      reduced,
+  attachInput(stage, {
+    setFocusFromPoint,
+    stepFocus,
+    updateReadout: refreshReadout,
+    pulse: () => {
+      pulses.push({ t: performance.now(), a: 1, d: PULSE_MS })
     },
-    hint,
-  )
+    setOnStage: (on) => {
+      if (on === onStage) return
+      onStage = on
+      if (!on) leftStageAt = performance.now()
+    },
+    clearPointer: () => {
+      pointNX = 0
+      pointNY = 0
+    },
+    isDocked: () => scene.dock,
+    reduced,
+  })
 
   if (debug) {
     // The probes are only fetched when the flag is present, so the module stays out of the chunk

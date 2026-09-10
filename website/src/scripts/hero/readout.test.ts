@@ -21,7 +21,6 @@ const anchorInput = (over: Partial<AnchorInput>): AnchorInput => ({
   H: 600,
   cardWidth: 200,
   cardHeight: 100,
-  hint: null,
   keepOuts: [],
   copy: null,
   ...over,
