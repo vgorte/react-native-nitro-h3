@@ -70,10 +70,16 @@ html[data-has-hero] .content-panel > .sl-container > :not(.nh3-hero) {
   padding-block: 0;
 }
 
-/* `Footer.astro` puts its own link row after Starlight's footer, so both carry the breathing room
-   and the page ends below the last visible line. */
+/* The landing is one screen and nothing below it: the date and the project links would be the only
+   reason to scroll, and they stand on every other page. */
 html[data-has-hero] .content-panel > .sl-container > :is(footer, .site-footer) {
-  padding-bottom: 3vh;
+  display: none;
+}
+
+/* The landing has no prose, but Starlight's content block is emitted anyway and its top margin
+   survives an empty box, which left the page 24 px of travel and a rubber-band on every scroll. */
+html[data-has-hero] .content-panel > .sl-container > .sl-markdown-content:empty {
+  display: none;
 }
 
 /* `Header.astro` appends the tabs after Starlight's own header, so the fixed bar becomes the row
