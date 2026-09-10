@@ -583,3 +583,17 @@ html[data-has-hero] .page > .header {
     transition: none;
   }
 }
+
+/* A badge row arrives as several linked images in one paragraph, and Starlight lays every image out
+   as a block, which stacks them into a column. */
+.sl-markdown-content p:has(a:nth-of-type(2) > img) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.sl-markdown-content p:has(a:nth-of-type(2) > img) img {
+  display: inline-block;
+  margin: 0;
+}
