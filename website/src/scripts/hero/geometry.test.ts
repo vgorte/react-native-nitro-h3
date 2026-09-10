@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import {
   axialAt,
   cellClear,
+  cellUnderPoint,
   centerOf,
   copyColumn,
   escapeKeepOut,
@@ -271,6 +272,83 @@ describe('the copy column', () => {
         const screen = screenOf(page, centre[0], centre[1])
         expect(inCopyColumn(column, screen[0], screen[1])).toBe(false)
         expect(cellClear(context, cell[0], cell[1])).toBeGreaterThanOrEqual(0)
+      }
+    }
+  })
+})
+
+describe('cellUnderPoint', () => {
+  // The same page and copy block the column tests above are measured on.
+  const page = calibrate(SCENES.desk, 1440, 900)
+  const copy = { left: 77.6, top: 280.3, right: 477.3, bottom: 589.4 }
+  const column = copyColumn(copy)
+  const s = SIZES[12]
+  const context = { plane: page, s, ko: column, W: page.W, H: page.H }
+
+  const cellAt = (px: number, py: number): Point => {
+    const plane = planeOf(page, px, py)
+    return axialAt(plane[0], plane[1], s)
+  }
+
+  test('a point over a plain cell returns that cell', () => {
+    for (const point of [
+      [900, 700],
+      [1100, 620],
+      [700, 500],
+    ] as const) {
+      const cell = cellUnderPoint(page, context, point[0], point[1])
+      expect(cell).toEqual(cellAt(point[0], point[1]))
+    }
+  })
+
+  test('a point whose cell the column cuts returns null', () => {
+    const px = copy.right - 30
+    const py = column.bottom + 6
+    const cut = cellAt(px, py)
+    expect(cellClear(context, cut[0], cut[1])).toBe(-1)
+    expect(cellUnderPoint(page, context, px, py)).toBeNull()
+  })
+
+  test('a point past a build limit returns null', () => {
+    for (const py of [page.horizonY - 40, page.horizonY, page.fy0]) {
+      expect(cellUnderPoint(page, context, 900, py)).toBeNull()
+    }
+    for (const pu of [page.clampU[0] - 0.05, page.clampU[1] + 0.05]) {
+      const point = screenOf(page, pu, 0.2)
+      expect(cellUnderPoint(page, context, point[0], point[1])).toBeNull()
+    }
+  })
+
+  test('a point inside the column returns null', () => {
+    for (const fy of [0.35, 0.55]) {
+      for (const fx of [0.05, 0.15, 0.25]) {
+        expect(cellUnderPoint(page, context, fx * 1440, fy * 900)).toBeNull()
+      }
+    }
+  })
+
+  test('a point just below the copy block never returns a cell right of it', () => {
+    // The measured case: the row under the block used to hand back a cell 243 px to the right.
+    expect(cellUnderPoint(page, context, 323, column.bottom + 2)).toBeNull()
+    let returned = 0
+    for (let px = 100; px <= copy.right - 40; px += 10) {
+      for (const dy of [2, 30, 50, 70, 90]) {
+        const cell = cellUnderPoint(page, context, px, column.bottom + dy)
+        if (!cell) continue
+        returned += 1
+        expect(cell).toEqual(cellAt(px, column.bottom + dy))
+        const centre = centerOf(cell[0], cell[1], s)
+        expect(screenOf(page, centre[0], centre[1])[0]).toBeLessThan(copy.right)
+      }
+    }
+    expect(returned).toBeGreaterThan(0)
+  })
+
+  test('no sampled point returns a cell other than the one it falls in', () => {
+    for (let px = 20; px < 1440; px += 37) {
+      for (let py = 200; py < 900; py += 29) {
+        const cell = cellUnderPoint(page, context, px, py)
+        if (cell) expect(cell).toEqual(cellAt(px, py))
       }
     }
   })

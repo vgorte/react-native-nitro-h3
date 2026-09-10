@@ -2,10 +2,10 @@ import { createEnergy, decayEnergy, markPatch } from './energy'
 import {
   axialAt,
   type ClearContext,
+  cellUnderPoint,
   centerOf,
   copyColumn,
   escapeKeepOut,
-  inCopyColumn,
   type Point,
   planeOf,
   pushOut,
@@ -261,7 +261,8 @@ export function start(): void {
     openingPending = !ready
   }
 
-  // The one canvas point to focus cell path. The pointer and the keyboard both go through it.
+  // The keyboard path. Arrow keys have to be able to leave the copy block, so a step that lands on
+  // a blocked cell is carried out of the column and then to the nearest cell that renders whole.
   const resolveFocus = (px: number, py: number): void => {
     const escaped = escapeKeepOut(column, px, py)
     const x = escaped[0]
@@ -283,10 +284,12 @@ export function start(): void {
     pointNX = Math.max(-1, Math.min(1, (clientX - stageRect.left - halfW) / halfW))
     pointNY = Math.max(-1, Math.min(1, (clientY - stageRect.top - halfH) / halfH))
     const hit = toCanvas(layers.inverse, clientX, clientY, stageRect)
-    // The copy stands in a hole in the grid, so a point inside it has no cell of its own. Sliding
-    // out of the column lands off the stage where the column spans it, so the focus stays put.
-    if (inCopyColumn(column, hit[0], hit[1])) return
-    resolveFocus(hit[0], hit[1])
+    // A cell is selected only where the pointer really stands on it. Over the copy, past the far
+    // limit or on a cell the copy cuts there is nothing to select, and the focus stays where it is.
+    const cell = cellUnderPoint(scene, clearContext(), hit[0], hit[1])
+    if (!cell) return
+    focusQ = cell[0]
+    focusR = cell[1]
   }
 
   const stepFocus = (dq: number, dr: number): void => {

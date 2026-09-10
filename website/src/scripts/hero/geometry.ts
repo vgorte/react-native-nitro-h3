@@ -234,7 +234,36 @@ export function inCopyColumn(ko: Rect | null, px: number, py: number): boolean {
   return inKeepOut(ko, px, py, KO_CLEAR)
 }
 
-/** Moves a sampled canvas point right, on the same row, out of the column. */
+/** The plane plus the limits a pointer sample has to fall inside, as a calibrated scene carries. */
+export type Field = Plane & {
+  clampU: readonly [number, number]
+  clampV: readonly [number, number]
+  horizonY: number
+}
+
+/**
+ * Returns the cell the canvas point is really over, or `null` when the point has no cell of its own.
+ *
+ * A point inside the copy column, one past the limits the grid is sampled between, and one on a
+ * cell the column cuts all have none, so the pointer selects that cell or nothing at all.
+ */
+export function cellUnderPoint(
+  field: Field,
+  cx: ClearContext,
+  px: number,
+  py: number,
+): Point | null {
+  if (inCopyColumn(cx.ko, px, py)) return null
+  // Beyond the horizon the unprojection turns over, so the sample is taken on the horizon line and
+  // fails the far limit right below.
+  const plane = planeOf(field, px, Math.max(py, field.horizonY))
+  if (plane[0] < field.clampU[0] || plane[0] > field.clampU[1]) return null
+  if (plane[1] < field.clampV[0] || plane[1] > field.clampV[1]) return null
+  const axial = axialAt(plane[0], plane[1], cx.s)
+  return cellClear(cx, axial[0], axial[1]) < 0 ? null : axial
+}
+
+/** Moves a sampled canvas point right, on the same row, out of the column. Keyboard steps only. */
 export function escapeKeepOut(ko: Rect | null, px: number, py: number): Point {
   if (!ko || !inCopyColumn(ko, px, py)) return [px, py]
   return [ko.right + KO_CLEAR + 1, py]
@@ -242,8 +271,8 @@ export function escapeKeepOut(ko: Rect | null, px: number, py: number): Point {
 
 /**
  * Walks a cell right along its own row until it clears the column. Stepping `[1, 0]` and
- * `[1, -1]` alternately advances `pu` while `pv` stays put, so the focus keeps the row the
- * pointer is on instead of being dragged toward the camera.
+ * `[1, -1]` alternately advances `pu` while `pv` stays put, so a keyboard step keeps its row
+ * instead of being dragged toward the camera.
  */
 export function slideRight(cx: ClearContext, q: number, r: number): Point {
   let cq = q
