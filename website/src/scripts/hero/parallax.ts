@@ -18,8 +18,8 @@ export const PRESETS: Record<'tilt' | 'follow', Preset> = {
 /** The stage width both amplitudes were tuned at. Nothing derives from it. */
 export const PARA_REF_W = 1672
 export const PARA_PERSPECTIVE = 1200
-export const IDLE_X = 8
-export const IDLE_Y = 4
+export const IDLE_X = 22
+export const IDLE_Y = 11
 
 const IDENTITY: Matrix3 = [
   [1, 0, 0],
