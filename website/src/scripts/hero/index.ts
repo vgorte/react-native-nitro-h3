@@ -353,7 +353,6 @@ export function start(): void {
     // The card rect is read before it is moved, so the leader trails by one frame instead of
     // forcing a synchronous layout.
     const cardClient = card.getBoundingClientRect()
-    const cardRect = intoRect(cardScratch, cardClient, -stageRect.left, -stageRect.top)
     // The copy block and the hint pill only move on a rebuild, so their boxes are cached there.
     // The pill's one other move is being hidden, and that is a property read, not a layout one.
     const nowHidden = !hintEl || Boolean(hintEl.hidden)
@@ -376,6 +375,7 @@ export function start(): void {
       boxScratch.bottom = br[1]
       cardBox = boxScratch
     } else {
+      const cardRect = intoRect(cardScratch, cardClient, -stageRect.left, -stageRect.top)
       const cardWidth = cardRect.right - cardRect.left
       const cardHeight = cardRect.bottom - cardRect.top
       const keepOuts: { box: Rect; push: 1 | -1 }[] = [{ box: copyBox, push: 1 }]

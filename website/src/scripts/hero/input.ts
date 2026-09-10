@@ -93,6 +93,12 @@ export function attachInput(
     hint.hideSoon()
   })
 
+  // A drag that leaves and returns keeps the move handler in its early exit, so the flag is
+  // cleared here instead: the pointer is on the stage again and a lift must not end the contact.
+  stage.addEventListener('pointerenter', () => {
+    outside = false
+  })
+
   stage.addEventListener('pointerleave', () => {
     outside = true
     port.clearPointer()
