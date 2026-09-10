@@ -82,9 +82,15 @@ html[data-has-hero] .content-panel > .sl-container > :not(.nh3-hero) {
   padding-block: 0;
 }
 
-/* The landing is one screen and nothing below it: the date and the page links would be the only
-   reason to scroll, and they stand on every other page. */
+/* The landing is one screen and nothing below it: the page links would be the only reason to
+   scroll, and they stand on every other page. */
 html[data-has-hero] .content-panel > .sl-container > footer {
+  display: none;
+}
+
+/* Starlight emits the footer's meta row whether or not anything fills it, and an empty box keeps
+   its 3 rem top margin and its share of the column gap, which stood 72 px above the page links. */
+.content-panel > .sl-container > footer > .meta:empty {
   display: none;
 }
 
