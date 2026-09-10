@@ -162,9 +162,17 @@ html:has(.nh3-404) body {
 
 /* The body ground is the same near-black the hero starts from, so the strip above the stage
    reads as one dark field. The header keeps its z-index and stays above the canvas. */
+/* The header stands over the page's own ground and not over the photograph, because the stage
+   begins below it, so painting it in that ground looks the same and covers something. Where the
+   stage cuts the cloud plate, the compositor lights the cut row: measured four times brighter than
+   the photograph below it, blinking as the plate drifts, and only where the device ratio is
+   fractional. The layer of its own is what puts the header above the plate's layer; measured
+   without it the row came back within two frames, and a shadow cannot reach it because a shadow
+   falls outside the box and the row is inside it. */
 html[data-has-hero] .page > .header {
-  background-color: transparent;
-  border-bottom-color: transparent;
+  background-color: var(--sl-color-black);
+  border-bottom-color: var(--sl-color-black);
+  transform: translateZ(0);
 }
 
 .nh3-tabs {
