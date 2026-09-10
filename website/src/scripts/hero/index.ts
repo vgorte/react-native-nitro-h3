@@ -285,6 +285,9 @@ export function start(): void {
     pointNX = Math.max(-1, Math.min(1, (clientX - stageRect.left - halfW) / halfW))
     pointNY = Math.max(-1, Math.min(1, (clientY - stageRect.top - halfH) / halfH))
     const hit = toCanvas(layers.inverse, clientX, clientY, stageRect)
+    // The copy stands in a hole in the grid, so a point inside it has no cell of its own. Sliding
+    // out of the column lands off the stage where the column spans it, so the focus stays put.
+    if (inCopyColumn(column, hit[0], hit[1])) return
     resolveFocus(hit[0], hit[1])
   }
 
