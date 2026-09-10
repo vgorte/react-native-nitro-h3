@@ -1,0 +1,29 @@
+---
+import Default from '@astrojs/starlight/components/MarkdownContent.astro'
+---
+
+<Default {...Astro.props}><slot /></Default>
+
+<script>
+  /* A table wider than its column scrolls sideways. Without a focusable region the columns past the
+     edge are unreachable by keyboard, and without the fade nothing says they exist. */
+  const AT_END = 2
+  // Rounding leaves a table a pixel or two over its column; that is not a hidden column.
+  const OVERFLOWING = 8
+
+  for (const table of document.querySelectorAll<HTMLTableElement>('.sl-markdown-content table')) {
+    if (table.scrollWidth <= table.clientWidth + OVERFLOWING) continue
+
+    table.tabIndex = 0
+    table.setAttribute('role', 'region')
+    table.setAttribute('aria-label', `${table.caption?.textContent ?? 'Table'}, scrolls sideways`)
+    table.classList.add('nh3-scroll-x')
+
+    const settle = () => {
+      const end = table.scrollLeft + table.clientWidth >= table.scrollWidth - AT_END
+      table.classList.toggle('nh3-scroll-end', end)
+    }
+    table.addEventListener('scroll', settle, { passive: true })
+    settle()
+  }
+</script>
