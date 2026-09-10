@@ -9,13 +9,16 @@ export type Preset = {
   tilt: number
 }
 
-/** Only two ship. `tilt` unless the performance gate fails, in which case `follow`. */
+/**
+ * `tilt` is the preset that ships. `follow` is the recorded alternative: no layer rotation, and
+ * the layers move with the pointer instead of against it.
+ */
 export const PRESETS: Record<'tilt' | 'follow', Preset> = {
   tilt: { terrain: 8, tSign: -1, clouds: 20, cSign: -1, tau: 0.25, tilt: 1.5 },
   follow: { terrain: 8, tSign: 1, clouds: 20, cSign: 1, tau: 0.25, tilt: 0 },
 }
 
-/** The stage width both amplitudes were tuned at. Nothing derives from it. */
+/** The stage width both amplitudes were tuned at. Every other stage width scales against it. */
 export const PARA_REF_W = 1672
 const PARA_PERSPECTIVE = 1200
 export const IDLE_X = 22
@@ -73,7 +76,10 @@ type ParallaxInput = {
   reduced: boolean
 }
 
-/** The two summed sines, in pixels, at amplitude factor `amp`. The periods never repeat visibly. */
+/**
+ * Returns the two summed sines, in pixels, at amplitude factor `amp`. The periods are 14 s and
+ * 23 s, so the pattern comes back only after 322 s.
+ */
 export function idleOffset(t: number, amp: number): Point {
   const turn = 2 * Math.PI
   const x =
@@ -143,7 +149,7 @@ export function cloudTransform(state: LayerState): string {
 /** The stage box as a pointer event sees it. A `DOMRect` satisfies it. */
 type StageRect = { left: number; top: number; width: number; height: number }
 
-/** A point on the screen, in the canvas coordinates the grid is drawn in. */
+/** Returns a screen point in the canvas coordinates the grid is drawn in. */
 export function toCanvas(
   inverse: Matrix3,
   clientX: number,
@@ -158,7 +164,7 @@ export function toCanvas(
   return [p[0] + rect.width / 2, p[1] + rect.height / 2]
 }
 
-/** The forward twin of `toCanvas`: a canvas point to the stage pixel the layer puts it at. */
+/** Returns the stage pixel the layer puts a canvas point at, the forward twin of `toCanvas`. */
 export function toStagePoint(state: LayerState, x: number, y: number, rect: StageRect): Point {
   const p = proj(state.matrix, x - rect.width / 2, y - rect.height / 2)
   return [p[0] + rect.width / 2, p[1] + rect.height / 2]

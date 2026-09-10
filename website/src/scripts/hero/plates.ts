@@ -1,8 +1,9 @@
 import { PARA_REF_W } from './parallax'
 
 /**
- * The cloud plate's recipe. The plate is baked by `website/scripts/gen-cloud-plate.ts` and ships as
- * an image, so nothing here reaches the browser; the constants stay next to the scene they describe.
+ * Describes the cloud plate's recipe. The plate is baked by `website/scripts/gen-cloud-plate.ts`
+ * and ships as an image, so nothing here reaches the browser; the constants stay next to the scene
+ * they describe.
  */
 export type Plate = { levels: string; gain: number }
 

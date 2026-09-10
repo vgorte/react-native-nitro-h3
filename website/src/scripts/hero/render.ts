@@ -18,7 +18,7 @@ export type LitCell = { q: number; r: number; ph: number; sp: number }
 export type Pulse = { t: number; a: number; d: number }
 type GridBuild = { litCells: LitCell[]; cells: number; buildMs: number }
 
-/** The prototype's Lehmer generator, so the picked cells and sparkles reproduce exactly. */
+/** Returns a Lehmer generator, so the picked cells and sparkles reproduce exactly. */
 function lcg(seed: number): () => number {
   let state = seed
   return () => {
@@ -36,12 +36,10 @@ function tracePolygon(g: CanvasRenderingContext2D, points: readonly Point[]): vo
   g.closePath()
 }
 
-/**
- * The build's depth ramp, resolved to this many steps and precomputed once. A cell then costs a
- * table lookup instead of two colour strings, and the state only changes where the step does.
- * Sixteen keeps the quantisation invisible: the stroke alpha step is 0.013 and the blur step
- * 0.44 px.
- */
+// The build's depth ramp, resolved to this many steps and precomputed once. A cell then costs a
+// table lookup instead of two colour strings, and the state only changes where the step does.
+// Sixteen keeps the quantisation invisible: the stroke alpha step is 0.013 and the blur step
+// 0.44 px.
 const DEPTH_STEPS = 16
 
 type DepthStyle = {
@@ -66,14 +64,15 @@ const DEPTH_STYLES: readonly DepthStyle[] = Array.from({ length: DEPTH_STEPS }, 
   depthStyle((i + 0.5) / DEPTH_STEPS),
 )
 
-/** Stands in for an index the clamp cannot produce, so the sweep never carries an optional. */
+// Stands in for an index the clamp cannot produce, so the sweep never carries an optional.
 const FAR_STYLE = depthStyle(0)
 
 /**
  * A blurred draw under `'lighter'` is what the frame's cost is made of: measured in the page, the
- * frame interval's p95 falls from 33 ms to 9 ms with `shadowBlur` forced to zero. So nothing in the
- * frame blurs. A disc and its glow are the same shape every frame, so they are baked once into a
- * sprite; an outline's glow is approximated by two wider strokes at a fraction of the alpha.
+ * frame interval's p95 falls from 33 ms to 9 ms with `shadowBlur` forced to zero. So the frame
+ * blurs nothing but the leader, whose stroke and two dots draw under `'source-over'`. A disc and
+ * its glow are the same shape every frame and are baked into a sprite; an outline's glow becomes
+ * three wider strokes at a fraction of the alpha.
  */
 type GlowSprite = { canvas: HTMLCanvasElement; half: number }
 
@@ -83,7 +82,7 @@ export type GlowSprites = {
   centre: readonly GlowSprite[]
 }
 
-/** Steps the focus depth is resolved to for the two sprite banks that follow it. */
+// Steps the focus depth is resolved to for the two sprite banks that follow it.
 const GLOW_STEPS = 8
 
 /**
@@ -111,6 +110,7 @@ function bakeGlow(
     g.shadowColor = shadow
     g.shadowBlur = blur
     g.beginPath()
+    // A hair over a full turn: an arc that overshoots closes, one that falls short leaves a notch.
     g.arc(half, half, radius, 0, 6.29)
     g.fill()
   }
@@ -161,13 +161,11 @@ function drawGlow(
 
 const glowStep = (fd: number): number => Math.min(GLOW_STEPS - 1, (fd * GLOW_STEPS) | 0)
 
-/**
- * The three passes that stand in for a blurred stroke, as a staircase under the bell the shadow
- * would have drawn. `shadowBlur` is twice the Gaussian's standard deviation, so a stroke of width
- * `w` blurred by `b` keeps a peak of `w / (sqrt(2 pi) * b / 2)` of its own alpha and reaches about
- * `b` pixels to each side. The three widths sample that bell at roughly 0.7, 1.3 and 2.2 sigma, and
- * the three shares add up to its peak.
- */
+// The three passes that stand in for a blurred stroke, as a staircase under the bell the shadow
+// would have drawn. `shadowBlur` is twice the Gaussian's standard deviation, so a stroke of width
+// `w` blurred by `b` keeps a peak of `w / (sqrt(2 pi) * b / 2)` of its own alpha and reaches about
+// `b` pixels to each side. The three widths sample that bell at roughly 0.7, 1.3 and 2.2 sigma, and
+// the three shares add up to its peak.
 const GLOW_PASSES = [
   { width: 2, share: 0.34 },
   { width: 1.1, share: 0.39 },
@@ -184,7 +182,7 @@ function glowPasses(rgb: string, alpha: number, lineWidth: number, blur: number)
   }))
 }
 
-/** The energy patch's alpha ramp, resolved to this many steps and precomputed once. */
+// The energy patch's alpha ramp, resolved to this many steps and precomputed once.
 const ENERGY_STEPS = 16
 
 type EnergyStyle = { stroke: string; lineWidth: number; glow: readonly GlowPass[] }
@@ -200,7 +198,7 @@ const ENERGY_STYLES: readonly EnergyStyle[] = Array.from({ length: ENERGY_STEPS 
   }
 })
 
-/** The fill follows the product of energy and depth, so it gets its own ramp of the same size. */
+// The fill follows the product of energy and depth, so it gets its own ramp of the same size.
 const ENERGY_FILLS: readonly string[] = Array.from(
   { length: ENERGY_STEPS },
   (_, i) => `rgba(60,140,255,${(0.02 + (0.15 * (i + 0.5)) / ENERGY_STEPS).toFixed(3)})`,
@@ -219,8 +217,8 @@ let bleedH = Number.NaN
 let bleedValue: Point = [0, 0]
 
 /**
- * The bleed margin in canvas pixels, rounded so the drawing origin lands on whole pixels. The
- * result is kept for the box it was computed from: the frame asks for it once and the box only
+ * Returns the bleed margin in canvas pixels, rounded so the drawing origin lands on whole pixels.
+ * The result is kept for the box it was computed from: the frame asks for it once and the box only
  * changes on a rebuild. A `Point` is read only, so the shared value cannot be written back.
  */
 export function bleedOf(W: number, H: number): Point {
@@ -275,7 +273,7 @@ export function buildKeepOut(
   ko: Rect | null,
 ): MaskExtent | null {
   const [bx, by] = bleedOf(W, H)
-  // The same rounding `sizeCanvas` applies, so the mask cannot end up a pixel short of the canvas.
+  // Stage pixels, not device pixels: it matches `sizeCanvas` while `DPR_CAP` holds `dpr` at `1`.
   mask.width = Math.round(W + 2 * bx)
   mask.height = Math.round(H + 2 * by)
   if (!ko) return null
@@ -325,7 +323,7 @@ function punchKeepOut(
   g.globalCompositeOperation = 'source-over'
 }
 
-/** The mask in canvas pixels: the radial fade's centre and radii, and the two linear fade rows. */
+/** Returns the mask in canvas pixels: the radial fade's centre and radii, and the two fade rows. */
 function maskGeometry(scene: Calibrated): {
   cx: number
   cy: number
@@ -344,7 +342,7 @@ function maskGeometry(scene: Calibrated): {
   }
 }
 
-/** What the two mask gradients leave of a cell at a canvas point, as the two factors. */
+/** Returns what the two mask gradients leave of a cell at a canvas point, as the two factors. */
 export function maskFactors(
   scene: Calibrated,
   x: number,
@@ -370,10 +368,10 @@ function pickLitCells(scene: Calibrated, s: number): LitCell[] {
 }
 
 /**
- * Everything the grid canvas, the keep-out mask and the sparkles are derived from. Two builds with
- * the same signature produce the same plate, so the second one can be skipped. Rounded to whole
- * pixels: a sub-pixel box change moves nothing that is visible, and it is exactly the noise a
- * `ResizeObserver` reports when only a scrollbar or a font swap touches the layout.
+ * Returns everything the grid canvas, the keep-out mask and the sparkles are derived from. Two
+ * builds with the same signature produce the same plate, so the second one can be skipped. Rounded
+ * to whole pixels: a sub-pixel box change moves nothing that is visible, and it is exactly the
+ * noise a `ResizeObserver` reports when only a scrollbar or a font swap touches the layout.
  */
 export function buildSignature(
   mode: string,
@@ -443,7 +441,7 @@ export function buildGrid(
         // a dot on the same lattice vertex, and under `'lighter'` those add.
         g.beginPath()
         for (const [x, y] of points) {
-          // Without the moveTo the arcs are joined by a line.
+          // Without the `moveTo` the arcs are joined by a line.
           g.moveTo(x + rr, y)
           g.arc(x, y, rr, 0, 6.29)
         }

@@ -48,6 +48,8 @@ const RESIZE_DEBOUNCE_MS = 150
 const BREATH_RAMP_MS = 600
 const PULSE_MS = 620
 const PERF_SAMPLE = 300
+// The plate is a full-stage canvas: at device ratio 2 it costs four times the fill for a grid of
+// hairlines and glows that reads the same. Everything downstream may assume stage pixels.
 const DPR_CAP = 1
 
 export function start(): void {
@@ -78,12 +80,12 @@ export function start(): void {
   let scene: Calibrated = calibrate(SCENES[mode], 1, 1)
   let dpr = 1
   const layers = createLayerState()
-  // `tilt` unless the performance gate fails, in which case this becomes `PRESETS.follow`.
+  // The tilted preset ships; this line is the only thing that chooses between the two.
   const PRESET = PRESETS.tilt
   let pointNX = 0
   let pointNY = 0
   let koOffset: Point = [0, 0]
-  /** `ko` is the column at rest; `column` is it in canvas space, shifted once per frame. */
+  // `ko` is the column at rest; `column` is it in canvas space, shifted once per frame.
   let column: Rect | null = null
   // The rectangles the loop rewrites every frame instead of allocating. `columnRect` is the one
   // that outlives the frame, and it is the only rectangle `column` is ever allowed to point at.
@@ -94,17 +96,17 @@ export function start(): void {
   const boxScratch: Rect = { left: 0, top: 0, right: 0, bottom: 0 }
   let ctx: CanvasRenderingContext2D | null = null
   let ko: Rect | null = null
-  /** The copy block and the hint pill in stage coordinates, both measured on a rebuild. */
+  // The copy block and the hint pill in stage coordinates, both measured on a rebuild.
   let copyRect: Rect = { left: 0, top: 0, right: 0, bottom: 0 }
   let hintRect: Rect | null = null
   let hintHidden = true
-  /** The part of the mask canvas the punch has to composite. Null while there is no column. */
+  // The part of the mask canvas the punch has to composite. Null while there is no column.
   let maskExtent: MaskExtent | null = null
   let litCells: LitCell[] = []
   let gridCells = 0
   let gridMs = 0
   let sparkles: Sparkle[] = []
-  /** Baked with the sparkles, and only ever read after a rebuild has produced a context. */
+  // Baked with the sparkles, and only ever read after a rebuild has produced a context.
   let glows: GlowSprites = { sparkle: [], vertex: [], centre: [] }
   const pulses: Pulse[] = []
   let energy = createEnergy()
@@ -123,9 +125,9 @@ export function start(): void {
   let cardSide: 1 | -1 = 1
   let lastT = 0
   let resetT = true
-  /** The signature of the plate currently on the grid canvas. Empty until the first build. */
+  // The signature of the plate currently on the grid canvas. Empty until the first build.
   let buildSig = ''
-  /** The last transform written to each layer, so an unchanged one is not written again. */
+  // The last transform written to each layer, so an unchanged one is not written again.
   let lastTerrain = ''
   let lastClouds = ''
   let openingPending = false
@@ -143,7 +145,7 @@ export function start(): void {
   const rectOf = (el: Element, stageRect: DOMRect): Rect =>
     rectIn(el.getBoundingClientRect(), stageRect)
 
-  /** Writes a shifted copy of a rectangle into an existing one, so the loop allocates none. */
+  // Writes a shifted copy of a rectangle into an existing one, so the loop allocates none.
   const intoRect = (out: Rect, r: Rect | DOMRect, dx: number, dy: number): Rect => {
     out.left = r.left + dx
     out.top = r.top + dy
@@ -152,7 +154,7 @@ export function start(): void {
     return out
   }
 
-  /** The single place the layer offset is applied to the keep-out. */
+  // The single place the layer offset is applied to the keep-out.
   const shiftColumn = (): void => {
     column = ko ? intoRect(columnRect, ko, koOffset[0], koOffset[1]) : null
   }
@@ -165,7 +167,7 @@ export function start(): void {
     H: scene.H,
   })
 
-  /** The opening cell: the plane origin, pushed clear of the keep-out, with the readout written. */
+  // The opening cell: the plane origin, pushed clear of the keep-out, with the readout written.
   const placeOpening = (): void => {
     const pu = Math.min(Math.max(0, scene.clampU[0]), scene.clampU[1])
     const pv = Math.min(Math.max(0, scene.clampV[0]), scene.clampV[1])
@@ -184,7 +186,7 @@ export function start(): void {
     updateReadout(readoutEls, focusQ, focusR, false)
   }
 
-  /** False when the stage has no layout yet, in which case the scene stays the placeholder. */
+  // False when the stage has no layout yet, in which case the scene stays the placeholder.
   const rebuild = (): boolean => {
     const stageRect = stage.getBoundingClientRect()
     if (stageRect.width < 1 || stageRect.height < 1) return false
@@ -207,8 +209,9 @@ export function start(): void {
     maskExtent = buildKeepOut(mask, scene.W, scene.H, ko)
     sparkles = makeSparkles(scene)
     glows = makeGlows(sparkles, dpr)
-    // The hole is baked at the column's rest position. The layer moves it by at most 8 px, which
-    // lies inside the 40 px feather, and the per-frame punch carries the live offset.
+    // The hole is baked at the column's rest position. The layer moves it by at most 12 px, the
+    // 8 px amplitude at the 1.5 cap, which lies inside the 40 px feather, and the per-frame punch
+    // carries the live offset.
     const build = buildGrid(gridCtx, scene, sTarget, mask, maskExtent, [0, 0])
     litCells = build.litCells
     gridCells = build.cells
@@ -239,8 +242,8 @@ export function start(): void {
     layers.tiltY = 0
     layers.idleX = 0
     layers.idleY = 0
-    // Every component is zero on the line above, so the forward matrix is the identity and is
-    // its own inverse.
+    // Every component was just zeroed, so the forward matrix is the identity and is its own
+    // inverse.
     layers.matrix = layerMatrix(layers)
     layers.inverse = layers.matrix
     koOffset = [0, 0]
@@ -258,7 +261,7 @@ export function start(): void {
     openingPending = !ready
   }
 
-  /** The one canvas point to focus cell path. The pointer and the keyboard both go through it. */
+  // The one canvas point to focus cell path. The pointer and the keyboard both go through it.
   const resolveFocus = (px: number, py: number): void => {
     const escaped = escapeKeepOut(column, px, py)
     const x = escaped[0]
@@ -402,8 +405,7 @@ export function start(): void {
       cardY += (anchor.y - cardY) * k
       const placed = toStagePoint(layers, cardX, cardY, stageRect)
       // A transform, not `left` and `top`: the card carries a backdrop filter, and a layout
-      // property would dirty layout for its subtree on every frame. The anchoring maths above is
-      // unchanged, only the write is.
+      // property would dirty layout for its subtree on every frame.
       card.style.transform = `translate3d(${placed[0].toFixed(1)}px,${placed[1].toFixed(1)}px,0)`
       boxScratch.left = cardX
       boxScratch.top = cardY
@@ -415,6 +417,8 @@ export function start(): void {
     const anchors = leaderAnchors(fp, cardBox, cardSide, scene.dock)
     const hex = anchors.hex
     const tip = anchors.card
+    // A standing diagnostic: the eased card motion can still take the leader across the copy block
+    // at an extreme corner, and the flag is the only way to see it happen.
     if (debug && segBox(hex[0], hex[1], tip[0], tip[1], copyBox)) {
       console.warn('leader crosses the copy block', { focusQ, focusR, hex, card: tip })
     }

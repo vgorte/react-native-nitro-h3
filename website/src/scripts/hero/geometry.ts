@@ -17,7 +17,10 @@ export type Resolution = 6 | 9 | 12
 /** The lens the ground plane is calibrated for, in image pixels. */
 export type Camera = { yHorizon: number; xVp: number; focal: number }
 
-/** The part of a calibrated scene the plane mapping needs. Keeps this file free of `scene.ts`. */
+/**
+ * Holds the part of a calibrated scene the plane mapping needs. Keeps this file free of
+ * `scene.ts`.
+ */
 type Plane = { Hm: Matrix3; Hi: Matrix3; VS: number; PVMIN: number; PVMAX: number }
 
 /** Image `u` and `v` of the plane origin. The `v` scale is derived per calibration. */
@@ -98,15 +101,16 @@ export function matInv(m: Matrix3): Matrix3 {
   ]
 }
 
-/** Ground coordinates of an image point on the plane, in camera heights. */
+/** Returns the ground coordinates of an image point on the plane, in camera heights. */
 function groundPt(camera: Camera, point: Point): Point {
   const d = point[1] - camera.yHorizon
   return [(point[0] - camera.xVp) / d, camera.focal / d]
 }
 
 /**
- * One `pu` unit spans the quad's width, one `pv` unit spans this many quad depths. It is the
- * value that keeps a hexagon a hexagon on the ground, and the focal length does not cancel out.
+ * Returns how many quad depths one `pv` unit spans, where one `pu` unit spans the quad's width.
+ * It is the value that keeps a hexagon a hexagon on the ground, and the focal length does not
+ * cancel out.
  */
 export function vsFor(camera: Camera, quad: Quad): number {
   const a = groundPt(camera, quad[3])
@@ -141,7 +145,10 @@ export function depth(plane: Plane, pv: number): number {
   return Math.min(1, Math.max(0, (pv - plane.PVMIN) / (plane.PVMAX - plane.PVMIN)))
 }
 
-/** Pointy-topped axial coordinates of the cell that contains the plane point, by cube rounding. */
+/**
+ * Returns the pointy-topped axial coordinates of the cell the plane point falls in, by cube
+ * rounding.
+ */
 export function axialAt(pu: number, pv: number, s: number): Point {
   const q = ((2 / 3) * pu) / s
   const r = (-(1 / 3) * pu + (Math.sqrt(3) / 3) * pv) / s
@@ -193,7 +200,10 @@ export function inKeepOut(ko: Rect | null, x: number, y: number, grow: number): 
 
 export type ClearContext = { plane: Plane; s: number; ko: Rect | null; W: number; H: number }
 
-/** -1 cut by the keep-out, 0 clear of it but touching the stage edge, 1 clear of both. */
+/**
+ * Returns `-1` for a cell cut by the keep-out, `0` for one clear of it but touching the stage
+ * edge, and `1` for one clear of both.
+ */
 export function cellClear(cx: ClearContext, q: number, r: number): -1 | 0 | 1 {
   const centre = centerOf(q, r, cx.s)
   const points = hexPts(cx.plane, centre[0], centre[1], cx.s)
@@ -219,7 +229,7 @@ export function copyColumn(copy: Rect): Rect {
   }
 }
 
-/** True when the canvas point lies inside the column, feather included. */
+/** Returns `true` when the canvas point lies inside the column, feather included. */
 export function inCopyColumn(ko: Rect | null, px: number, py: number): boolean {
   return inKeepOut(ko, px, py, KO_CLEAR)
 }
@@ -246,7 +256,9 @@ export function slideRight(cx: ClearContext, q: number, r: number): Point {
   return [cq, cr]
 }
 
-/** The focus cell always renders whole, so the nearest fully clear cell to the pointer wins. */
+/**
+ * Finds the nearest fully clear cell to the pointer, because the focus cell always renders whole.
+ */
 export function pushOut(cx: ClearContext, q: number, r: number, px: number, py: number): Point {
   if (cellClear(cx, q, r) >= 0) return [q, r]
   let loose: Point | null = null

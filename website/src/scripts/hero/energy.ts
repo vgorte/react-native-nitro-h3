@@ -10,9 +10,9 @@ type EnergyCell = { q: number; r: number; e: number; target: number; stamp: numb
 export type EnergyState = { cells: Map<number, EnergyCell>; stamp: number }
 
 /**
- * A cell's map key, in place of the `${q},${r}` string a touch used to allocate. The grid reaches
- * about 75 rings from the origin in either direction, so the 4096 offset and the 8192 stride cannot
- * collide and stay well inside the safe integer range.
+ * A cell's map key as one number, so a touch allocates nothing. The grid reaches about 75 rings
+ * from the origin in either direction, so the 4096 offset and the 8192 stride cannot collide and
+ * stay well inside the safe integer range.
  */
 export const ENERGY_KEY_ORIGIN = 4096
 const ENERGY_KEY_STRIDE = 8192
@@ -57,8 +57,9 @@ export function markPatch(state: EnergyState, q: number, r: number, ringRadius: 
 }
 
 /**
- * Exponential approach, so the trail length does not depend on the frame rate. Reduced motion
- * snaps to the target, which leaves the current patch and no trail at all.
+ * Eases every cell toward its target on an exponential approach, so the trail length does not
+ * depend on the frame rate. Reduced motion snaps to the target, which leaves the current patch and
+ * no trail at all.
  */
 export function decayEnergy(state: EnergyState, dt: number, cap: number, reduced: boolean): void {
   const k = reduced ? 1 : 1 - Math.exp(-dt / ENERGY_TAU)

@@ -51,7 +51,10 @@ export type AnchorInput = {
 
 type Anchor = { x: number; y: number; side: 1 | -1 }
 
-/** Liang-Barsky segment against an axis aligned box, so the leader can keep off the copy block. */
+/**
+ * Returns `true` when the segment meets the axis aligned box, by Liang-Barsky clipping, so the
+ * leader can keep off the copy block.
+ */
 export function segBox(x1: number, y1: number, x2: number, y2: number, b: Rect | null): boolean {
   if (!b) return false
   if (Math.max(x1, x2) < b.left || Math.min(x1, x2) > b.right) return false

@@ -19,6 +19,7 @@ export type Mode = 'desk' | 'mob'
 type Scene = {
   /** Radial mountain fade, as fractions: the centre of x by W and y by H, both radii by W. */
   mask: { cx: number; cy: number; r0: number; r1: number }
+  /** Rings lit per resolution. The hero reads `RES`; the others carry the scale, like `SIZES`. */
   litR: Record<Resolution, number>
   litCap: number
   dock: boolean
@@ -89,7 +90,7 @@ export const MIN_HEX_PX = 5
 /** Below this depth a cell is a plain hairline, without glow and without vertex dots. */
 export const FAR_PLAIN = 0.16
 
-/** Image pixels to canvas pixels: the cover fit the layer uses, grown by `GROW`. */
+/** Maps image pixels to canvas pixels: the cover fit the layer uses, grown by `GROW`. */
 function imageCoverFit(W: number, H: number): Matrix3 {
   const s = Math.max(W / IMG_W, H / IMG_H)
   const k = 1 + GROW
@@ -101,8 +102,8 @@ function imageCoverFit(W: number, H: number): Matrix3 {
 }
 
 /**
- * Everything that depends on the four reference points and the measured stage box, so the only
- * hand-set numbers left are those points, the camera and the mask shape.
+ * Derives everything that depends on the four reference points and the measured stage box, so the
+ * only hand-set numbers left are those points, the camera and the mask shape.
  */
 export function calibrate(scene: Scene, W: number, H: number): Calibrated {
   const VS = vsFor(CAMERA, QUAD)
@@ -157,7 +158,10 @@ export function calibrate(scene: Scene, W: number, H: number): Calibrated {
 /** The one query that decides the mode. The CSS uses the same string, so they cannot disagree. */
 export const MODE_QUERY = '(orientation: portrait), (max-width: 49.9375rem)'
 
-/** `?mode=desk` and `?mode=mob` stay as a test aid and take precedence over the query. */
+/**
+ * Picks the mode from `MODE_QUERY`. `?mode=desk` and `?mode=mob` stay as a test aid and take
+ * precedence over the query.
+ */
 export function pickMode(params: URLSearchParams): Mode {
   const forced = params.get('mode')
   if (forced === 'mob' || forced === 'mobile') return 'mob'
