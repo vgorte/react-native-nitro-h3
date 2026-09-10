@@ -68,7 +68,11 @@ export function decayEnergy(state: EnergyState, dt: number, cap: number, reduced
     if (target === 0 && cell.e < ENERGY_FLOOR) state.cells.delete(key)
   }
   if (state.cells.size <= cap) return
-  const sorted = [...state.cells.entries()].sort((a, b) => a[1].e - b[1].e)
+  // The stamp comes first: a touch starts a cell at 0 and the approach needs a few frames to lift
+  // it, while a cooling cell needs about a hundred to fall, so energy alone evicts the newest.
+  const sorted = [...state.cells.entries()].sort(
+    (a, b) => a[1].stamp - b[1].stamp || a[1].e - b[1].e,
+  )
   const excess = state.cells.size - cap
   for (let i = 0; i < excess; i++) {
     const entry = sorted[i]

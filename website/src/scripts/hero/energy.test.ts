@@ -79,4 +79,18 @@ describe('decayEnergy', () => {
     expect(state.cells.size).toBe(4)
     expect([...state.cells.values()].map((cell) => cell.q).sort()).toEqual([10, 7, 8, 9].sort())
   })
+
+  test('keeps the cells this frame touched and drops the ones it left behind', () => {
+    const state = createEnergy()
+    for (let i = 1; i <= 10; i++) {
+      state.cells.set(energyKey(i, 0), { q: i, r: 0, e: 0.9, target: 0, stamp: state.stamp })
+    }
+    state.stamp += 1
+    // A touched cell starts dark, so by energy alone these three would be the first to go.
+    for (let i = 1; i <= 3; i++) {
+      state.cells.set(energyKey(0, i), { q: 0, r: i, e: 0, target: 1, stamp: state.stamp })
+    }
+    decayEnergy(state, 0.016, 3, false)
+    expect([...state.cells.values()].map((cell) => cell.r).sort((a, b) => a - b)).toEqual([1, 2, 3])
+  })
 })
