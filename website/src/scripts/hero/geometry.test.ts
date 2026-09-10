@@ -24,7 +24,7 @@ import {
 } from './geometry'
 import { calibrate, QUAD, SCENES } from './scene'
 
-/** The prototype's Lehmer generator, so every sampled point is reproducible. */
+/** A Lehmer generator, so every sampled point is reproducible. */
 function lcg(seed: number): () => number {
   let state = seed
   return () => {
@@ -172,7 +172,7 @@ describe('the axial lattice', () => {
   })
 
   test('the direction table matches the trigonometry it replaced', () => {
-    // What `hexPts` computed per call before the table was hoisted to module scope.
+    // The per-call trigonometry the table stands in for.
     const trig = (plane: typeof desk, cu: number, cv: number, s: number): Point[] =>
       [0, 1, 2, 3, 4, 5].map((k) => {
         const a = (Math.PI / 180) * (60 * k)

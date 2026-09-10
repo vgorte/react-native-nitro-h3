@@ -38,7 +38,7 @@ async function readRgba(path: string): Promise<Raw> {
 
 /**
  * Bakes the cloud plate: the sharp photograph, the blurred copy cut to the depth-of-field band
- * drawn over it, then luma into alpha. Mirrors the pipeline the page used to run at load.
+ * drawn over it, then luma into alpha. The page loads the result as an image and bakes nothing.
  */
 async function bake(source: string, plate: Plate): Promise<Raw> {
   if (plate.levels !== 'none')
