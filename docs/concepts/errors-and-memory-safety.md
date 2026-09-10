@@ -62,16 +62,3 @@ configure({
 A request exceeding the configured limit throws a catchable `H3Error` before the result is allocated.
 
 The limit is disabled by default to preserve `h3-js` behavior.
-
-To remove a previously configured limit:
-
-```ts
-import { configure } from 'react-native-nitro-h3'
-
-configure({
-  maxCellCount: Infinity,
-})
-```
-
-How the ceiling is sized, what an unbounded request costs on a phone, and how `h3-js` behaves
-without one is in [Performance guide](../performance.md#the-cell-ceiling-in-detail).
