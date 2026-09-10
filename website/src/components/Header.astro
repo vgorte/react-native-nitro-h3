@@ -20,6 +20,10 @@ const tabs = TABS.map(({ label, route }) => {
   const href = `${BASE}${route}`
   return { label, href, current: withoutTrailingSlash(href) === here }
 })
+
+/* A doc page opens Starlight's own menu, whose sidebar already lists these two pages, so the
+   chevron would be a second menu button beside it. The landing has no sidebar and needs it. */
+const hasHero = Boolean(Astro.locals.starlightRoute.entry.data.hero)
 ---
 
 <Default {...Astro.props}><slot /></Default>
@@ -36,34 +40,40 @@ const tabs = TABS.map(({ label, route }) => {
 
 <div class="nh3-tabs-social nh3-tabs-social-wide"><SocialIcons /></div>
 
-<button
-  class="nh3-tabs-toggle"
-  type="button"
-  aria-expanded="false"
-  aria-controls="nh3-tabs-panel"
-  aria-label="Site sections"
->
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    stroke-width="2"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-    aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg
-  >
-</button>
+{
+  hasHero && (
+    <>
+    <button
+      class="nh3-tabs-toggle"
+      type="button"
+      aria-expanded="false"
+      aria-controls="nh3-tabs-panel"
+      aria-label="Site sections"
+    >
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg
+      >
+    </button>
 
-<div id="nh3-tabs-panel" class="nh3-tabs-panel" hidden>
-  {
-    tabs.map(({ label, href, current }) => (
-      <a href={href} aria-current={current ? 'page' : undefined}>
-        {label}
-      </a>
-    ))
-  }
-  <div class="nh3-tabs-social"><SocialIcons /></div>
-</div>
+    <div id="nh3-tabs-panel" class="nh3-tabs-panel" hidden>
+      {
+        tabs.map(({ label, href, current }) => (
+          <a href={href} aria-current={current ? 'page' : undefined}>
+            {label}
+          </a>
+        ))
+      }
+      <div class="nh3-tabs-social"><SocialIcons /></div>
+    </div>
+    </>
+  )
+}
 
 <script>
   const toggle = document.querySelector<HTMLButtonElement>('.nh3-tabs-toggle')
