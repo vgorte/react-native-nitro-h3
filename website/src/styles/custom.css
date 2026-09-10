@@ -82,9 +82,9 @@ html[data-has-hero] .content-panel > .sl-container > :not(.nh3-hero) {
   padding-block: 0;
 }
 
-/* The landing is one screen and nothing below it: the date and the project links would be the only
+/* The landing is one screen and nothing below it: the date and the page links would be the only
    reason to scroll, and they stand on every other page. */
-html[data-has-hero] .content-panel > .sl-container > :is(footer, .site-footer) {
+html[data-has-hero] .content-panel > .sl-container > footer {
   display: none;
 }
 
@@ -847,7 +847,7 @@ main:has(.nh3-404) .content-panel > .sl-container {
 }
 
 /* The page ends at the plate: there is nowhere to go from an address that does not exist. */
-main:has(.nh3-404) .content-panel > .sl-container > :is(footer, .site-footer) {
+main:has(.nh3-404) .content-panel > .sl-container > footer {
   display: none;
 }
 

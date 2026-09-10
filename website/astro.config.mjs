@@ -66,7 +66,6 @@ export default defineConfig({
       logo: { src: './src/assets/logo-tile.svg' },
       social: [{ icon: 'github', label: 'GitHub', href: REPO }],
       components: {
-        Footer: './src/components/Footer.astro',
         Header: './src/components/Header.astro',
         Hero: './src/components/Hero.astro',
         MarkdownContent: './src/components/MarkdownContent.astro',
