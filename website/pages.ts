@@ -16,7 +16,7 @@ export type Page = {
   /** Meta description, one sentence, distinct per page. */
   description: string
   group: Group
-  /** A generated source gets no edit link and a table of contents limited to `##` headings. */
+  /** A generated source gets a table of contents limited to `##` headings. */
   generated?: boolean
 }
 

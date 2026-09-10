@@ -81,7 +81,6 @@ export default defineConfig({
         },
       },
       customCss: ['./src/styles/custom.css'],
-      lastUpdated: true,
       head: [
         { tag: 'meta', attrs: { property: 'og:image', content: `${SITE}${BASE}/og-logo.png` } },
         { tag: 'meta', attrs: { property: 'og:image:alt', content: 'react-native-nitro-h3 logo' } },

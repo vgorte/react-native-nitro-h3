@@ -331,56 +331,49 @@ describe('mdxGuard', () => {
 })
 
 describe('frontmatter', () => {
-  test('writes title, description, editUrl and lastUpdated', () => {
-    const out = frontmatter(perf, 'Performance Guide', '2026-09-01T10:00:00+02:00')
+  test('writes title and description', () => {
+    const out = frontmatter(perf, 'Performance Guide')
     expect(out).toBe(
       [
         '---',
         'title: "Performance Guide"',
         `description: ${JSON.stringify(perf.description)}`,
-        'editUrl: "https://github.com/vgorte/react-native-nitro-h3/edit/main/docs/performance.md"',
-        'lastUpdated: 2026-09-01T10:00:00+02:00',
         '---',
         '',
       ].join('\n'),
     )
   })
 
-  test('omits lastUpdated when the source has no history yet', () => {
-    expect(frontmatter(perf, 'Performance Guide', null)).not.toContain('lastUpdated')
-  })
-
-  test('a generated page has no edit link and a two-level table of contents', () => {
-    const out = frontmatter(api, 'API reference', null)
-    expect(out).toContain('editUrl: false')
+  test('a generated page gets a two-level table of contents', () => {
+    const out = frontmatter(api, 'API reference')
     expect(out).toContain('tableOfContents:\n  minHeadingLevel: 2\n  maxHeadingLevel: 2')
   })
 })
 
 describe('transform', () => {
   test('produces frontmatter followed by the body without the H1', () => {
-    const out = transform('# 🧮 Performance Guide\n\nSee [b](benchmark.md).\n', perf, base, null)
+    const out = transform('# 🧮 Performance Guide\n\nSee [b](benchmark.md).\n', perf, base)
     expect(out.content.startsWith('---\ntitle: "Performance Guide"\n')).toBe(true)
     expect(out.content.endsWith('---\n\nSee [b](/react-native-nitro-h3/benchmark/).\n')).toBe(true)
   })
 
   test('strips the emoji from the body headings too', () => {
-    const out = transform('# 🧮 Performance Guide\n\n## 📦 Installation\n', perf, base, null)
+    const out = transform('# 🧮 Performance Guide\n\n## 📦 Installation\n', perf, base)
     expect(out.content.endsWith('---\n\n## Installation\n')).toBe(true)
   })
 
   test('refuses GitHub alert syntax', () => {
-    expect(() => transform('# T\n\n> [!NOTE]\n> x\n', perf, base, null)).toThrow(/\[!NOTE\]/)
+    expect(() => transform('# T\n\n> [!NOTE]\n> x\n', perf, base)).toThrow(/\[!NOTE\]/)
   })
 
   test('a page without markers stays Markdown and gets no import', () => {
-    const out = transform('# 🧮 Performance Guide\n\n1. First step.\n', perf, base, null)
+    const out = transform('# 🧮 Performance Guide\n\n1. First step.\n', perf, base)
     expect(out.extension).toBe('md')
     expect(out.content).not.toContain('import { Steps }')
   })
 
   test('a page with markers becomes MDX with the import first in the body', () => {
-    const out = transform(`# 🧮 Performance Guide\n\n${stepsBody}`, perf, base, null)
+    const out = transform(`# 🧮 Performance Guide\n\n${stepsBody}`, perf, base)
     expect(out.extension).toBe('mdx')
     expect(out.content).toContain(
       "---\n\nimport { Steps } from '@astrojs/starlight/components'\n\n<Steps>\n",
@@ -389,7 +382,7 @@ describe('transform', () => {
   })
 
   test('a page with tabs only imports Tabs and TabItem', () => {
-    const out = transform(`# 🧮 Performance Guide\n\n${tabsBody}`, perf, base, null)
+    const out = transform(`# 🧮 Performance Guide\n\n${tabsBody}`, perf, base)
     expect(out.extension).toBe('mdx')
     expect(out.content).toContain(
       '---\n\nimport { TabItem, Tabs } from \'@astrojs/starlight/components\'\n\n<Tabs syncKey="package-manager">\n',
@@ -399,7 +392,7 @@ describe('transform', () => {
 
   test('a page with tabs and steps imports all three components', () => {
     const body = `<!-- tabs -->\n<!-- tab: bun -->\n\n${stepsBody}\n<!-- /tabs -->\n`
-    const out = transform(`# 🧮 Performance Guide\n\n${body}`, perf, base, null)
+    const out = transform(`# 🧮 Performance Guide\n\n${body}`, perf, base)
     expect(out.extension).toBe('mdx')
     expect(out.content).toContain(
       "import { Steps, TabItem, Tabs } from '@astrojs/starlight/components'",

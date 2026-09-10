@@ -247,18 +247,15 @@ export function mdxGuard(body: string, source: string): void {
 }
 
 /** Writes the YAML block Starlight needs. Values go through `JSON.stringify`, which is valid YAML. */
-export function frontmatter(page: Page, title: string, lastUpdated: string | null): string {
+export function frontmatter(page: Page, title: string): string {
   const lines = [
     '---',
     `title: ${JSON.stringify(title)}`,
     `description: ${JSON.stringify(page.description)}`,
   ]
   if (page.generated) {
-    lines.push('editUrl: false', 'tableOfContents:', '  minHeadingLevel: 2', '  maxHeadingLevel: 2')
-  } else {
-    lines.push(`editUrl: ${JSON.stringify(`${REPO}/edit/main/${page.source}`)}`)
+    lines.push('tableOfContents:', '  minHeadingLevel: 2', '  maxHeadingLevel: 2')
   }
-  if (lastUpdated) lines.push(`lastUpdated: ${lastUpdated}`)
   lines.push('---', '')
   return lines.join('\n')
 }
@@ -272,13 +269,12 @@ export function transform(
   markdown: string,
   page: Page,
   base: string,
-  lastUpdated: string | null,
 ): { content: string; extension: 'md' | 'mdx' } {
   const alert = markdown.match(/^> \[!\w+\]/m)
   if (alert) throw new Error(`${page.source} uses ${alert[0]}, which Starlight renders literally`)
   const { title, body } = splitTitle(markdown)
   const rewritten = stripHeadingEmoji(rewriteLinks(body, page, base))
-  const head = frontmatter(page, stripLeadingEmoji(title), lastUpdated)
+  const head = frontmatter(page, stripLeadingEmoji(title))
   const steps = hasSteps(rewritten)
   const tabs = hasTabs(rewritten)
   if (!steps && !tabs) return { content: `${head}\n${rewritten}`, extension: 'md' }
@@ -288,12 +284,6 @@ export function transform(
   const used = [...(steps ? ['Steps'] : []), ...(tabs ? ['TabItem', 'Tabs'] : [])]
   const line = `import { ${used.join(', ')} } from '@astrojs/starlight/components'`
   return { content: `${head}\n${line}\n\n${converted}`, extension: 'mdx' }
-}
-
-function lastCommitDate(source: string): string | null {
-  const result = Bun.spawnSync(['git', 'log', '-1', '--format=%cI', '--', source], { cwd: ROOT })
-  const date = result.stdout.toString().trim()
-  return date === '' ? null : date
 }
 
 /**
@@ -328,7 +318,7 @@ async function main() {
     const sourcePath = join(ROOT, page.source)
     if (!existsSync(sourcePath)) throw new Error(`${page.source} does not exist`)
     const markdown = await readFile(sourcePath, 'utf8')
-    const { content, extension } = transform(markdown, page, BASE, lastCommitDate(page.source))
+    const { content, extension } = transform(markdown, page, BASE)
     const out = join(CONTENT, `${page.route.replace(/^\/|\/$/g, '')}.${extension}`)
     await mkdir(dirname(out), { recursive: true })
     await writeFile(out, content)
