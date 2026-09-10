@@ -1,7 +1,9 @@
 @import "@fontsource-variable/inter";
 @import "@fontsource-variable/jetbrains-mono";
 
-/* V3 palette. The hero and the docs share one ramp; the logo keeps hue 195 and is untouched. */
+/* Palette */
+
+/* The hero and the docs share one ramp; the logo keeps hue 195 and is untouched. */
 :root {
   --sl-color-accent: #4da3ff;
   --sl-color-accent-low: hsl(211, 60%, 18%);
@@ -31,6 +33,8 @@
     var(--nh3-accent-light) 100%
   );
 }
+
+/* Starlight overrides */
 
 /* The header title reads as a wordmark, not a link, so it takes the text colour instead of the accent. */
 .site-title {
@@ -92,22 +96,23 @@ html[data-has-hero] .content-panel > .sl-container > .sl-markdown-content:empty 
 
 /* A window still rubber-bands past a page that has nothing to scroll, and on a page that is exactly
    one screen that elastic pull is the only movement there is. The property belongs on the body: the
-   root keeps `auto`, so the body's value is the one that reaches the viewport. `hidden` on the root
-   then takes the scroll port away entirely, which is what the pull needs to grab. Both pages are
-   built to fit the window, so there is nothing below to reach. */
+   root keeps `auto`, so the body's value is the one that reaches the viewport. */
 html[data-has-hero] body,
 html:has(.nh3-404) body {
   overscroll-behavior-y: none;
 }
 
-/* Measured floor: at 340 px of window the copy still ends inside it, at 320 px it does not. Below
-   the floor the page keeps its scroll, because a locked window would put the buttons out of reach. */
+/* Measured: at 340 px of window the copy still ends inside it, at 320 px it does not, and the floor
+   sits just above at 22rem. `hidden` takes the scroll port away entirely, which is what the pull
+   needs to grab; below the floor the page keeps its scroll, or the buttons go out of reach. */
 @media (min-height: 22rem) {
   html[data-has-hero],
   html:has(.nh3-404) {
     overflow: hidden;
   }
 }
+
+/* Header and tabs */
 
 /* `Header.astro` appends the tabs after Starlight's own header, so the fixed bar becomes the row
    that holds both. Starlight's header keeps its grid and only gives up the width the tabs take. */
@@ -153,22 +158,17 @@ html:has(.nh3-404) body {
 }
 
 /* The chevron takes its width from the site title, so the narrow row halves the gap and the
-   wordmark still fits at 430px. */
+   wordmark still fits at `430px`. */
 @media (max-width: 49.9375rem) {
   .page > .header {
     gap: 0.5rem;
   }
 }
 
-/* The body ground is the same near-black the hero starts from, so the strip above the stage
-   reads as one dark field. The header keeps its z-index and stays above the canvas. */
-/* The header stands over the page's own ground and not over the photograph, because the stage
-   begins below it, so painting it in that ground looks the same and covers something. Where the
-   stage cuts the cloud plate, the compositor lights the cut row: measured four times brighter than
-   the photograph below it, blinking as the plate drifts, and only where the device ratio is
-   fractional. The layer of its own is what puts the header above the plate's layer; measured
-   without it the row came back within two frames, and a shadow cannot reach it because a shadow
-   falls outside the box and the row is inside it. */
+/* The header is painted in the page's own ground, which looks the same because the stage begins
+   below it, and given a compositor layer of its own so it sits above the plate's. Both parts are
+   needed: without them the row where the stage cuts the cloud plate lights up on a fractional
+   device ratio. */
 html[data-has-hero] .page > .header {
   background-color: var(--sl-color-black);
   border-bottom-color: var(--sl-color-black);
@@ -299,7 +299,7 @@ html[data-has-hero] .page > .header {
 }
 
 /* The wide header row takes over from Starlight's own hidden social row, so it matches that row's
-   look: `.social-icons a` in `Header.astro`. */
+   look: the scoped `a` rule in `SocialIcons.astro`. */
 .nh3-tabs-social-wide {
   display: none;
 }
@@ -336,10 +336,13 @@ html[data-has-hero] .page > .header {
   }
 }
 
+/* Table of contents bar */
+
 /* The bar takes the place of Starlight's own narrow table of contents, and this variable is the
    room Starlight reserves under the header for it: the anchor scroll padding follows it too. The
    right hand column is the wide layout's table of contents and stays as it is, so this ends where
-   the column begins, at Starlight's own `lg` breakpoint. */
+   the column begins, at Starlight's own `lg` breakpoint. `MobileTableOfContents.astro` closes the
+   panel at `72rem`, the same boundary from the other side. */
 @media (max-width: 71.9375rem) {
   :root[data-has-toc] {
     --sl-mobile-toc-height: 2.5rem;
@@ -414,7 +417,7 @@ html[data-has-hero] .page > .header {
   stroke: var(--sl-color-gray-5);
 }
 
-/* `pathLength` normalises the circumference, so the dash offset is the read fraction itself. */
+/* `pathLength` normalises the circumference to `1`, so the dash offset is the unread fraction. */
 .nh3-toc-ring-value {
   stroke: var(--sl-color-accent);
   stroke-dasharray: 1;
@@ -513,6 +516,8 @@ html[data-has-hero] .page > .header {
   }
 }
 
+/* Hero */
+
 .nh3-hero {
   position: relative;
   /* `clip` and not `hidden`: the plates bleed past the stage on purpose, and a hidden box with
@@ -522,9 +527,10 @@ html[data-has-hero] .page > .header {
   cursor: crosshair;
   user-select: none;
   -webkit-user-select: none;
-  /* Not `none`: a vertical drag still scrolls the page down to the footer. */
+  /* Not `none`: under the height floor the page still scrolls, and a vertical drag has to
+     reach it. */
   touch-action: pan-y;
-  /* A photograph carries the ground now, so the stage is the flat near-black behind it. */
+  /* A photograph carries the ground, so the stage is only the flat near-black behind it. */
   background: var(--sl-color-black);
   /* Both height rules below sit in a media query and a fractional viewport width can fall between
      them. Every child is absolutely positioned, so without this floor the stage collapses to zero
@@ -657,8 +663,8 @@ html[data-has-hero] .page > .header {
   margin-top: 2rem;
 }
 
-/* Starlight tints the primary action with its own accent, which is the one colour on the page that
-   the grid never draws. It takes the light end of the grid gradient instead. */
+/* Starlight tints the primary action with `--sl-color-accent-high`, a tone the grid never draws.
+   It takes the light end of the grid gradient instead. */
 .nh3-actions a.primary {
   border-color: var(--nh3-accent-light);
   background: var(--nh3-accent-light);
@@ -792,7 +798,7 @@ html[data-has-hero] .page > .header {
   }
 }
 
-/* Clipped, not hidden: a display:none region announces nothing. */
+/* Clipped, not hidden: a `display: none` region announces nothing. */
 .nh3-announce {
   position: absolute;
   width: 1px;
@@ -873,6 +879,8 @@ html[data-has-hero] .page > .header {
     transition: none;
   }
 }
+
+/* Not-found page */
 
 /* The not-found page is one plate under the header, so the panel around it gives up its padding
    and its measure. These rules are unlayered, so they beat `@layer starlight.core`. */
@@ -1013,6 +1021,8 @@ main:has(.nh3-404) .content-panel > .sl-container > :is(footer, .site-footer) {
   font-size: clamp(0.95rem, 1.2vw, 1.0625rem);
   text-align: center;
 }
+
+/* Markdown content */
 
 /* A badge row arrives as several linked images in one paragraph, and Starlight lays every image out
    as a block, which stacks them into a column. */
