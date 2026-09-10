@@ -735,6 +735,8 @@ html[data-has-hero] .page > .header {
 /* The card is the point of the hero on a phone, so it keeps clear of the home indicator and of a
    browser bar that has not finished retracting. */
 .nh3-hero.mob .nh3-readout {
+  /* The docked card never moves, so it pays for neither a promoted layer nor its backdrop read. */
+  will-change: auto;
   transform: none;
   left: 4.5vw;
   right: 4.5vw;

@@ -47,7 +47,7 @@ import {
   type Sparkle,
   sizeCanvas,
 } from './render'
-import { type Calibrated, calibrate, type Mode, pickMode, SCENES } from './scene'
+import { BLEED, type Calibrated, calibrate, type Mode, pickMode, SCENES } from './scene'
 
 const RESIZE_DEBOUNCE_MS = 150
 const BREATH_RAMP_MS = 600
@@ -300,7 +300,8 @@ export function start(): void {
   const frame = (t: number): void => {
     const started = perfLog ? performance.now() : 0
     // A resumed tab or a clock adjustment can hand back a timestamp behind the last one.
-    const dt = resetT ? 0.016 : Math.max(0, Math.min(0.05, (t - lastT) / 1000 || 0.016))
+    const step = Number.isFinite(t - lastT) ? (t - lastT) / 1000 : 0.016
+    const dt = resetT ? 0.016 : Math.max(0, Math.min(0.05, step))
     resetT = false
     lastT = t
     if (!ctx) {
@@ -367,8 +368,6 @@ export function start(): void {
     }
     const copyBox = intoRect(copyScratch, copyRect, koOffset[0], koOffset[1])
     const hintBox = hintRect ? intoRect(hintScratch, hintRect, koOffset[0], koOffset[1]) : null
-    const cardWidth = cardRect.right - cardRect.left
-    const cardHeight = cardRect.bottom - cardRect.top
 
     let cardBox: Rect
     if (scene.dock) {
@@ -382,6 +381,8 @@ export function start(): void {
       boxScratch.bottom = br[1]
       cardBox = boxScratch
     } else {
+      const cardWidth = cardRect.right - cardRect.left
+      const cardHeight = cardRect.bottom - cardRect.top
       const keepOuts: { box: Rect; push: 1 | -1 }[] = [{ box: copyBox, push: 1 }]
       if (hintBox) keepOuts.push({ box: hintBox, push: -1 })
       const centreScreen = screenOf(scene, curU, curV)
@@ -567,6 +568,8 @@ export function start(): void {
       const cx1 = Math.min(grid.width, Math.round((x1 + bx) * dpr))
       const cy0 = Math.max(0, Math.round((y0 + by) * dpr))
       const cy1 = Math.min(grid.height, Math.round((y1 + by) * dpr))
+      // A rectangle off the plate clamps to nothing, which `getImageData` refuses.
+      if (cx1 <= cx0 || cy1 <= cy0) return null
       const data = g.getImageData(cx0, cy0, cx1 - cx0, cy1 - cy0).data
       const n = data.length / 4
       let over = 0
@@ -596,7 +599,7 @@ export function start(): void {
     }
     // How far the canvas covers the stage for each pointer corner, per edge, in CSS pixels.
     // A positive number is a strip of bare stage the canvas does not reach.
-    probes.heroBleed = (bleed: number) => {
+    probes.heroBleed = (bleed: number = BLEED) => {
       const rect = stage.getBoundingClientRect()
       const amp = Math.min(1.5, Math.max(0.5, rect.width / PARA_REF_W))
       const cw = rect.width * (1 + 2 * bleed)

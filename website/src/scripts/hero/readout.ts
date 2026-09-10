@@ -56,8 +56,6 @@ export function segBox(x1: number, y1: number, x2: number, y2: number, b: Rect |
   if (!b) return false
   if (Math.max(x1, x2) < b.left || Math.min(x1, x2) > b.right) return false
   if (Math.max(y1, y2) < b.top || Math.min(y1, y2) > b.bottom) return false
-  if (x1 > b.left && x1 < b.right && y1 > b.top && y1 < b.bottom) return true
-  if (x2 > b.left && x2 < b.right && y2 > b.top && y2 < b.bottom) return true
   const dx = x2 - x1
   const dy = y2 - y1
   const ps = [-dx, dx, -dy, dy]

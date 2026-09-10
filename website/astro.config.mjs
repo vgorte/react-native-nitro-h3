@@ -35,15 +35,21 @@ function preloadHead() {
         const pages = (await readdir(dir, { recursive: true })).filter((file) =>
           file.endsWith('.html'),
         )
+        let heroPages = 0
         for (const page of pages) {
           const url = new URL(page, dir)
           const html = await readFile(url, 'utf8')
           const cut = html.indexOf(STYLESHEET)
           if (cut === -1) continue
           const hero = HERO_SCRIPT.exec(html)
+          if (hero?.[1]) heroPages += 1
           const head = [...preloads, ...(hero?.[1] ? [link(hero[1], 'modulepreload')] : [])]
           await writeFile(url, `${html.slice(0, cut)}${head.join('')}${html.slice(cut)}`)
         }
+        // Only the landing carries the hero module. Finding it on no page at all means the emitted
+        // name has moved, and a silent miss would cost the landing its first frame.
+        if (heroPages === 0)
+          throw new Error('no hero module to preload, the emitted name has moved')
       },
     },
   }

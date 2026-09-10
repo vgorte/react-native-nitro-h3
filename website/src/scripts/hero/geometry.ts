@@ -169,8 +169,10 @@ function hexDir(k: number): Point {
   return [Math.cos(a), Math.sin(a)]
 }
 
-/** The six vertices of a unit hexagon at the origin. The build calls `hexPts` per cell. */
-const HEX_DIRS: Hexagon = [hexDir(0), hexDir(1), hexDir(2), hexDir(3), hexDir(4), hexDir(5)]
+type HexDirs = readonly [Point, Point, Point, Point, Point, Point]
+
+/** The six unit directions from a cell's centre to its vertices, in the order `hexPts` uses. */
+const HEX_DIRS: HexDirs = [hexDir(0), hexDir(1), hexDir(2), hexDir(3), hexDir(4), hexDir(5)]
 
 export function hexPts(plane: Plane, cu: number, cv: number, s: number): Hexagon {
   const [d0, d1, d2, d3, d4, d5] = HEX_DIRS
@@ -263,7 +265,7 @@ export function pushOut(cx: ClearContext, q: number, r: number, px: number, py: 
           if (ok === 1 && distance < bestDistance) {
             bestDistance = distance
             best = [cq, cr]
-          } else if (loose === null) {
+          } else if (ok === 0 && loose === null) {
             loose = [cq, cr]
           }
         }

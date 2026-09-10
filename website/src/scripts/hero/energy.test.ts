@@ -42,6 +42,15 @@ describe('markPatch', () => {
     expect(targetAt(state, -3, 3)).toBeCloseTo(cubed(3), 12)
   })
 
+  test('takes the falloff from the radius it was given, not from a fixed one', () => {
+    const state = createEnergy()
+    markPatch(state, 0, 0, 2)
+    const cubed = (d: number): number => (1 - d / 3) ** 3
+    expect(targetAt(state, 0, 0)).toBe(1)
+    expect(targetAt(state, -1, 1)).toBeCloseTo(cubed(1), 12)
+    expect(targetAt(state, -2, 2)).toBeCloseTo(cubed(2), 12)
+  })
+
   test('touches the centre and three full rings', () => {
     const state = createEnergy()
     markPatch(state, 3, -2, 3)
@@ -77,7 +86,10 @@ describe('decayEnergy', () => {
     }
     decayEnergy(state, 0.016, 4, false)
     expect(state.cells.size).toBe(4)
-    expect([...state.cells.values()].map((cell) => cell.q).sort()).toEqual([10, 7, 8, 9].sort())
+    const numeric = (a: number, b: number): number => a - b
+    expect([...state.cells.values()].map((cell) => cell.q).sort(numeric)).toEqual(
+      [10, 7, 8, 9].sort(numeric),
+    )
   })
 
   test('keeps the cells this frame touched and drops the ones it left behind', () => {
