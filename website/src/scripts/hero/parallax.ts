@@ -1,6 +1,6 @@
 import { type Matrix3, matInv, type Point, proj } from './geometry'
 
-type Preset = {
+export type Preset = {
   terrain: number
   tSign: -1 | 0 | 1
   clouds: number
