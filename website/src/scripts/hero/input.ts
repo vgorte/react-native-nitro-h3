@@ -10,7 +10,7 @@ const KEY_STEPS: Record<string, Point> = {
   ArrowUp: NBR[2],
 }
 
-export type InputPort = {
+type InputPort = {
   setFocusFromPoint: (clientX: number, clientY: number) => void
   stepFocus: (dq: number, dr: number) => void
   updateReadout: (announce: boolean) => void

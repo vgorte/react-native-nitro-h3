@@ -18,7 +18,7 @@ export type Resolution = 6 | 9 | 12
 export type Camera = { yHorizon: number; xVp: number; focal: number }
 
 /** The part of a calibrated scene the plane mapping needs. Keeps this file free of `scene.ts`. */
-export type Plane = { Hm: Matrix3; Hi: Matrix3; VS: number; PVMIN: number; PVMAX: number }
+type Plane = { Hm: Matrix3; Hi: Matrix3; VS: number; PVMIN: number; PVMAX: number }
 
 /** Image `u` and `v` of the plane origin. The `v` scale is derived per calibration. */
 export const U0 = 0.4003605167
@@ -99,7 +99,7 @@ export function matInv(m: Matrix3): Matrix3 {
 }
 
 /** Ground coordinates of an image point on the plane, in camera heights. */
-export function groundPt(camera: Camera, point: Point): Point {
+function groundPt(camera: Camera, point: Point): Point {
   const d = point[1] - camera.yHorizon
   return [(point[0] - camera.xVp) / d, camera.focal / d]
 }

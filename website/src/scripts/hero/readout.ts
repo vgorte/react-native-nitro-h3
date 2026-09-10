@@ -49,7 +49,7 @@ export type AnchorInput = {
   copy: Rect | null
 }
 
-export type Anchor = { x: number; y: number; side: 1 | -1 }
+type Anchor = { x: number; y: number; side: 1 | -1 }
 
 /** Liang-Barsky segment against an axis aligned box, so the leader can keep off the copy block. */
 export function segBox(x1: number, y1: number, x2: number, y2: number, b: Rect | null): boolean {

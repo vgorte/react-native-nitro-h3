@@ -20,7 +20,7 @@ const QUALITY = 85
 type Raw = { data: Buffer; width: number; height: number }
 
 /** Returns the plate's depth-of-field band as one alpha byte per pixel, constant along a row. */
-export function bandMask(width: number, height: number): Buffer {
+function bandMask(width: number, height: number): Buffer {
   const mask = Buffer.alloc(width * height)
   for (let y = 0; y < height; y += 1) {
     const alpha = Math.round(bandAlphaAt((y + 0.5) / height) * 255)
@@ -55,7 +55,7 @@ async function bake(source: string, plate: Plate): Promise<Raw> {
     .raw()
     .toBuffer()
   const pixels = new Uint8ClampedArray(data.buffer, data.byteOffset, data.length)
-  alphaFromLuma(pixels, plate.gain, plate.whiten)
+  alphaFromLuma(pixels, plate.gain)
   return { data, width, height }
 }
 

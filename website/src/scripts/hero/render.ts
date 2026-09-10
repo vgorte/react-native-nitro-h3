@@ -16,7 +16,7 @@ import { BLEED, type Calibrated, FAR_PLAIN, MIN_HEX_PX } from './scene'
 export type Sparkle = { x: number; y: number; ph: number; sp: number; r: number; d: number }
 export type LitCell = { q: number; r: number; ph: number; sp: number }
 export type Pulse = { t: number; a: number; d: number }
-export type GridBuild = { litCells: LitCell[]; cells: number; buildMs: number }
+type GridBuild = { litCells: LitCell[]; cells: number; buildMs: number }
 
 /** The prototype's Lehmer generator, so the picked cells and sparkles reproduce exactly. */
 function lcg(seed: number): () => number {
@@ -75,7 +75,7 @@ const FAR_STYLE = depthStyle(0)
  * frame blurs. A disc and its glow are the same shape every frame, so they are baked once into a
  * sprite; an outline's glow is approximated by two wider strokes at a fraction of the alpha.
  */
-export type GlowSprite = { canvas: HTMLCanvasElement; half: number }
+type GlowSprite = { canvas: HTMLCanvasElement; half: number }
 
 export type GlowSprites = {
   sparkle: readonly GlowSprite[]
@@ -253,7 +253,7 @@ export function sizeCanvas(
 }
 
 /** Clears the whole backing store, ignoring the drawing transform. */
-export function clearAll(g: CanvasRenderingContext2D): void {
+function clearAll(g: CanvasRenderingContext2D): void {
   g.save()
   g.setTransform(1, 0, 0, 1, 0, 0)
   g.clearRect(0, 0, g.canvas.width, g.canvas.height)
@@ -302,7 +302,7 @@ export function buildKeepOut(
  * Erases the copy column from the canvas. The mask is transparent outside its extent, so the punch
  * reads and blends that box only instead of the whole surface.
  */
-export function punchKeepOut(
+function punchKeepOut(
   g: CanvasRenderingContext2D,
   mask: HTMLCanvasElement,
   extent: MaskExtent | null,
@@ -326,7 +326,7 @@ export function punchKeepOut(
 }
 
 /** The mask in canvas pixels: the radial fade's centre and radii, and the two linear fade rows. */
-export function maskGeometry(scene: Calibrated): {
+function maskGeometry(scene: Calibrated): {
   cx: number
   cy: number
   r0: number
@@ -496,7 +496,7 @@ export function makeSparkles(scene: Calibrated): Sparkle[] {
   return sparkles
 }
 
-export type FrameInput = {
+type FrameInput = {
   ctx: CanvasRenderingContext2D
   grid: HTMLCanvasElement
   mask: HTMLCanvasElement

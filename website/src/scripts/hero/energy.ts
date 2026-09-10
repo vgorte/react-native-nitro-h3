@@ -5,7 +5,7 @@ export const ENERGY_TAU = 0.2
 /** Below this an untouched cell is dropped rather than kept for an invisible amount of light. */
 export const ENERGY_FLOOR = 0.02
 
-export type EnergyCell = { q: number; r: number; e: number; target: number; stamp: number }
+type EnergyCell = { q: number; r: number; e: number; target: number; stamp: number }
 
 export type EnergyState = { cells: Map<number, EnergyCell>; stamp: number }
 

@@ -16,7 +16,7 @@ import {
 
 export type Mode = 'desk' | 'mob'
 
-export type Scene = {
+type Scene = {
   /** Radial mountain fade, as fractions: the centre of x by W and y by H, both radii by W. */
   mask: { cx: number; cy: number; r0: number; r1: number }
   litR: Record<Resolution, number>
@@ -69,28 +69,28 @@ export const QUAD: Quad = [
   [-16, 850],
 ]
 
-export const CAMERA: Camera = { yHorizon: 65, xVp: 688, focal: 1032 }
+const CAMERA: Camera = { yHorizon: 65, xVp: 688, focal: 1032 }
 
 /** The image the four reference points were measured on. */
-export const IMG_W = 1376
-export const IMG_H = 768
+const IMG_W = 1376
+const IMG_H = 768
 
 /** The terrain layer is this much larger than the stage on every side. */
-export const GROW = 0.08
+const GROW = 0.08
 /** The canvas overhangs the stage by this fraction. It has to stay under `GROW / 2`. */
 export const BLEED = 0.035
 
 /** The far `v` the grid is built to, a little past the reference rectangle. */
-export const V_BUILD_FAR = -0.6
+const V_BUILD_FAR = -0.6
 /** The lateral rail, past which far cells cost time and draw nothing. */
-export const PU_LIMIT = 3.2
+const PU_LIMIT = 3.2
 /** A cell whose screen width falls below this many canvas pixels is not drawn. */
 export const MIN_HEX_PX = 5
 /** Below this depth a cell is a plain hairline, without glow and without vertex dots. */
 export const FAR_PLAIN = 0.16
 
 /** Image pixels to canvas pixels: the cover fit the layer uses, grown by `GROW`. */
-export function imageCoverFit(W: number, H: number): Matrix3 {
+function imageCoverFit(W: number, H: number): Matrix3 {
   const s = Math.max(W / IMG_W, H / IMG_H)
   const k = 1 + GROW
   return [

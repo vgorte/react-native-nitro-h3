@@ -4,13 +4,13 @@ import { PARA_REF_W } from './parallax'
  * The cloud plate's recipe. The plate is baked by `website/scripts/gen-cloud-plate.ts` and ships as
  * an image, so nothing here reaches the browser; the constants stay next to the scene they describe.
  */
-export type Plate = { levels: string; whiten: boolean; gain: number }
+export type Plate = { levels: string; gain: number }
 
 /**
  * The mask preset: the plate keeps the photograph's own colour and luma becomes the alpha, so the
  * grey clouds read as grey haze rather than as white.
  */
-export const CLOUD_PLATE: Plate = { levels: 'none', whiten: false, gain: 1 }
+export const CLOUD_PLATE: Plate = { levels: 'none', gain: 1 }
 
 /** Rendered blur at the reference stage width. */
 export const DOF_BLUR_PX = 6
@@ -53,17 +53,12 @@ export function bandAlphaAt(t: number): number {
 }
 
 /** Writes luma into the alpha channel in place. Pure, so it is the part under test. */
-export function alphaFromLuma(data: Uint8ClampedArray, gain: number, whiten: boolean): void {
+export function alphaFromLuma(data: Uint8ClampedArray, gain: number): void {
   for (let p = 0; p < data.length; p += 4) {
     const r = data[p] ?? 0
     const g = data[p + 1] ?? 0
     const b = data[p + 2] ?? 0
     const l = (r * 0.299 + g * 0.587 + b * 0.114) / 255
     data[p + 3] = Math.round(Math.min(1, l * gain) * 255)
-    if (!whiten) continue
-    const k = Math.max(l, 0.06)
-    data[p] = Math.min(255, r / k)
-    data[p + 1] = Math.min(255, g / k)
-    data[p + 2] = Math.min(255, b / k)
   }
 }

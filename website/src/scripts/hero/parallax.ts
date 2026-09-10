@@ -1,6 +1,6 @@
 import { type Matrix3, matInv, type Point, proj } from './geometry'
 
-export type Preset = {
+type Preset = {
   terrain: number
   tSign: -1 | 0 | 1
   clouds: number
@@ -17,7 +17,7 @@ export const PRESETS: Record<'tilt' | 'follow', Preset> = {
 
 /** The stage width both amplitudes were tuned at. Nothing derives from it. */
 export const PARA_REF_W = 1672
-export const PARA_PERSPECTIVE = 1200
+const PARA_PERSPECTIVE = 1200
 export const IDLE_X = 22
 export const IDLE_Y = 11
 
@@ -27,7 +27,7 @@ const IDENTITY: Matrix3 = [
   [0, 0, 1],
 ]
 
-export type LayerState = {
+type LayerState = {
   terX: number
   terY: number
   cloX: number
@@ -57,7 +57,7 @@ export function createLayerState(): LayerState {
   }
 }
 
-export type ParallaxInput = {
+type ParallaxInput = {
   preset: Preset
   dt: number
   t: number
@@ -141,7 +141,7 @@ export function cloudTransform(state: LayerState): string {
 }
 
 /** The stage box as a pointer event sees it. A `DOMRect` satisfies it. */
-export type StageRect = { left: number; top: number; width: number; height: number }
+type StageRect = { left: number; top: number; width: number; height: number }
 
 /** A point on the screen, in the canvas coordinates the grid is drawn in. */
 export function toCanvas(

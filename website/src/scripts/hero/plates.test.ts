@@ -23,7 +23,7 @@ const pixels = (...rgb: number[][]): Uint8ClampedArray => {
 describe('alphaFromLuma', () => {
   test('writes luma into alpha and leaves the colour channels alone', () => {
     const data = pixels([0, 0, 0], [255, 255, 255], [128, 128, 128])
-    alphaFromLuma(data, 1, false)
+    alphaFromLuma(data, 1)
     expect(data[3]).toBe(0)
     expect(data[7]).toBe(255)
     expect(data[11]).toBe(128)
@@ -34,14 +34,14 @@ describe('alphaFromLuma', () => {
 
   test('uses the luma weights and not a plain channel average', () => {
     const data = pixels([0, 0, 255])
-    alphaFromLuma(data, 1, false)
+    alphaFromLuma(data, 1)
     expect(data[3]).toBe(Math.round(0.114 * 255))
     expect(data[3]).not.toBe(85)
   })
 
   test('a gain above one clamps at 255 instead of wrapping', () => {
     const data = pixels([128, 128, 128])
-    alphaFromLuma(data, 3, false)
+    alphaFromLuma(data, 3)
     expect(data[3]).toBe(255)
   })
 })
@@ -70,7 +70,7 @@ describe('bandAlphaAt', () => {
 
 describe('the shipped plate', () => {
   test('carries the mask preset of the spec', () => {
-    expect(CLOUD_PLATE).toEqual({ levels: 'none', whiten: false, gain: 1 })
+    expect(CLOUD_PLATE).toEqual({ levels: 'none', gain: 1 })
     expect(DOF_BLUR_PX).toBe(6)
     expect(CLOUD_SPAN).toBe(1.12)
     expect(DOF_STOPS).toEqual([
