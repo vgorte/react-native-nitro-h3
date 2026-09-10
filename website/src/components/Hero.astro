@@ -3,9 +3,18 @@ import { Image } from 'astro:assets'
 import { LinkButton } from '@astrojs/starlight/components'
 import cloudPlate from '../assets/hero/clouds-plate.webp'
 import terrain from '../assets/hero/terrain-layer-2.webp'
+import { cellAt } from '../scripts/hero/cells.generated'
+import { RES } from '../scripts/hero/geometry'
 
 const { data } = Astro.locals.starlightRoute.entry
 const { title = data.title, tagline, actions = [] } = data.hero ?? {}
+
+// The card carries the opening cell before the first frame, and wherever the script never runs at
+// all. Reading the generated table here is what keeps the two in step.
+const opening = cellAt(0, 0)
+if (!opening) throw new Error('the generated cell table has no cell at the plane origin')
+const openingCall = `latLngToCell(${opening.lat.toFixed(4)}, ${opening.lng.toFixed(4)}, ${RES})`
+const openingId = `0x${opening.id}n`
 ---
 
 {/* Quality 85 is the setting both plates were accepted at, so the pipeline does not re-encode them
@@ -67,10 +76,10 @@ const { title = data.title, tagline, actions = [] } = data.hero ?? {}
 
   <div class="nh3-readout">
     <div class="nh3-line">
-      <span class="nh3-call">latLngToCell(67.9300, 13.0900, 12)</span>
+      <span class="nh3-call">{openingCall}</span>
     </div>
     <div class="nh3-line nh3-out">
-      <span class="nh3-arrow">&#8594;</span><span class="nh3-id">0x8c095ad6cd503ffn</span>
+      <span class="nh3-arrow">&#8594;</span><span class="nh3-id">{openingId}</span>
     </div>
   </div>
 
@@ -93,16 +102,16 @@ const { title = data.title, tagline, actions = [] } = data.hero ?? {}
 {/* The mode class is set before paint so a phone never shows one frame of the desktop scene.
     It mirrors `pickMode` in src/scripts/hero/scene.ts, which owns the same rule for the canvas. */}
 <script is:inline>
-	(() => {
-		const forced = new URLSearchParams(location.search).get('mode');
-		const mob =
-			forced === 'mob' || forced === 'mobile'
-				? true
-				: forced === 'desk' || forced === 'desktop'
-					? false
-					: matchMedia('(orientation: portrait), (max-width: 49.9375rem)').matches;
-		if (mob) document.querySelector('.nh3-hero')?.classList.add('mob');
-	})();
+  (() => {
+    const forced = new URLSearchParams(location.search).get('mode');
+    const mob =
+      forced === 'mob' || forced === 'mobile'
+        ? true
+        : forced === 'desk' || forced === 'desktop'
+          ? false
+          : matchMedia('(orientation: portrait), (max-width: 49.9375rem)').matches;
+    if (mob) document.querySelector('.nh3-hero')?.classList.add('mob');
+  })();
 </script>
 
 <script>

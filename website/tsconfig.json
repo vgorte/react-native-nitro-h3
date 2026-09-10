@@ -9,6 +9,7 @@
     "pages.ts",
     "scripts/gen-cell-table.ts",
     "scripts/gen-cloud-plate.ts",
+    "scripts/render-og.ts",
     "scripts/sync-docs.ts",
     "scripts/sync-docs.test.ts",
     "src/scripts/hero/**/*.ts"
