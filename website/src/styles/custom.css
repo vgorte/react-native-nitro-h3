@@ -291,6 +291,184 @@ html[data-has-hero] .page > .header {
   }
 }
 
+/* The bar takes the place of Starlight's own narrow table of contents, and this variable is the
+   room Starlight reserves under the header for it: the anchor scroll padding follows it too. The
+   right hand column is the wide layout's table of contents and stays as it is, so this ends where
+   the column begins, at Starlight's own `lg` breakpoint. */
+@media (max-width: 71.9375rem) {
+  :root[data-has-toc] {
+    --sl-mobile-toc-height: 2.5rem;
+  }
+}
+
+/* The bar overlaps the header's own hairline instead of drawing a second one under it, and carries
+   the header's ground: the build emits `backdrop-filter` prefixed only, which current Chrome no
+   longer reads, so a translucent bar would leave the article legible straight through it. */
+.nh3-toc {
+  position: fixed;
+  z-index: var(--sl-z-index-toc);
+  top: calc(var(--sl-nav-height) - 1px);
+  inset-inline: 0;
+  border-bottom: 1px solid var(--sl-color-hairline);
+  background: var(--sl-color-bg-nav);
+}
+
+@media (min-width: 50rem) {
+  .nh3-toc {
+    inset-inline-start: var(--sl-content-inline-start, 0);
+  }
+}
+
+/* The bar spans the pane, its row and its panel keep the article's measure, so all three line up
+   down the page. An absolutely positioned box centres on `auto` margins between both insets. */
+.nh3-toc-inner,
+.nh3-toc-panel {
+  max-width: calc(var(--sl-content-width) + 2 * var(--sl-content-pad-x));
+  margin-inline: auto;
+}
+
+.nh3-toc-inner,
+.nh3-toc-list {
+  padding-inline: var(--sl-content-pad-x);
+}
+
+.nh3-toc-button {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  width: 100%;
+  height: var(--sl-mobile-toc-height);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--sl-color-gray-3);
+  font: inherit;
+  font-size: var(--sl-text-sm);
+  text-align: start;
+  cursor: pointer;
+  outline-offset: var(--sl-outline-offset-inside);
+}
+
+.nh3-toc-button:hover {
+  color: var(--sl-color-white);
+}
+
+.nh3-toc-ring {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  /* From the top, like a clock, instead of from three o'clock. */
+  transform: rotate(-90deg);
+}
+
+.nh3-toc-ring circle {
+  fill: none;
+  stroke-width: 3;
+}
+
+.nh3-toc-ring-track {
+  stroke: var(--sl-color-gray-5);
+}
+
+/* `pathLength` normalises the circumference, so the dash offset is the read fraction itself. */
+.nh3-toc-ring-value {
+  stroke: var(--sl-color-accent);
+  stroke-dasharray: 1;
+  stroke-dashoffset: calc(1 - var(--nh3-progress, 0));
+  stroke-linecap: round;
+}
+
+.nh3-toc-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.nh3-toc-chevron {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  transition: transform 150ms ease;
+}
+
+.nh3-toc-button[aria-expanded="true"] .nh3-toc-chevron {
+  transform: rotate(180deg);
+}
+
+.nh3-toc-panel {
+  position: absolute;
+  inset-inline: 0;
+  inset-block-start: 100%;
+  max-height: calc(100dvh - var(--sl-nav-height) - var(--sl-mobile-toc-height) - 2rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-bottom: 1px solid var(--sl-color-hairline-light);
+  border-radius: 0 0 1rem 1rem;
+  background: var(--sl-color-gray-6);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+
+.nh3-toc-panel.open {
+  opacity: 1;
+}
+
+.nh3-toc-panel[hidden] {
+  display: none;
+}
+
+.nh3-toc-list {
+  padding-block: 0.75rem;
+  list-style: none;
+}
+
+/* The thread runs down the whole list and turns accent as far as the reader has come. */
+.nh3-toc-item {
+  border-inline-start: 1px solid var(--sl-color-gray-5);
+}
+
+.nh3-toc-item.above {
+  border-inline-start-color: var(--sl-color-text-accent);
+}
+
+.nh3-toc-item a {
+  display: block;
+  padding-block: 0.35rem;
+  padding-inline: calc(0.75rem + var(--nh3-toc-level, 0) * 0.75rem) 0.5rem;
+  color: var(--sl-color-gray-3);
+  font-size: var(--sl-text-sm);
+  line-height: 1.35;
+  text-decoration: none;
+}
+
+.nh3-toc-item.above a {
+  color: var(--sl-color-text-accent);
+}
+
+.nh3-toc-item.current a {
+  font-weight: 600;
+}
+
+.nh3-toc-item a:hover {
+  color: var(--sl-color-white);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nh3-toc-panel,
+  .nh3-toc-chevron {
+    transition: none;
+  }
+}
+
+@media print {
+  .nh3-toc {
+    display: none;
+  }
+}
+
 .nh3-hero {
   position: relative;
   overflow: hidden;
