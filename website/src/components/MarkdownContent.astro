@@ -5,8 +5,10 @@ import Default from '@astrojs/starlight/components/MarkdownContent.astro'
 <Default {...Astro.props}><slot /></Default>
 
 <script>
-  /* A table wider than its column scrolls sideways. Without a focusable region the columns past the
-     edge are unreachable by keyboard, and without the fade nothing says they exist. */
+  // A table wider than its column scrolls sideways. Without a focusable region the columns past
+  // the edge are unreachable by keyboard, and without the fade nothing says they exist.
+
+  // Pixels of slack before the scroll counts as ended, so the fade drops on the last pixel.
   const AT_END = 2
   // Rounding leaves a table a pixel or two over its column; that is not a hidden column.
   const OVERFLOWING = 8

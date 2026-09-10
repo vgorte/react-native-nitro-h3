@@ -14,7 +14,7 @@ interface Entry {
 
 const { toc } = Astro.locals.starlightRoute
 
-/* The bar reads one flat list, so the tree only survives as an indentation level. */
+// The bar reads one flat list, so the tree only survives as an indentation level.
 const flatten = (headings: Heading[], min: number, out: Entry[] = []): Entry[] => {
   for (const heading of headings) {
     out.push({
@@ -118,14 +118,15 @@ const hasHeadings = entries.length > 1
       draw()
     }
 
-    /* Where an anchor jump parks a heading: under the bar, plus Starlight's own scroll padding.
-       Reading it back keeps the ring, the active entry and a clicked link on one line. */
+    // Where an anchor jump parks a heading: under the bar, plus Starlight's own scroll padding.
+    // Reading it back keeps the ring, the active entry and a clicked link on one line.
     const readingLine = () => {
       const padding = Number.parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop)
       return Number.isNaN(padding) ? root.getBoundingClientRect().bottom : padding
     }
 
-    /* 0 once the first heading reaches that line, 1 once the last line of the article is in view. */
+    // `0` once the first heading reaches that line, `1` once the last line of the article is in
+    // view.
     const setProgress = () => {
       const first = targets[0]
       if (!first) return
@@ -175,7 +176,8 @@ const hasHeadings = entries.length > 1
     })
 
     // The wide layout hides the bar for Starlight's own column, so an open state must not survive
-    // the breakpoint and come back on the way down.
+    // the breakpoint and come back on the way down. Same boundary as `71.9375rem` in
+    // `src/styles/custom.css`, from the other side.
     matchMedia('(min-width: 72rem)').addEventListener('change', () => setOpen(false))
 
     // The heading above the reading line is the one being read. Every crossing of that line is an
@@ -195,7 +197,7 @@ const hasHeadings = entries.length > 1
     })
     for (const { heading } of targets) observer.observe(heading)
 
-    // The wide layout hides the bar and keeps Starlight's own column, so nothing is measured there.
+    // `offsetHeight` is zero where the bar is hidden, which is the wide layout.
     const onScroll = () => {
       if (frame || !root.offsetHeight) return
       frame = requestAnimationFrame(() => {

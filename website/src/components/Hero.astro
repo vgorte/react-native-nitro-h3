@@ -56,6 +56,8 @@ const openingId = `0x${opening.id}n`
   <div class="nh3-vignette" aria-hidden="true"></div>
 
   <div class="nh3-copy">
+    {/* Starlight renders no title of its own on a page with a hero, so this heading has to carry
+        the skip link's `_top`. */}
     <h1 id="_top" data-page-title set:html={title} />
     {tagline && <p class="nh3-tagline" set:html={tagline} />}
     {
