@@ -59,6 +59,8 @@ export function attachInput(
 ): void {
   let down = false
   let moved = false
+  // Where the pointer stands, so a drag that is released off the stage still ends the contact.
+  let outside = false
 
   const onLink = (target: EventTarget | null): boolean =>
     target instanceof Element && target.closest('a,button') !== null
@@ -68,6 +70,7 @@ export function attachInput(
     if (onLink(event.target)) return
     down = true
     moved = false
+    outside = false
     port.setOnStage(true)
     port.setFocusFromPoint(event.clientX, event.clientY)
     port.updateReadout(true)
@@ -83,6 +86,7 @@ export function attachInput(
     }
     // The docked layout is press only, and a touch has no hover to follow.
     if (port.isDocked() || event.pointerType === 'touch') return
+    outside = false
     port.setOnStage(true)
     port.setFocusFromPoint(event.clientX, event.clientY)
     port.updateReadout(false)
@@ -90,6 +94,7 @@ export function attachInput(
   })
 
   stage.addEventListener('pointerleave', () => {
+    outside = true
     port.clearPointer()
     if (!down) port.setOnStage(false)
   })
@@ -98,13 +103,16 @@ export function attachInput(
     if (!down) return
     down = false
     if (!moved && !port.reduced) port.pulse()
-    // A touch never sends pointerleave, so the lift is what ends the contact.
-    if (event.pointerType === 'touch') port.setOnStage(false)
+    // A touch never sends pointerleave, and a drag released outside had its leave swallowed by the
+    // held button, so the lift is what ends the contact in both cases.
+    if (outside || event.pointerType === 'touch') port.setOnStage(false)
   })
 
   // A vertical drag that turns into a page scroll arrives here and ends the press without a pulse.
   window.addEventListener('pointercancel', () => {
     down = false
+    port.clearPointer()
+    port.setOnStage(false)
   })
 
   stage.addEventListener('keydown', (event) => {
