@@ -1,9 +1,5 @@
 # 🛡️ Errors and memory safety
 
-> **Audience: package users writing the `catch` block.** Every failure is an `H3Error`, native codes
-> survive the boundary, and an optional cell ceiling turns an allocation that would kill the process
-> into a catchable error.
-
 ## One error type
 
 All package-level errors are represented by `H3Error`.

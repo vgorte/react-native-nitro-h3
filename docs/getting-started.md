@@ -5,10 +5,6 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/vgorte/react-native-nitro-h3/blob/main/LICENSE)
 [![Vendored H3 v4.5.0](https://img.shields.io/badge/h3-v4.5.0-blue.svg)](https://github.com/uber/h3/releases/tag/v4.5.0)
 
-> **Audience: package users installing `react-native-nitro-h3` for the first time.** This page
-> takes you from an empty project to a first cell: install, one call, and the requirements the
-> build has to meet.
-
 ## What you get
 
 - **Native execution.** H3 4.5.0 runs as compiled C++ on iOS and Android, called directly through

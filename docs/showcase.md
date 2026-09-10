@@ -1,9 +1,5 @@
 # 🎬 Showcase
 
-> **Audience: package users who want to see the package inside an app.** One app, five acts, every
-> cell computed on the phone by `react-native-nitro-h3`. Each act is a pattern you can lift into
-> your own app.
-
 <video src="/react-native-nitro-h3/img/showcase.mp4" autoplay muted loop playsinline controls style="width: 100%"></video>
 
 [Watch the video](../img/showcase.mp4).

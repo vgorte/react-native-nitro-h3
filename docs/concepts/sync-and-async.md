@@ -1,9 +1,5 @@
 # 🧵 Sync and async
 
-> **Audience: package users deciding whether a call belongs on the main thread.** Almost every
-> function is synchronous on purpose. Four are heavy enough to earn an async variant, and this page
-> says which, what the variant guarantees, and what the thread hop costs.
-
 ## Synchronous by default
 
 Most H3 operations are intentionally synchronous.

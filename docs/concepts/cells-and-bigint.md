@@ -1,9 +1,5 @@
 # 🔢 Cell indexes and bigint
 
-> **Audience: package users who want to know what a cell is in this package.** An H3 index is a
-> 64-bit integer. This page explains why it arrives as a `bigint`, what that costs at the
-> boundary, and how the surface lines up with `h3-js`.
-
 ## A cell is a `bigint`
 
 H3 indexes are represented as JavaScript `bigint` values:

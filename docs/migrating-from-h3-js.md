@@ -1,11 +1,5 @@
 # 🔄 Migrating from h3-js
 
-> **Audience: `h3-js` users moving an app to `react-native-nitro-h3`.** The package covers the
-> `h3-js` 4.5.0 operation set under the same names, apart from the unit-suffixed functions below.
-> What changes is the shape of a cell, of a cell set and of a coordinate, and this page shows each
-> change as a before and after. The exhaustive list of every divergence is
-> [Divergences from h3-js 4.5.0](./h3-js-divergences.md).
-
 ## Cell indexes are `bigint`
 
 The main change is that H3 indexes are numeric `bigint` values rather than strings:

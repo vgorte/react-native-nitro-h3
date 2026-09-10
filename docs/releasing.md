@@ -6,9 +6,6 @@
 > only way npm provenance attestations are produced. The very first release is the single documented
 > exception, and it is spelled out under Trusted publishing.
 
-> **Audience: maintainers.** This is the runbook for cutting a release: what has to be green first,
-> how to rehearse safely, how the pipeline is dispatched, and how it is put together.
-
 ## Quick release checklist
 
 1. **CI is green on `main`.** All nine core workflows on the last push to `main`.

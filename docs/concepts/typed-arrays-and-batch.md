@@ -1,9 +1,5 @@
 # 📦 Typed arrays and batch calls
 
-> **Audience: package users working with many cells at once.** Cell sets cross the boundary as one
-> `BigUint64Array`, coordinate sets as one `Float64Array`, and three batch calls run a whole array in
-> one native call. This page gives their exact contract.
-
 ## Cell sets are typed arrays
 
 Cell collections use `BigUint64Array`:
