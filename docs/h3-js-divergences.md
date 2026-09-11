@@ -1,6 +1,6 @@
-# Divergences from h3-js 4.5.0
+# Divergences from h3-js
 
-> 📖 This guide documents the intentional differences between
+> This guide documents the intentional differences between
 > `react-native-nitro-h3` and `h3-js` 4.5.0, with migration guidance
 > for existing `h3-js` users.
 

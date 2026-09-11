@@ -1,45 +1,1016 @@
-/* Starlight sizes the hero image inside `@layer starlight.core`, so these unlayered rules win. */
-.hero > img {
-  width: min(60%, 12rem);
-}
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/jetbrains-mono";
 
-@media (min-width: 50rem) {
-  .hero > img {
-    width: min(100%, 16rem);
-  }
+/* Palette */
 
-  /* The panel below the hero already pads by `1.5rem`, which is the whole gap the badge row needs. */
-  .hero {
-    padding-block-end: 0;
-  }
-}
-
-.badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-top: 0;
-}
-
-/* Accent palette in the hue of the logo centre `#219FC9`, with Starlight's own lightness steps. */
+/* The hero and the docs share one ramp; the logo keeps hue 195 and is untouched. */
 :root {
-  --sl-color-accent-low: hsl(195, 54%, 20%);
-  --sl-color-accent: #219fc9;
-  --sl-color-accent-high: hsl(195, 85%, 80%);
+  --sl-color-accent: #4da3ff;
+  --sl-color-accent-low: hsl(211, 60%, 18%);
+  --sl-color-accent-high: hsl(211, 90%, 85%);
+  --sl-color-white: #f2f5fa;
+  --sl-color-gray-1: #e8edf5;
+  --sl-color-gray-2: #c7d2e2;
+  --sl-color-gray-3: #93a1b5;
+  --sl-color-gray-4: #5c6a80;
+  --sl-color-gray-5: #1c2740;
+  --sl-color-gray-6: #0b1120;
+  --sl-color-black: #04060b;
+  --sl-color-bg-inline-code: rgba(90, 150, 255, 0.14);
+  --sl-color-hairline-light: rgba(120, 170, 255, 0.28);
+  --sl-color-hairline: rgba(120, 170, 255, 0.28);
+  --sl-font: "Inter Variable";
+  --sl-font-mono: "JetBrains Mono Variable";
+  /* The two ends are the grid's own, from `scripts/hero/render.ts`: the glow the baked plate draws
+     its cells with, and the bright core of a sparkle sprite. The middle stop sits between them and
+     is the one value here that the grid never draws. The word on the hero and the number on the
+     not-found page share the gradient, and the primary action takes its light end. */
+  --nh3-accent-light: #bee1ff;
+  --nh3-accent-gradient: linear-gradient(
+    92deg,
+    #2f7dff 0%,
+    #7cbcff 52%,
+    var(--nh3-accent-light) 100%
+  );
 }
 
-:root[data-theme="light"] {
-  --sl-color-accent-low: hsl(195, 88%, 90%);
-  --sl-color-accent: #219fc9;
-  --sl-color-accent-high: hsl(195, 80%, 28%);
-}
+/* Starlight overrides */
 
 /* The header title reads as a wordmark, not a link, so it takes the text colour instead of the accent. */
 .site-title {
   color: var(--sl-color-white);
 }
 
-/* The claim under an act's description stands off by space and its mark alone, in the text colour. */
+/* The claim under an act's description stands off by its space and its weight alone, in the
+   text colour. */
 .sl-markdown-content p.use {
   margin-top: 1.5rem;
+}
+
+/* The landing page is the hero alone, so the content panel releases its padding and its measure.
+   These rules are unlayered, so they beat `@layer starlight.core`. */
+html[data-has-hero] main {
+  padding: 0;
+}
+
+html[data-has-hero] .content-panel {
+  padding: 0;
+  border-top: 0;
+}
+
+html[data-has-hero] .content-panel > .sl-container {
+  max-width: none;
+  margin-inline: 0;
+}
+
+/* Everything that is not the hero keeps the panel's own measure and padding. */
+html[data-has-hero] .content-panel > .sl-container > :not(.nh3-hero) {
+  max-width: var(--sl-content-width);
+  margin-inline: auto;
+  padding-inline: var(--sl-content-pad-x);
+}
+
+/* JetBrains Mono draws `===` and `->` as one ligature glyph, which reads as a grey bar at inline
+   size. Prose has to spell the operator out; the code blocks keep the ligatures. */
+.sl-markdown-content :not(pre) > code {
+  font-variant-ligatures: none;
+}
+
+/* An inline code chip inherits the heading's size, and its padding then outgrows the line box. */
+.sl-markdown-content :is(h1, h2, h3, h4) code {
+  font-size: 0.85em;
+  padding-block: 0;
+}
+
+/* The landing is one screen and nothing below it: the page links would be the only reason to
+   scroll, and they stand on every other page. */
+html[data-has-hero] .content-panel > .sl-container > footer {
+  display: none;
+}
+
+/* Starlight emits the footer's meta row whether or not anything fills it, and an empty box keeps
+   its 3 rem top margin and its share of the column gap, which stood 72 px above the page links. */
+.content-panel > .sl-container > footer > .meta:empty {
+  display: none;
+}
+
+/* The landing has no prose, but Starlight's content block is emitted anyway and its top margin
+   survives an empty box, which left the page 24 px of travel. */
+html[data-has-hero] .content-panel > .sl-container > .sl-markdown-content:empty {
+  display: none;
+}
+
+/* A window still rubber-bands past a page that has nothing to scroll, and on a page that is exactly
+   one screen that elastic pull is the only movement there is. The property belongs on the body: the
+   root keeps `auto`, so the body's value is the one that reaches the viewport. */
+html[data-has-hero] body,
+html:has(.nh3-404) body {
+  overscroll-behavior-y: none;
+}
+
+/* Measured: at 340 px of window the copy still ends inside it, at 320 px it does not, and the floor
+   sits just above at 22rem. `hidden` takes the scroll port away entirely, which is what the pull
+   needs to grab; below the floor the page keeps its scroll, or the buttons go out of reach. */
+@media (min-height: 22rem) {
+  html[data-has-hero],
+  html:has(.nh3-404) {
+    overflow: hidden;
+  }
+}
+
+/* Header and tabs */
+
+/* `Header.astro` appends the tabs after Starlight's own header, so the fixed bar becomes the row
+   that holds both. Starlight's header keeps its grid and only gives up the width the tabs take. */
+.page > .header {
+  display: flex;
+  align-items: center;
+  gap: var(--sl-nav-gap);
+}
+
+.page > .header > .header {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Starlight lines the search box up with the content column through `--__main-column-fr`, which it
+   derives from `100%` of its own header. That header is now a flex item and lost the tabs' width,
+   so the same formula reads the full bar through `cqw` and the search box keeps its column. */
+@media (min-width: 50rem) {
+  .page > .header {
+    container-type: inline-size;
+  }
+
+  /* Starlight's own social row sits inside its header; the tabs carry the GitHub icon instead, so
+     this row is scoped to the fixed top header only and leaves the doc page's mobile sidebar,
+     which renders the same class through `MobileMenuFooter.astro`, untouched. */
+  .page > .header > .header .social-icons {
+    display: none;
+  }
+
+  .page > .header > .header {
+    --__main-column-fr: calc(
+      (
+        100cqw +
+        var(--__sidebar-pad, 0rem) -
+        var(--__toc-width, var(--sl-sidebar-width)) -
+        (2 * var(--__toc-width, var(--sl-nav-pad-x))) -
+        var(--sl-content-inline-start, 0rem) -
+        var(--sl-content-width)
+      ) /
+      2
+    );
+  }
+}
+
+/* The chevron takes its width from the site title, so the narrow row halves the gap and the
+   wordmark still fits at `430px`. */
+@media (max-width: 49.9375rem) {
+  .page > .header {
+    gap: 0.5rem;
+  }
+}
+
+/* The header is painted in the page's own ground, which looks the same because the stage begins
+   below it, and given a compositor layer of its own so it sits above the plate's. Both parts are
+   needed: without them the row where the stage cuts the cloud plate lights up on a fractional
+   device ratio. */
+html[data-has-hero] .page > .header {
+  background-color: var(--sl-color-black);
+  border-bottom-color: var(--sl-color-black);
+  transform: translateZ(0);
+}
+
+.nh3-tabs {
+  display: none;
+  flex: none;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.nh3-tabs a {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-sm);
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.nh3-tabs a:hover,
+.nh3-tabs a:focus-visible {
+  color: var(--sl-color-white);
+}
+
+.nh3-tabs a[aria-current="page"] {
+  text-decoration: underline;
+  text-decoration-color: var(--sl-color-accent);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.5rem;
+}
+
+/* The chevron and the panel are the narrow layout; the link row is the wide one. */
+.nh3-tabs-toggle {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  border: 1px solid var(--sl-color-hairline-light);
+  border-radius: 0.75rem;
+  background: transparent;
+  color: var(--sl-color-gray-2);
+  cursor: pointer;
+}
+
+.nh3-tabs-toggle:hover {
+  color: var(--sl-color-white);
+}
+
+.nh3-tabs-toggle svg {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.nh3-tabs-toggle[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+
+.nh3-tabs-panel {
+  position: absolute;
+  inset-inline: 0;
+  inset-block-start: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 1rem 1.25rem 1.25rem;
+  border-bottom: 1px solid var(--sl-color-hairline-light);
+  border-radius: 0 0 1rem 1rem;
+  background: var(--sl-color-gray-6);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+
+.nh3-tabs-panel.open {
+  opacity: 1;
+}
+
+.nh3-tabs-panel[hidden] {
+  display: none;
+}
+
+.nh3-tabs-panel a {
+  padding: 0.5rem 0;
+  color: var(--sl-color-gray-1);
+  font-size: var(--sl-text-lg);
+  text-decoration: none;
+}
+
+.nh3-tabs-panel a[aria-current="page"] {
+  color: var(--sl-color-white);
+}
+
+.nh3-tabs-social {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+/* The panel is the narrow layout's own social row: Starlight hides its below 50rem already, and
+   the custom rule above hides it at and above 50rem too, since the wide block takes its place. */
+.nh3-tabs-panel .nh3-tabs-social {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--sl-color-hairline-light);
+}
+
+/* `SocialIcons.astro` gives every link `padding: 0.5em; margin: -0.5em`, which cancels the row's
+   gap and pulls the first icon off the panel's inline padding. The panel keeps the taller target
+   the links above it have and drops the inline part. */
+.nh3-tabs-panel .nh3-tabs-social a {
+  padding: 0.5rem 0;
+  margin: 0;
+  color: var(--sl-color-gray-2);
+}
+
+.nh3-tabs-panel .nh3-tabs-social a:hover {
+  color: var(--sl-color-white);
+}
+
+/* `Icon.astro` pins `--sl-icon-size` inline, so the size has to be set on the icon itself. */
+.nh3-tabs-social svg {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+/* The wide header row takes over from Starlight's own hidden social row, so it matches that row's
+   look: the scoped `a` rule in `SocialIcons.astro`. */
+.nh3-tabs-social-wide {
+  display: none;
+}
+
+.nh3-tabs-social-wide a {
+  padding: 0.5rem;
+  margin: 0;
+  color: var(--sl-color-text-accent);
+}
+
+.nh3-tabs-social-wide a:hover,
+.nh3-tabs-social-wide a:focus-visible {
+  color: var(--sl-color-white);
+}
+
+@media (min-width: 50rem) {
+  .nh3-tabs {
+    display: flex;
+  }
+
+  .nh3-tabs-social-wide {
+    display: flex;
+  }
+
+  .nh3-tabs-toggle,
+  .nh3-tabs-panel {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nh3-tabs-panel {
+    transition: none;
+  }
+}
+
+/* Table of contents bar */
+
+/* The bar takes the place of Starlight's own narrow table of contents, and this variable is the
+   room Starlight reserves under the header for it: the anchor scroll padding follows it too. The
+   right hand column is the wide layout's table of contents and stays as it is, so this ends where
+   the column begins, at Starlight's own `lg` breakpoint. `MobileTableOfContents.astro` closes the
+   panel at `72rem`, the same boundary from the other side. */
+@media (max-width: 71.9375rem) {
+  :root[data-has-toc] {
+    --sl-mobile-toc-height: 2.5rem;
+  }
+}
+
+/* The bar overlaps the header's own hairline instead of drawing a second one under it, and carries
+   the header's ground so the article does not read through it. */
+.nh3-toc {
+  position: fixed;
+  z-index: var(--sl-z-index-toc);
+  top: calc(var(--sl-nav-height) - 1px);
+  inset-inline: 0;
+  border-bottom: 1px solid var(--sl-color-hairline);
+  background: var(--sl-color-bg-nav);
+}
+
+@media (min-width: 50rem) {
+  .nh3-toc {
+    inset-inline-start: var(--sl-content-inline-start, 0);
+  }
+}
+
+/* The bar spans the pane, its row and its panel keep the article's measure, so all three line up
+   down the page. An absolutely positioned box centres on `auto` margins between both insets. */
+.nh3-toc-inner,
+.nh3-toc-panel {
+  max-width: calc(var(--sl-content-width) + 2 * var(--sl-content-pad-x));
+  margin-inline: auto;
+}
+
+.nh3-toc-inner,
+.nh3-toc-list {
+  padding-inline: var(--sl-content-pad-x);
+}
+
+.nh3-toc-button {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  width: 100%;
+  height: var(--sl-mobile-toc-height);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--sl-color-gray-3);
+  font: inherit;
+  font-size: var(--sl-text-sm);
+  text-align: start;
+  cursor: pointer;
+  outline-offset: var(--sl-outline-offset-inside);
+}
+
+.nh3-toc-button:hover {
+  color: var(--sl-color-white);
+}
+
+.nh3-toc-ring {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  /* From the top, like a clock, instead of from three o'clock. */
+  transform: rotate(-90deg);
+}
+
+.nh3-toc-ring circle {
+  fill: none;
+  stroke-width: 3;
+}
+
+.nh3-toc-ring-track {
+  stroke: var(--sl-color-gray-5);
+}
+
+/* `pathLength` normalises the circumference to `1`, so the dash offset is the unread fraction. */
+.nh3-toc-ring-value {
+  stroke: var(--sl-color-accent);
+  stroke-dasharray: 1;
+  stroke-dashoffset: calc(1 - var(--nh3-progress, 0));
+  stroke-linecap: round;
+}
+
+.nh3-toc-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.nh3-toc-chevron {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  transition: transform 150ms ease;
+}
+
+.nh3-toc-button[aria-expanded="true"] .nh3-toc-chevron {
+  transform: rotate(180deg);
+}
+
+.nh3-toc-panel {
+  position: absolute;
+  inset-inline: 0;
+  inset-block-start: 100%;
+  max-height: calc(100dvh - var(--sl-nav-height) - var(--sl-mobile-toc-height) - 2rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-bottom: 1px solid var(--sl-color-hairline-light);
+  border-radius: 0 0 1rem 1rem;
+  background: var(--sl-color-gray-6);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+
+.nh3-toc-panel.open {
+  opacity: 1;
+}
+
+.nh3-toc-panel[hidden] {
+  display: none;
+}
+
+.nh3-toc-list {
+  padding-block: 0.75rem;
+  list-style: none;
+}
+
+/* The thread runs down the whole list and turns accent as far as the reader has come. */
+.nh3-toc-item {
+  border-inline-start: 1px solid var(--sl-color-gray-5);
+}
+
+.nh3-toc-item.above {
+  border-inline-start-color: var(--sl-color-text-accent);
+}
+
+.nh3-toc-item a {
+  display: block;
+  padding-block: 0.35rem;
+  padding-inline: calc(0.75rem + var(--nh3-toc-level, 0) * 0.75rem) 0.5rem;
+  color: var(--sl-color-gray-3);
+  font-size: var(--sl-text-sm);
+  line-height: 1.35;
+  text-decoration: none;
+}
+
+.nh3-toc-item.above a {
+  color: var(--sl-color-text-accent);
+}
+
+.nh3-toc-item.current a {
+  font-weight: 600;
+}
+
+.nh3-toc-item a:hover {
+  color: var(--sl-color-white);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nh3-toc-panel,
+  .nh3-toc-chevron {
+    transition: none;
+  }
+}
+
+@media print {
+  .nh3-toc {
+    display: none;
+  }
+}
+
+/* Hero */
+
+.nh3-hero {
+  position: relative;
+  /* `clip` and not `hidden`: the plates bleed past the stage on purpose, and a hidden box with
+     overflow is still a scroll port that a gesture can take hold of. */
+  overflow: clip;
+  isolation: isolate;
+  cursor: crosshair;
+  user-select: none;
+  -webkit-user-select: none;
+  /* Not `none`: under the height floor the page still scrolls, and a vertical drag has to
+     reach it. */
+  touch-action: pan-y;
+  /* A photograph carries the ground, so the stage is only the flat near-black behind it. */
+  background: var(--sl-color-black);
+  /* Both height rules below sit in a media query and a fractional viewport width can fall between
+     them. Every child is absolutely positioned, so without this floor the stage collapses to zero
+     there. The cap keeps the floor under the narrow layout's own `max-height`. */
+  min-height: min(34rem, calc(100dvh - var(--sl-nav-height)));
+}
+
+@media (min-width: 50rem) and (orientation: landscape) {
+  .nh3-hero {
+    height: calc(100dvh - var(--sl-nav-height));
+    /* Hold the copy block on a short viewport: below this the page scrolls instead of clipping it. */
+    min-height: 34rem;
+  }
+}
+
+/* The same query `MODE_QUERY` in src/scripts/hero/scene.ts uses, so mode and layout agree. */
+@media (orientation: portrait), (max-width: 49.9375rem) {
+  .nh3-hero {
+    width: 100%;
+    aspect-ratio: 868 / 1882;
+    max-height: calc(100dvh - var(--sl-nav-height));
+  }
+}
+
+/* Both layers are larger than the stage and centred, so a shift never uncovers an edge. The grid
+   canvas rides inside the terrain layer, which is what makes the grid move with the photograph. */
+.nh3-layer {
+  position: absolute;
+  inset: -4%;
+  pointer-events: none;
+  will-change: transform;
+}
+
+.nh3-layer.nh3-clouds {
+  inset: -6%;
+}
+
+.nh3-layer img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 50%;
+  display: block;
+}
+
+.nh3-clouds {
+  opacity: 0.85;
+}
+
+/* The canvas overhangs the stage by `BLEED` on every side inside a layer that overhangs by
+   `GROW / 2`, so the gap per side is (0.04 - 0.035) / 1.08 of the layer. */
+.nh3-fx {
+  position: absolute;
+  inset: 0.46296%;
+  width: 99.07407%;
+  height: 99.07407%;
+  pointer-events: none;
+}
+
+.nh3-vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(3, 6, 12, 0.82) 0%, rgba(3, 6, 12, 0.45) 22%, rgba(3, 6, 12, 0) 45%),
+    linear-gradient(
+      180deg,
+      rgba(3, 6, 12, 0.55) 0%,
+      rgba(3, 6, 12, 0) 16%,
+      rgba(3, 6, 12, 0) 82%,
+      rgba(3, 6, 12, 0.45) 100%
+    );
+}
+
+.nh3-hero.mob .nh3-vignette {
+  background: linear-gradient(
+    180deg,
+    rgba(3, 6, 12, 0.88) 0%,
+    rgba(3, 6, 12, 0.55) 20%,
+    rgba(3, 6, 12, 0) 38%,
+    rgba(3, 6, 12, 0) 74%,
+    rgba(3, 6, 12, 0.6) 100%
+  );
+}
+
+/* The copy block keeps the ordinary cursor, so the pointer stays readable over the buttons. */
+.nh3-copy {
+  position: absolute;
+  left: clamp(1.5rem, 5.4vw, 6rem);
+  top: clamp(4rem, min(19.5vw, 30vh), 14rem);
+  z-index: 2;
+  max-width: min(34vw, 32rem);
+  pointer-events: none;
+  cursor: default;
+}
+
+.nh3-copy > * {
+  pointer-events: auto;
+}
+
+.nh3-copy h1 {
+  color: var(--sl-color-white);
+  font-weight: 700;
+  font-size: clamp(2.5rem, 5.2vw, 4.6rem);
+  line-height: 1.06;
+  letter-spacing: -0.028em;
+}
+
+.nh3-copy h1 .accent {
+  background-image: var(--nh3-accent-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.nh3-tagline {
+  margin-top: 1.5rem;
+  max-width: 30rem;
+  color: var(--sl-color-gray-2);
+  font-size: clamp(1rem, 1.35vw, 1.25rem);
+  line-height: 1.55;
+}
+
+.nh3-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-top: 2rem;
+}
+
+/* Starlight tints the primary action with `--sl-color-accent-high`, a tone the grid never draws.
+   It takes the light end of the grid gradient instead. */
+.nh3-actions a.primary {
+  border-color: var(--nh3-accent-light);
+  background: var(--nh3-accent-light);
+}
+
+/* The second action stands on the photograph like the readout card does, so it takes the same
+   glass instead of Starlight's bare minimal link, which left it floating without a shape. */
+.nh3-actions a.minimal {
+  padding-inline: 1.25rem;
+  border-color: var(--sl-color-hairline-light);
+  background: rgba(8, 13, 24, 0.55);
+  backdrop-filter: blur(10px);
+}
+
+.nh3-actions a.minimal:hover {
+  border-color: var(--sl-color-accent-high);
+  background: rgba(12, 20, 36, 0.72);
+}
+
+@media (orientation: portrait), (max-width: 49.9375rem) {
+  .nh3-copy {
+    left: 6vw;
+    right: 6vw;
+    top: 12vh;
+    max-width: none;
+  }
+}
+
+/* The card is moved with a transform, so it stays on its own layer instead of being promoted on
+   the first pointer move. */
+.nh3-readout {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 3;
+  will-change: transform;
+  width: max-content;
+  max-width: min(42vw, 30rem);
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--sl-color-hairline-light);
+  border-radius: 0.75rem;
+  pointer-events: none;
+  background: rgba(8, 13, 24, 0.78);
+  backdrop-filter: blur(10px);
+  box-shadow:
+    0 0.5rem 1.6rem rgba(0, 0, 0, 0.45),
+    inset 0 0 1rem rgba(60, 140, 255, 0.12);
+}
+
+.nh3-line {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  white-space: nowrap;
+  font-family: var(--sl-font-mono);
+  font-size: 0.8125rem;
+  color: #cfe0f7;
+}
+
+.nh3-out {
+  margin-top: 0.45rem;
+}
+
+.nh3-arrow {
+  color: var(--sl-color-accent);
+  margin-right: 0.35rem;
+}
+
+.nh3-id {
+  color: #8fb6ee;
+  letter-spacing: 0.02em;
+}
+
+/* The card is the point of the hero on a phone, so it keeps clear of the home indicator and of a
+   browser bar that has not finished retracting. */
+.nh3-hero.mob .nh3-readout {
+  /* The docked card never moves, so it pays for neither a promoted layer nor its backdrop read. */
+  will-change: auto;
+  transform: none;
+  left: 4.5vw;
+  right: 4.5vw;
+  top: auto;
+  bottom: max(1.25rem, env(safe-area-inset-bottom, 0px) + 0.75rem);
+  width: auto;
+  max-width: none;
+  padding: 0.9rem 1.1rem;
+}
+
+/* A flat window has no height for all three of copy, grid and card. The copy gives up first: the
+   tagline goes, the heading drops a step and the actions move up under it. */
+@media (max-height: 34rem) {
+  .nh3-copy {
+    top: 8vh;
+  }
+
+  .nh3-copy h1 {
+    font-size: clamp(1.5rem, 4.4vw, 2.4rem);
+  }
+
+  .nh3-tagline {
+    display: none;
+  }
+
+  .nh3-actions {
+    margin-top: 1.1rem;
+  }
+}
+
+/* Flatter still, and the card gives up the call above the cell. What it found is the point, the
+   line that states the question is not, so the card keeps the id alone and sits smaller. */
+@media (max-height: 26rem) {
+  .nh3-hero .nh3-readout {
+    padding: 0.5rem 0.7rem;
+  }
+
+  .nh3-hero.mob .nh3-readout {
+    padding: 0.55rem 0.9rem;
+  }
+
+  .nh3-readout .nh3-line:not(.nh3-out) {
+    display: none;
+  }
+
+  .nh3-readout .nh3-arrow {
+    display: none;
+  }
+
+  .nh3-readout .nh3-out {
+    margin-top: 0;
+    font-size: 0.75rem;
+  }
+}
+
+/* Clipped, not hidden: a `display: none` region announces nothing. */
+.nh3-announce {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.nh3-hero:focus-visible {
+  outline: 2px solid #4da3ff;
+  outline-offset: -2px;
+}
+
+.nh3-hero :focus-visible {
+  outline: 2px solid #4da3ff;
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nh3-hero .sl-link-button {
+    transition: none;
+  }
+}
+
+/* Not-found page */
+
+/* The not-found page is one plate under the header, so the panel around it gives up its padding
+   and its measure. These rules are unlayered, so they beat `@layer starlight.core`. */
+main:has(.nh3-404) {
+  padding: 0;
+}
+
+main:has(.nh3-404) .content-panel {
+  padding: 0;
+  border-top: 0;
+}
+
+main:has(.nh3-404) .content-panel > .sl-container {
+  max-width: none;
+  margin-inline: 0;
+}
+
+/* The page ends at the plate: there is nowhere to go from an address that does not exist. */
+main:has(.nh3-404) .content-panel > .sl-container > footer {
+  display: none;
+}
+
+.nh3-404 {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  isolation: isolate;
+  min-height: calc(100dvh - var(--sl-nav-height));
+  padding: 2rem clamp(1.25rem, 5vw, 4rem);
+  background: var(--sl-color-black);
+}
+
+.nh3-404 img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 50%;
+}
+
+/* The photograph carries its light on the right, where the copy ends, so the veil is heaviest
+   there and over the middle. */
+.nh3-404-veil {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(
+      110% 80% at 50% 48%,
+      rgba(3, 6, 12, 0.86) 0%,
+      rgba(3, 6, 12, 0.68) 55%,
+      rgba(3, 6, 12, 0.5) 100%
+    ),
+    linear-gradient(
+      90deg,
+      rgba(3, 6, 12, 0.1) 0%,
+      rgba(3, 6, 12, 0.1) 45%,
+      rgba(3, 6, 12, 0.4) 100%
+    );
+}
+
+.nh3-404-copy {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.75rem;
+  max-width: 100%;
+}
+
+/* The name and the parentheses stay at reading size and share a baseline with the number. */
+.nh3-404-call {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: baseline;
+  justify-content: center;
+  max-width: 100%;
+  color: var(--sl-color-gray-1);
+  font-family: var(--sl-font-mono);
+  font-size: clamp(0.9rem, 3vw, 1.9rem);
+  font-weight: 400;
+  line-height: 1;
+}
+
+.nh3-404-paren {
+  color: var(--sl-color-gray-4);
+}
+
+.nh3-404-code {
+  /* The digit ends well inside its own advance, so the closing parenthesis needs less air. */
+  margin-inline: 0.12em 0.04em;
+  background-image: var(--nh3-accent-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-size: clamp(3.5rem, 11vw, 8.5rem);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.nh3-404-card {
+  max-width: 100%;
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--sl-color-hairline-light);
+  border-radius: 0.75rem;
+  background: rgba(8, 13, 24, 0.78);
+  backdrop-filter: blur(10px);
+  box-shadow:
+    0 0.5rem 1.6rem rgba(0, 0, 0, 0.45),
+    inset 0 0 1rem rgba(60, 140, 255, 0.12);
+}
+
+.nh3-404-line {
+  font-family: var(--sl-font-mono);
+  font-size: clamp(0.75rem, 2.4vw, 0.8125rem);
+  line-height: 1.5;
+}
+
+.nh3-404-arrow {
+  margin-right: 0.35rem;
+  color: var(--sl-color-accent);
+}
+
+.nh3-404-type {
+  color: #cfe0f7;
+}
+
+.nh3-404-message {
+  margin-top: 0.45rem;
+  color: var(--sl-color-gray-3);
+}
+
+.nh3-404-note {
+  color: var(--sl-color-gray-2);
+  font-size: clamp(0.95rem, 1.2vw, 1.0625rem);
+  text-align: center;
+}
+
+/* Markdown content */
+
+/* A badge row arrives as several linked images in one paragraph, and Starlight lays every image out
+   as a block, which stacks them into a column. */
+.sl-markdown-content p:has(a:nth-of-type(2) > img) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.sl-markdown-content p:has(a:nth-of-type(2) > img) img {
+  display: inline-block;
+  margin: 0;
+}
+
+/* The fade says the table continues past the edge, and drops away once it does not. The scroll
+   region itself is focusable, so the far columns are reachable without a pointer. */
+.sl-markdown-content .nh3-scroll-x {
+  overflow-x: auto;
+  mask-image: linear-gradient(to right, #000 calc(100% - 3rem), transparent);
+}
+
+/* Starlight scrolls the table itself. Inside a region that would be a second scroll port, and the
+   region would never overflow. */
+.sl-markdown-content .nh3-scroll-x > table {
+  display: table;
+  overflow: visible;
+}
+
+.sl-markdown-content .nh3-scroll-x.nh3-scroll-end {
+  mask-image: none;
+}
+
+.sl-markdown-content .nh3-scroll-x:focus-visible {
+  outline: 2px solid var(--sl-color-accent);
+  outline-offset: 2px;
 }

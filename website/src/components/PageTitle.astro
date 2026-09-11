@@ -1,0 +1,10 @@
+---
+import Default from '@astrojs/starlight/components/PageTitle.astro'
+
+// A splash page without a hero writes its own heading, so Starlight's would be a second `h1`, and
+// it is the one carrying the skip link's target.
+const { data } = Astro.locals.starlightRoute.entry
+const ownHeading = data.template === 'splash' && !data.hero
+---
+
+{!ownHeading && <Default {...Astro.props}><slot /></Default>}

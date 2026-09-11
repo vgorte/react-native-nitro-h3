@@ -1,9 +1,4 @@
-# 🧮 Performance Guide
-
-> **Audience: package users who want to know where the speed comes from and where it stops.** This
-> page explains the data path that makes a call cheap, when a batch call pays, and how the optional
-> cell ceiling keeps a large request from killing the process. Measured figures live in
-> [Benchmark report](benchmark.md); this page explains the behaviour behind them.
+# 🧮 Performance guide
 
 ## Why native
 

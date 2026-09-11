@@ -1,9 +1,5 @@
 # 🛡️ Errors and memory safety
 
-> **Audience: package users writing the `catch` block.** Every failure is an `H3Error`, native codes
-> survive the boundary, and an optional cell ceiling turns an allocation that would kill the process
-> into a catchable error.
-
 ## One error type
 
 All package-level errors are represented by `H3Error`.
@@ -62,16 +58,3 @@ configure({
 A request exceeding the configured limit throws a catchable `H3Error` before the result is allocated.
 
 The limit is disabled by default to preserve `h3-js` behavior.
-
-To remove a previously configured limit:
-
-```ts
-import { configure } from 'react-native-nitro-h3'
-
-configure({
-  maxCellCount: Infinity,
-})
-```
-
-How the ceiling is sized, what an unbounded request costs on a phone, and how `h3-js` behaves
-without one is in [Performance guide](../performance.md#the-cell-ceiling-in-detail).

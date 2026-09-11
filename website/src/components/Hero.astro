@@ -1,0 +1,111 @@
+---
+import { Image } from 'astro:assets'
+import { LinkButton } from '@astrojs/starlight/components'
+import cloudPlate from '../assets/hero/clouds-plate.webp'
+import terrain from '../assets/hero/terrain-layer-2.webp'
+import { cellAt } from '../scripts/hero/cells.generated'
+import { RES } from '../scripts/hero/geometry'
+
+const { data } = Astro.locals.starlightRoute.entry
+const { title = data.title, tagline, actions = [] } = data.hero ?? {}
+
+// The card carries the opening cell before the first frame, and wherever the script never runs at
+// all. Reading the generated table here is what keeps the two in step.
+const opening = cellAt(0, 0)
+if (!opening) throw new Error('the generated cell table has no cell at the plane origin')
+const openingCall = `latLngToCell(${opening.lat.toFixed(4)}, ${opening.lng.toFixed(4)}, ${RES})`
+const openingId = `0x${opening.id}n`
+---
+
+{/* Quality 85 is the setting both plates were accepted at, so the pipeline does not re-encode them
+    at its own default. The wide `sizes` are the layer widths, 108 and 112 percent of the stage; the
+    narrow ones are understated so a phone at device ratio 2 or 3 still takes the small file. */}
+
+<section class="nh3-hero" tabindex="0" aria-label="Interactive H3 grid">
+  <div class="nh3-layer nh3-terrain" aria-hidden="true">
+    <Image
+      src={terrain}
+      widths={[768, 1376]}
+      sizes="(max-width: 50rem) 56vw, 108vw"
+      format="webp"
+      quality={85}
+      alt=""
+      aria-hidden="true"
+      loading="eager"
+      fetchpriority="high"
+      decoding="async"
+    />
+    <canvas class="nh3-fx" aria-hidden="true"></canvas>
+  </div>
+
+  <div class="nh3-layer nh3-clouds" aria-hidden="true">
+    <Image
+      src={cloudPlate}
+      widths={[576, 1024]}
+      sizes="(max-width: 50rem) 44vw, 112vw"
+      format="webp"
+      quality={85}
+      alt=""
+      aria-hidden="true"
+      loading="eager"
+      fetchpriority="low"
+      decoding="async"
+    />
+  </div>
+
+  <div class="nh3-vignette" aria-hidden="true"></div>
+
+  <div class="nh3-copy">
+    {/* Starlight renders no title of its own on a page with a hero, so this heading has to carry
+        the skip link's `_top`. */}
+    <h1 id="_top" data-page-title set:html={title} />
+    {tagline && <p class="nh3-tagline" set:html={tagline} />}
+    {
+      actions.length > 0 && (
+        <div class="nh3-actions">
+          {actions.map(
+            ({ attrs: { class: className, ...attrs } = {}, icon, link: href, text, variant }) => (
+              <LinkButton {href} {variant} icon={icon?.name} class:list={[className]} {...attrs}>
+                {text}
+                {icon?.html && <Fragment set:html={icon.html} />}
+              </LinkButton>
+            )
+          )}
+        </div>
+      )
+    }
+  </div>
+
+  <div class="nh3-readout">
+    <div class="nh3-line">
+      <span class="nh3-call">{openingCall}</span>
+    </div>
+    <div class="nh3-line nh3-out">
+      <span class="nh3-arrow">&#8594;</span><span class="nh3-id">{openingId}</span>
+    </div>
+  </div>
+
+  {/* Pointer motion writes the card directly, so only a deliberate change reaches this region. */}
+  <div class="nh3-announce" aria-live="polite"></div>
+</section>
+
+{/* The mode class is set before paint so a phone never shows one frame of the desktop scene.
+    It mirrors `pickMode` in src/scripts/hero/scene.ts, which owns the same rule for the canvas. */}
+<script is:inline>
+  (() => {
+    const forced = new URLSearchParams(location.search).get('mode');
+    const mob =
+      forced === 'mob' || forced === 'mobile'
+        ? true
+        : forced === 'desk' || forced === 'desktop'
+          ? false
+          : matchMedia('(orientation: portrait), (max-width: 49.9375rem)').matches;
+    if (mob) document.querySelector('.nh3-hero')?.classList.add('mob');
+  })();
+</script>
+
+<script>
+  import { start } from '../scripts/hero'
+
+  start()
+</script>

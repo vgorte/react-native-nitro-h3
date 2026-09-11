@@ -1,12 +1,8 @@
 # 🎬 Showcase
 
-> **Audience: package users who want to see the package inside an app.** One app, five acts, every
-> cell computed on the phone by `react-native-nitro-h3`. Each act is a pattern you can lift into
-> your own app.
-
 <video src="/react-native-nitro-h3/img/showcase.mp4" autoplay muted loop playsinline controls style="width: 100%"></video>
 
-[Watch the video](../img/showcase.mp4) (25.6 seconds, no sound).
+[Watch the video](../img/showcase.mp4).
 
 The showcase is not a benchmark. It puts the package where it will actually run: under a map, inside
 a gesture, on a JS thread that also has to animate. It shows what a hexagonal grid buys you once it
@@ -28,7 +24,7 @@ then once more where the map settles. Each cell is coloured by its ring distance
 This act takes the classic path, cell boundaries as a GeoJSON string for MapLibre, and the panel
 shows what that string costs next to the JS thread readout.
 
-<p class="use">🎯&nbsp;<strong>Derive spatial layers directly from the viewport.</strong></p>
+<p class="use"><strong>Derive spatial layers directly from the viewport.</strong></p>
 
 `coverage layers` `pricing zones` `service areas` `cells instead of polygons`
 
@@ -39,7 +35,7 @@ shows what that string costs next to the JS thread readout.
 Tap a cell and it splits into its seven children; long-press and they fold back into the parent.
 Every split is one call, so the detail follows your finger.
 
-<p class="use">🎯&nbsp;<strong>Drill down where the data is dense.</strong></p>
+<p class="use"><strong>Drill down where the data is dense.</strong></p>
 
 `drill-down analytics` `adaptive detail` `a resolution per region`
 
@@ -50,7 +46,7 @@ Every split is one call, so the detail follows your finger.
 Drag the slider to grow the neighbourhood up to 50 rings (7,651 cells). Each ring is computed once
 and kept, so the slider never waits for a ring it already has.
 
-<p class="use">🎯&nbsp;<strong>Run proximity queries without heavy geometry.</strong></p>
+<p class="use"><strong>Run proximity queries without heavy geometry.</strong></p>
 
 `everything within n cells` `widening search radius` `buffers`
 
@@ -61,7 +57,7 @@ and kept, so the slider never waits for a ring it already has.
 A million noisy points are binned into cells in a single batch call. The map draws a few hundred
 hexagons instead of a million overlapping markers.
 
-<p class="use">🎯&nbsp;<strong>Aggregate heavy data before it hits the map.</strong></p>
+<p class="use"><strong>Aggregate heavy data before it hits the map.</strong></p>
 
 `density maps` `hotspot detection` `event aggregation` `telemetry`
 
@@ -72,7 +68,7 @@ hexagons instead of a million overlapping markers.
 A fast-forwarded GPS track where every fix is snapped to a cell. If the signal drops, the package
 computes the missing cells and bridges the gap.
 
-<p class="use">🎯&nbsp;<strong>Track continuous movement without storing raw coordinates.</strong></p>
+<p class="use"><strong>Track continuous movement without storing raw coordinates.</strong></p>
 
 `movement analytics` `visited areas` `data minimisation` `privacy by resolution`
 

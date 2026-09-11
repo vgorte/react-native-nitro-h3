@@ -1,8 +1,4 @@
-# 📊 Benchmark Report
-
-> **Audience: anyone checking the numbers.** This page is the evidence behind the README's
-> performance claims: what was measured, how, on which devices, where the data lives, and how to
-> reproduce it.
+# 📊 Benchmark report
 
 ## Source of truth
 
@@ -418,24 +414,3 @@ rather than one recomputed from the rounded medians.
 
 > **Pre-Flight Check:** Before publishing, check the caption. If it says `Debug` or carries a
 > `RESULTS DIFFER FROM h3-js` warning, the run is compromised and must not be published.
-
-### Extracting a Payload by Hand
-
-When the automation is unavailable and the run is driven by hand, the payload still has to come out
-of a log. The screen prints a Markdown table, then the caption, then the payload itself.
-
-Because the iOS unified log truncates a message at about a kilobyte, the payload is chunked into
-lines of the form:
-
-```text
-BENCHMARK_JSON <i>/<total> |<chunk>|
-```
-
-The chunking does not depend on the platform, so an Android run prints the same lines to `logcat`.
-The `|` bars pin both edges of each chunk, because the log trims outer whitespace. Take the text
-between the bars, in numerical order, concatenate it with nothing in between, and save the result
-pretty-printed with 2 spaces.
-
-Start the log capture before the run on either platform, and never relaunch the app to reach a log
-afterwards: the results live only in the screen's own state, and a relaunch discards them. A run
-whose payload is lost that way has to be repeated.

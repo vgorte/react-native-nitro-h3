@@ -1,8 +1,9 @@
 # 🚀 Getting started
 
-> **Audience: package users installing `react-native-nitro-h3` for the first time.** This page
-> takes you from an empty project to a first cell: install, one call, and the requirements the
-> build has to meet.
+[![npm version](https://img.shields.io/npm/v/react-native-nitro-h3.svg)](https://www.npmjs.com/package/react-native-nitro-h3)
+[![CI](https://github.com/vgorte/react-native-nitro-h3/actions/workflows/ci.yml/badge.svg)](https://github.com/vgorte/react-native-nitro-h3/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/vgorte/react-native-nitro-h3/blob/main/LICENSE)
+[![Vendored H3 v4.5.0](https://img.shields.io/badge/h3-v4.5.0-blue.svg)](https://github.com/uber/h3/releases/tag/v4.5.0)
 
 ## 📦 Installation
 
@@ -85,21 +86,8 @@ console.log(cellToString(cell)) // "89283082803ffff"
 `latLngToCell` returns a `bigint`, and `gridDisk` returns a `BigUint64Array`. Both are explained in
 [Cell indexes and bigint](./concepts/cells-and-bigint.md).
 
-## 📱 Requirements
-
-| Platform      | Requirement                    |
-| ------------- | ------------------------------ |
-| React Native  | **0.76+**                      |
-| Nitro Modules | **0.37.0 or newer**            |
-| C++           | C++20-compatible toolchain     |
-| iOS           | React Native deployment target |
-| Xcode         | recent stable release          |
-| Android       | **minSdk 24**                  |
-| Android SDK   | **compileSdk 36**              |
-| Android NDK   | **27.1.12297006**              |
-| H3 C library  | **4.5.0**, vendored            |
-
-The package requires the New Architecture, the default since React Native 0.76. The iOS and Android build workflows compile the example app against React Native 0.87.0.
+The build needs the New Architecture, React Native 0.76 or newer and a C++20 toolchain, and
+[Requirements](./requirements.md) lists every version in full.
 
 ## Next steps
 

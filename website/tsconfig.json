@@ -1,8 +1,17 @@
 {
   "extends": "../config/tsconfig.base.json",
   "compilerOptions": {
-    "types": ["bun"],
+    "types": ["bun", "astro/client"],
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "noEmit": true
   },
-  "include": ["pages.ts", "scripts/sync-docs.ts", "scripts/sync-docs.test.ts"]
+  "include": [
+    "pages.ts",
+    "scripts/gen-cell-table.ts",
+    "scripts/gen-cloud-plate.ts",
+    "scripts/render-og.ts",
+    "scripts/sync-docs.ts",
+    "scripts/sync-docs.test.ts",
+    "src/scripts/hero/**/*.ts"
+  ]
 }

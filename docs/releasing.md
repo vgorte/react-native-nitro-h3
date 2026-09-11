@@ -1,13 +1,10 @@
-# 🚀 Release Guide
+# 🚀 Release guide
 
 > [!CAUTION]
 > **Never publish from a local machine.**
 > Production releases are dispatched through the `Release` workflow on GitHub Actions, which is the
 > only way npm provenance attestations are produced. The very first release is the single documented
 > exception, and it is spelled out under Trusted publishing.
-
-> **Audience: maintainers.** This is the runbook for cutting a release: what has to be green first,
-> how to rehearse safely, how the pipeline is dispatched, and how it is put together.
 
 ## Quick release checklist
 

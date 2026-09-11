@@ -7,6 +7,8 @@ import { BASE, EXCLUDED, PAGES, type Page, REPO } from '../pages'
 const WEBSITE = dirname(dirname(fileURLToPath(import.meta.url)))
 const ROOT = dirname(WEBSITE)
 const CONTENT = join(WEBSITE, 'src', 'content', 'docs')
+// The landing and the not-found page are written by hand and live in the generated tree.
+const HAND_WRITTEN = new Set(['index.mdx', '404.mdx'])
 // Leading whitespace is allowed so a fence indented inside a list item toggles the state as well.
 const FENCE = /^\s*(```|~~~)/
 const STEPS_OPEN = '<!-- steps -->'
@@ -59,6 +61,46 @@ export function stripHeadingEmoji(body: string): string {
       })
     })
     .join('\n')
+}
+
+/** Returns the offsets of the `{ … }` block that opens at or after `from`. */
+function blockAt(text: string, from: number): { open: number; close: number } {
+  const open = text.indexOf('{', from)
+  if (open === -1) throw new Error('a prefers-color-scheme block is never closed')
+  let depth = 0
+  for (let i = open; i < text.length; i++) {
+    if (text[i] === '{') depth += 1
+    else if (text[i] === '}') {
+      depth -= 1
+      if (depth === 0) return { open, close: i }
+    }
+  }
+  throw new Error('a prefers-color-scheme block is never closed')
+}
+
+/**
+ * Flattens a chart's dark rules into its base rules. Inside an `<img>` a `prefers-color-scheme`
+ * query follows the operating system, not the site theme, so on a dark-only site the block has to
+ * go. The declarations keep their source position after the base rules, so they still win.
+ */
+export function forceDarkSvg(svg: string): string {
+  if (!svg.includes('@media (prefers-color-scheme:')) return svg
+  let out = svg
+  const light = out.indexOf('@media (prefers-color-scheme: light)')
+  if (light !== -1) {
+    const { close } = blockAt(out, light)
+    out = out.slice(0, light) + out.slice(close + 1).replace(/^\n/, '')
+  }
+  const dark = out.indexOf('@media (prefers-color-scheme: dark)')
+  if (dark !== -1) {
+    const { open, close } = blockAt(out, dark)
+    const inner = out
+      .slice(open + 1, close)
+      .replace(/^\n/, '')
+      .replace(/\n$/, '')
+    out = out.slice(0, dark) + inner + out.slice(close + 1)
+  }
+  return out
 }
 
 /**
@@ -205,18 +247,15 @@ export function mdxGuard(body: string, source: string): void {
 }
 
 /** Writes the YAML block Starlight needs. Values go through `JSON.stringify`, which is valid YAML. */
-export function frontmatter(page: Page, title: string, lastUpdated: string | null): string {
+export function frontmatter(page: Page, title: string): string {
   const lines = [
     '---',
     `title: ${JSON.stringify(title)}`,
     `description: ${JSON.stringify(page.description)}`,
   ]
   if (page.generated) {
-    lines.push('editUrl: false', 'tableOfContents:', '  minHeadingLevel: 2', '  maxHeadingLevel: 2')
-  } else {
-    lines.push(`editUrl: ${JSON.stringify(`${REPO}/edit/main/${page.source}`)}`)
+    lines.push('tableOfContents:', '  minHeadingLevel: 2', '  maxHeadingLevel: 2')
   }
-  if (lastUpdated) lines.push(`lastUpdated: ${lastUpdated}`)
   lines.push('---', '')
   return lines.join('\n')
 }
@@ -230,13 +269,12 @@ export function transform(
   markdown: string,
   page: Page,
   base: string,
-  lastUpdated: string | null,
 ): { content: string; extension: 'md' | 'mdx' } {
   const alert = markdown.match(/^> \[!\w+\]/m)
   if (alert) throw new Error(`${page.source} uses ${alert[0]}, which Starlight renders literally`)
   const { title, body } = splitTitle(markdown)
   const rewritten = stripHeadingEmoji(rewriteLinks(body, page, base))
-  const head = frontmatter(page, stripLeadingEmoji(title), lastUpdated)
+  const head = frontmatter(page, stripLeadingEmoji(title))
   const steps = hasSteps(rewritten)
   const tabs = hasTabs(rewritten)
   if (!steps && !tabs) return { content: `${head}\n${rewritten}`, extension: 'md' }
@@ -246,12 +284,6 @@ export function transform(
   const used = [...(steps ? ['Steps'] : []), ...(tabs ? ['TabItem', 'Tabs'] : [])]
   const line = `import { ${used.join(', ')} } from '@astrojs/starlight/components'`
   return { content: `${head}\n${line}\n\n${converted}`, extension: 'mdx' }
-}
-
-function lastCommitDate(source: string): string | null {
-  const result = Bun.spawnSync(['git', 'log', '-1', '--format=%cI', '--', source], { cwd: ROOT })
-  const date = result.stdout.toString().trim()
-  return date === '' ? null : date
 }
 
 /**
@@ -279,15 +311,14 @@ async function main() {
   }
 
   await mkdir(CONTENT, { recursive: true })
-  // The landing page is written by hand and lives in the same tree, so only generated pages go.
   for (const entry of await readdir(CONTENT)) {
-    if (entry !== 'index.mdx') await rm(join(CONTENT, entry), { recursive: true, force: true })
+    if (!HAND_WRITTEN.has(entry)) await rm(join(CONTENT, entry), { recursive: true, force: true })
   }
   for (const page of PAGES) {
     const sourcePath = join(ROOT, page.source)
     if (!existsSync(sourcePath)) throw new Error(`${page.source} does not exist`)
     const markdown = await readFile(sourcePath, 'utf8')
-    const { content, extension } = transform(markdown, page, BASE, lastCommitDate(page.source))
+    const { content, extension } = transform(markdown, page, BASE)
     const out = join(CONTENT, `${page.route.replace(/^\/|\/$/g, '')}.${extension}`)
     await mkdir(dirname(out), { recursive: true })
     await writeFile(out, content)
@@ -298,7 +329,20 @@ async function main() {
   // Everything under `img/` ships, so a page that references a new chart needs no change here.
   for (const entry of await readdir(join(ROOT, 'img'), { withFileTypes: true })) {
     if (!entry.isFile()) continue
-    await copyFile(join(ROOT, 'img', entry.name), join(WEBSITE, 'public', 'img', entry.name))
+    const from = join(ROOT, 'img', entry.name)
+    const to = join(WEBSITE, 'public', 'img', entry.name)
+    if (!entry.name.endsWith('.svg')) {
+      await copyFile(from, to)
+      continue
+    }
+    const svg = await readFile(from, 'utf8')
+    let dark: string
+    try {
+      dark = forceDarkSvg(svg)
+    } catch (error) {
+      throw new Error(`img/${entry.name}: ${error instanceof Error ? error.message : error}`)
+    }
+    await writeFile(to, dark)
   }
   await copyFile(
     join(ROOT, 'img', 'logo-tile.svg'),

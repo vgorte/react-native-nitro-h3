@@ -1,0 +1,100 @@
+import { NBR, type Point } from './geometry'
+
+const KEY_STEPS: Record<string, Point> = {
+  ArrowRight: NBR[0],
+  ArrowLeft: NBR[3],
+  ArrowDown: NBR[5],
+  ArrowUp: NBR[2],
+}
+
+type InputPort = {
+  setFocusFromPoint: (clientX: number, clientY: number) => void
+  stepFocus: (dq: number, dr: number) => void
+  updateReadout: (announce: boolean) => void
+  pulse: () => void
+  setOnStage: (on: boolean) => void
+  /** Zeroes the normalised pointer, so the layers ease home when the pointer leaves the stage. */
+  clearPointer: () => void
+  isDocked: () => boolean
+  reduced: boolean
+}
+
+export function attachInput(stage: HTMLElement, port: InputPort): void {
+  let down = false
+  let moved = false
+  // Where the pointer stands, so a drag that is released off the stage still ends the contact.
+  let outside = false
+
+  const onLink = (target: EventTarget | null): boolean =>
+    target instanceof Element && target.closest('a,button') !== null
+
+  stage.addEventListener('pointerdown', (event) => {
+    // A press on a link or a button is theirs, so it neither moves the cell nor pulses.
+    if (onLink(event.target)) return
+    down = true
+    moved = false
+    outside = false
+    port.setOnStage(true)
+    port.setFocusFromPoint(event.clientX, event.clientY)
+    port.updateReadout(true)
+  })
+
+  stage.addEventListener('pointermove', (event) => {
+    if (down) {
+      moved = true
+      port.setFocusFromPoint(event.clientX, event.clientY)
+      port.updateReadout(false)
+      return
+    }
+    // The docked layout is press only, and a touch has no hover to follow.
+    if (port.isDocked() || event.pointerType === 'touch') return
+    outside = false
+    port.setOnStage(true)
+    port.setFocusFromPoint(event.clientX, event.clientY)
+    port.updateReadout(false)
+  })
+
+  // A drag that leaves and returns keeps the move handler in its early exit, so the flag is
+  // cleared here instead: the pointer is on the stage again and a lift must not end the contact.
+  stage.addEventListener('pointerenter', () => {
+    outside = false
+  })
+
+  stage.addEventListener('pointerleave', () => {
+    outside = true
+    port.clearPointer()
+    if (!down) port.setOnStage(false)
+  })
+
+  window.addEventListener('pointerup', (event) => {
+    if (!down) return
+    down = false
+    if (!moved && !port.reduced) port.pulse()
+    // A touch never sends pointerleave, and a drag released outside had its leave swallowed by the
+    // held button, so the lift is what ends the contact in both cases.
+    if (outside || event.pointerType === 'touch') port.setOnStage(false)
+  })
+
+  // A vertical drag that turns into a page scroll arrives here and ends the press without a pulse.
+  window.addEventListener('pointercancel', () => {
+    down = false
+    port.clearPointer()
+    port.setOnStage(false)
+  })
+
+  stage.addEventListener('keydown', (event) => {
+    // a focused link or button keeps its own keys
+    if (onLink(event.target)) return
+    const step = KEY_STEPS[event.key]
+    if (step) {
+      event.preventDefault()
+      port.stepFocus(step[0], step[1])
+      port.updateReadout(true)
+      return
+    }
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      if (!port.reduced) port.pulse()
+    }
+  })
+}

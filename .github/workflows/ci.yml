@@ -17,6 +17,9 @@ jobs:
         with:
           bun-version: 1.3.14  # <-- pinned: `latest` turns an upstream release into a red build
       - run: bun install --frozen-lockfile
+      # The website sits outside the root workspace and carries its own lockfile, and the typecheck
+      # reaches into it for the hero scripts and `astro check`.
+      - run: bun install --frozen-lockfile --cwd website
       # the showcase has its own install: Expo pins a React Native the harness must not see
       - run: bun install --frozen-lockfile --cwd apps/showcase
       - run: bun run lint

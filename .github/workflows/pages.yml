@@ -43,7 +43,7 @@ jobs:
         with:
           node-version: 24  # `astro` runs under Node; Bun only runs the sync script
       - run: bun install --frozen-lockfile
-      - run: bun test scripts/sync-docs.test.ts
+      - run: bun test
       - run: bun run build
       - uses: actions/upload-pages-artifact@v5
         with:
