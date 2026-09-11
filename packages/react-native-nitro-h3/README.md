@@ -16,8 +16,6 @@
 `react-native-nitro-h3` brings Uber's [H3](https://h3geo.org/), the hexagonal hierarchical geospatial index, to React Native on iOS and Android.
 It vendors the H3 C sources and calls them directly from C++ instead of running them through JavaScript.
 
-It pays off where a map view, a gesture or a batch job touches thousands of cells at once.
-
 * ⚡ About **800×** faster than `h3-js` on [`compactCells`](https://vgorte.github.io/react-native-nitro-h3/api/#compactcells). [See the benchmark](https://vgorte.github.io/react-native-nitro-h3/benchmark/)
 * 🧬 H3 as compiled C++, called through Nitro Modules
 * 🔢 `bigint` cell indexes, no hexadecimal strings
