@@ -1,33 +1,9 @@
 ---
-interface Heading {
-  slug: string
-  text: string
-  depth: number
-  children: Heading[]
-}
-
-interface Entry {
-  slug: string
-  text: string
-  level: number
-}
+import { tocEntries } from './toc'
 
 const { toc } = Astro.locals.starlightRoute
 
-// The bar reads one flat list, so the tree only survives as an indentation level.
-const flatten = (headings: Heading[], min: number, out: Entry[] = []): Entry[] => {
-  for (const heading of headings) {
-    out.push({
-      slug: heading.slug,
-      text: heading.text,
-      level: Math.max(0, heading.depth - min),
-    })
-    flatten(heading.children, min, out)
-  }
-  return out
-}
-
-const entries = toc ? flatten(toc.items, toc.minHeadingLevel) : []
+const entries = toc ? tocEntries(toc.items, toc.minHeadingLevel) : []
 
 // The first entry is Starlight's own link back to the title, so a page whose headings are only
 // that one has nothing to navigate and gets no bar.
@@ -78,6 +54,8 @@ const hasHeadings = entries.length > 1
 }
 
 <script>
+  import { trackToc } from './toc'
+
   const OPEN_LABEL = 'On this page'
   const FADE_MS = 150
 
@@ -88,62 +66,30 @@ const hasHeadings = entries.length > 1
   const article = document.querySelector<HTMLElement>('.sl-markdown-content')
 
   if (root && button && label && panel && article) {
-    const targets: Array<{ link: HTMLAnchorElement; item: HTMLElement; heading: HTMLElement }> = []
-    for (const link of panel.querySelectorAll<HTMLAnchorElement>('a')) {
-      const heading = document.getElementById(decodeURIComponent(link.hash.slice(1)))
-      const item = link.parentElement
-      if (heading && item) targets.push({ link, item, heading })
-    }
-
     const reduced = matchMedia('(prefers-reduced-motion: reduce)')
-    let current = 0
+    let currentLink: HTMLAnchorElement | undefined
     let hideTimer = 0
-    let frame = 0
 
     const isOpen = () => button.getAttribute('aria-expanded') === 'true'
 
-    const draw = () => {
-      for (const [at, { item, link }] of targets.entries()) {
-        item.classList.toggle('above', at <= current)
-        item.classList.toggle('current', at === current)
-        if (at === current) link.setAttribute('aria-current', 'true')
-        else link.removeAttribute('aria-current')
-      }
-      label.textContent = isOpen() ? OPEN_LABEL : (targets[current]?.link.textContent ?? '')
-    }
-
-    const setCurrent = (index: number) => {
-      if (index === current) return
-      current = index
-      draw()
-    }
-
-    // Where an anchor jump parks a heading: under the bar, plus Starlight's own scroll padding.
-    // Reading it back keeps the ring, the active entry and a clicked link on one line.
-    const readingLine = () => {
-      const padding = Number.parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop)
-      return Number.isNaN(padding) ? root.getBoundingClientRect().bottom : padding
-    }
-
-    // `0` once the first heading reaches that line, `1` once the last line of the article is in
-    // view.
-    const setProgress = () => {
-      const first = targets[0]
-      if (!first) return
-      const start = first.heading.getBoundingClientRect().top + scrollY - readingLine()
-      const end = article.getBoundingClientRect().bottom + scrollY - innerHeight
-      const span = end - start
-      const value = span > 0 ? (scrollY - start) / span : Number(scrollY >= start)
-      root.style.setProperty('--nh3-progress', String(Math.min(1, Math.max(0, value))))
-    }
+    // The collapsed bar names the entry being read, the open one names the panel.
+    const toc = trackToc({
+      root,
+      list: panel,
+      article,
+      onDraw: (current) => {
+        currentLink = current
+        label.textContent = isOpen() ? OPEN_LABEL : (current?.textContent ?? '')
+      },
+    })
 
     const setOpen = (open: boolean) => {
       clearTimeout(hideTimer)
       button.setAttribute('aria-expanded', String(open))
-      draw()
+      toc.redraw()
       if (open) {
         panel.hidden = false
-        const item = targets[current]?.item
+        const item = currentLink?.parentElement
         if (item) panel.scrollTop = item.offsetTop - panel.clientHeight / 2
         // Settle the layout at opacity 0 first, so the fade in runs from there.
         void panel.offsetHeight
@@ -179,39 +125,5 @@ const hasHeadings = entries.length > 1
     // the breakpoint and come back on the way down. Same boundary as `71.9375rem` in
     // `src/styles/custom.css`, from the other side.
     matchMedia('(min-width: 72rem)').addEventListener('change', () => setOpen(false))
-
-    // The heading above the reading line is the one being read. Every crossing of that line is an
-    // intersection, so the rects are read on the observer's terms instead of on every scroll.
-    const syncCurrent = () => {
-      if (!root.offsetHeight) return
-      const line = readingLine() + 1
-      let index = 0
-      for (const [at, { heading }] of targets.entries()) {
-        if (heading.getBoundingClientRect().top > line) break
-        index = at
-      }
-      setCurrent(index)
-    }
-    const observer = new IntersectionObserver(syncCurrent, {
-      rootMargin: `-${Math.round(readingLine())}px 0px 0px 0px`,
-    })
-    for (const { heading } of targets) observer.observe(heading)
-
-    // `offsetHeight` is zero where the bar is hidden, which is the wide layout.
-    const onScroll = () => {
-      if (frame || !root.offsetHeight) return
-      frame = requestAnimationFrame(() => {
-        frame = 0
-        setProgress()
-      })
-    }
-    addEventListener('scroll', onScroll, { passive: true })
-    addEventListener('resize', () => {
-      onScroll()
-      syncCurrent()
-    })
-
-    draw()
-    setProgress()
   }
 </script>

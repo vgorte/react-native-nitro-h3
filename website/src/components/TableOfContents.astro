@@ -1,0 +1,130 @@
+---
+import FeedbackCard from './FeedbackCard.astro'
+import { tocEntries } from './toc'
+
+const { toc } = Astro.locals.starlightRoute
+
+const entries = toc ? tocEntries(toc.items, toc.minHeadingLevel) : []
+
+// The first entry is Starlight's own link back to the title, so a page whose headings are only that
+// one has nothing to navigate and keeps the card alone.
+const hasHeadings = entries.length > 1
+---
+
+<div class="nh3-rail">
+  {
+    hasHeadings && (
+      <nav aria-labelledby="starlight__on-this-page">
+        <h2 class="nh3-rail-heading" id="starlight__on-this-page">
+          <svg class="nh3-rail-ring" viewBox="0 0 20 20" aria-hidden="true">
+            <circle class="nh3-rail-ring-track" cx="10" cy="10" r="8" />
+            <circle class="nh3-rail-ring-value" cx="10" cy="10" r="8" pathLength="1" />
+          </svg>
+          {Astro.locals.t('tableOfContents.onThisPage')}
+        </h2>
+        <ul class="nh3-rail-list">
+          {entries.map((entry) => (
+            <li class="nh3-rail-item" style={`--nh3-rail-level: ${entry.level}`}>
+              <a href={`#${entry.slug}`}>{entry.text}</a>
+            </li>
+          ))}
+        </ul>
+      </nav>
+    )
+  }
+  <FeedbackCard />
+</div>
+
+<style>
+  .nh3-rail-heading {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+    color: var(--sl-color-white);
+    font-size: var(--sl-text-h5);
+    font-weight: 600;
+    line-height: var(--sl-line-height-headings);
+  }
+
+  .nh3-rail-ring {
+    flex: none;
+    width: 1rem;
+    height: 1rem;
+    /* From the top, like a clock, instead of from three o'clock. */
+    transform: rotate(-90deg);
+  }
+
+  .nh3-rail-ring circle {
+    fill: none;
+    stroke-width: 3;
+  }
+
+  .nh3-rail-ring-track {
+    stroke: var(--sl-color-gray-5);
+  }
+
+  /* `pathLength` normalises the circumference to `1`, so the dash offset is the unread fraction. */
+  .nh3-rail-ring-value {
+    stroke: var(--sl-color-accent);
+    stroke-dasharray: 1;
+    stroke-dashoffset: calc(1 - var(--nh3-progress, 0));
+    stroke-linecap: round;
+  }
+
+  .nh3-rail-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  /* The thread runs down the whole list and turns accent as far as the reader has come. */
+  .nh3-rail-item {
+    border-inline-start: 1px solid var(--sl-color-gray-5);
+  }
+
+  .nh3-rail-item.above {
+    border-inline-start-color: var(--sl-color-text-accent);
+  }
+
+  .nh3-rail-item a {
+    display: block;
+    padding-block: 0.3rem;
+    padding-inline: calc(0.75rem + var(--nh3-rail-level, 0) * 0.75rem) 0.5rem;
+    color: var(--sl-color-gray-3);
+    font-size: var(--sl-text-xs);
+    line-height: 1.35;
+    text-decoration: none;
+    overflow-wrap: anywhere;
+  }
+
+  .nh3-rail-item.above a {
+    color: var(--sl-color-text-accent);
+  }
+
+  .nh3-rail-item.current a {
+    color: var(--sl-color-white);
+    font-weight: 600;
+  }
+
+  .nh3-rail-item a:hover {
+    color: var(--sl-color-white);
+  }
+
+  .nh3-rail-item a:focus-visible {
+    outline: 2px solid var(--sl-color-accent);
+    outline-offset: -2px;
+  }
+</style>
+
+<script>
+  import { trackToc } from './toc'
+
+  const root = document.querySelector<HTMLElement>('.nh3-rail')
+  const list = root?.querySelector<HTMLElement>('.nh3-rail-list')
+  const article = document.querySelector<HTMLElement>('.sl-markdown-content')
+  // Starlight's own fixed, scrollable column; the rail and the feedback card ride inside it.
+  const scroller = root?.closest<HTMLElement>('.right-sidebar') ?? undefined
+
+  if (root && list && article) trackToc({ root, list, article, scroller })
+</script>
