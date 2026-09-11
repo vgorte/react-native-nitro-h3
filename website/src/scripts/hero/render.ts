@@ -292,10 +292,19 @@ export function buildKeepOut(
   g.setTransform(1, 0, 0, 1, bx, by)
   const o = KO_FEATHER
   const sigma = KO_FEATHER / 2
-  g.filter = `blur(${sigma}px)`
+  // A shadow, not `ctx.filter`: Safari carries no such property, and assigning to it there leaves a
+  // plain expando that reads back the value it was given, so the rectangle would land hard-edged and
+  // a feather too wide on every side with nothing to say it had. `shadowBlur` is twice the
+  // Gaussian's standard deviation, so it spans the same feather. The transform is a unit
+  // translation, which leaves the offset the same length in both spaces.
+  const off = mask.width + 64
+  g.shadowColor = '#000'
+  g.shadowBlur = o
+  g.shadowOffsetX = off
   g.fillStyle = '#000'
-  g.fillRect(ko.left - o, ko.top - o, ko.right - ko.left + o * 2, ko.bottom - ko.top + o * 2)
-  g.filter = 'none'
+  g.fillRect(ko.left - o - off, ko.top - o, ko.right - ko.left + o * 2, ko.bottom - ko.top + o * 2)
+  g.shadowBlur = 0
+  g.shadowOffsetX = 0
   // Three sigma leaves under one part in 255 of the fill, and two more pixels cover the rounding.
   const spread = Math.ceil(3 * sigma) + 2
   const x0 = Math.max(0, Math.floor(ko.left - o + bx - spread))
