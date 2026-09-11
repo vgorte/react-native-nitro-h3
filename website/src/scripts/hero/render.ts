@@ -38,8 +38,8 @@ function tracePolygon(g: CanvasRenderingContext2D, points: readonly Point[]): vo
 
 // The build's depth ramp, resolved to this many steps and precomputed once. A cell then costs a
 // table lookup instead of two colour strings, and the state only changes where the step does.
-// Sixteen keeps the quantisation invisible: the stroke alpha step is 0.013 and the blur step
-// 0.44 px.
+// Sixteen keeps the quantisation invisible: the stroke alpha step is 0.013 and the line width step
+// 0.07 px.
 const DEPTH_STEPS = 16
 
 type DepthStyle = {
@@ -66,6 +66,16 @@ const DEPTH_STYLES: readonly DepthStyle[] = Array.from({ length: DEPTH_STEPS }, 
 
 // Stands in for an index the clamp cannot produce, so the sweep never carries an optional.
 const FAR_STYLE = depthStyle(0)
+
+/**
+ * A shadowed draw under `'lighter'` cannot take the cheap shadow path, so every glowing cell would
+ * allocate full-canvas layers of its own. The outlines go into two half-resolution layers instead,
+ * split at the middle of the range above `FAR_PLAIN`, and each layer is blurred in a single draw.
+ */
+const BAND_SPLIT = FAR_PLAIN + 0.5 * (1 - FAR_PLAIN)
+// A band's blur is the ramp's own, read at the middle of the half that band covers.
+const FAR_BAND_BLUR = depthStyle(FAR_PLAIN + 0.25 * (1 - FAR_PLAIN)).blur
+const NEAR_BAND_BLUR = depthStyle(FAR_PLAIN + 0.75 * (1 - FAR_PLAIN)).blur
 
 /**
  * A blurred draw under `'lighter'` is what the frame's cost is made of: measured in the page, the
@@ -386,6 +396,46 @@ export function buildSignature(
   return `${mode}|${Math.round(W)}|${Math.round(H)}|${dpr}|${column}`
 }
 
+/**
+ * Returns a half-resolution layer over the grid canvas's box, in the grid's own drawing units. The
+ * compositing draw scales it back up, so a stroke lands at the width it was given.
+ */
+function glowLayer(
+  grid: HTMLCanvasElement,
+  dpr: number,
+  bx: number,
+  by: number,
+): CanvasRenderingContext2D {
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.ceil(grid.width / 2)
+  canvas.height = Math.ceil(grid.height / 2)
+  const g = canvas.getContext('2d')
+  if (!g) throw new Error('the hero needs a 2d canvas context')
+  g.setTransform(dpr * 0.5, 0, 0, dpr * 0.5, 0, 0)
+  g.translate(bx, by)
+  g.globalCompositeOperation = 'lighter'
+  return g
+}
+
+/**
+ * Adds one band's blurred outlines to the plate. The layer is drawn clear of the canvas and only
+ * its shadow is offset back over the box, so the band costs one blurred draw.
+ */
+function compositeGlow(g: CanvasRenderingContext2D, layer: HTMLCanvasElement, blur: number): void {
+  const off = g.canvas.width + 64
+  g.save()
+  // Device pixels, like the frame's blit: the layer covers the same box at half the resolution.
+  g.setTransform(1, 0, 0, 1, 0, 0)
+  g.globalCompositeOperation = 'lighter'
+  g.shadowColor = '#2f7dff'
+  g.shadowBlur = blur
+  g.shadowOffsetX = off
+  // Twice the layer, not the canvas: an odd backing store would otherwise scale by a shade under
+  // two and drag the glow off its outlines across the width. The overhang falls outside the box.
+  g.drawImage(layer, -off, 0, layer.width * 2, layer.height * 2)
+  g.restore()
+}
+
 /** Draws the static grid into its own canvas and records what the build cost. */
 export function buildGrid(
   g: CanvasRenderingContext2D,
@@ -404,9 +454,13 @@ export function buildGrid(
   const q0 = Math.floor(scene.PU_MIN / (1.5 * s)) - 1
   const q1 = Math.ceil(scene.PU_MAX / (1.5 * s)) + 1
   const kk = s * Math.sqrt(3)
-  g.shadowColor = '#2f7dff'
+  // The context is `sizeCanvas`'s, so its horizontal scale is the device ratio.
+  const dpr = g.getTransform().a
+  const farGlow = glowLayer(g.canvas, dpr, bx, by)
+  const nearGlow = glowLayer(g.canvas, dpr, bx, by)
   let step = -1
   let style = FAR_STYLE
+  let glow = farGlow
   for (let q = q0; q <= q1; q++) {
     const r0 = Math.floor(scene.PV_MIN2 / kk - q / 2) - 1
     const r1 = Math.ceil(scene.PV_MAX2 / kk - q / 2) + 1
@@ -428,14 +482,17 @@ export function buildGrid(
         g.strokeStyle = style.stroke
         g.lineWidth = style.lineWidth
         g.fillStyle = style.dot
+        glow = (next + 0.5) / DEPTH_STEPS > BAND_SPLIT ? nearGlow : farGlow
+        glow.strokeStyle = style.stroke
+        glow.lineWidth = style.lineWidth
       }
       tracePolygon(g, points)
       // The glow and the vertex dots are what make the build expensive, and neither reads at the
       // far end, so distant cells are a plain hairline.
       if (d > FAR_PLAIN) {
-        g.shadowBlur = style.blur
         g.stroke()
-        g.shadowBlur = 0
+        tracePolygon(glow, points)
+        glow.stroke()
         const rr = style.dotRadius
         // One path for the six dots of this cell, but not one across cells: neighbouring cells put
         // a dot on the same lattice vertex, and under `'lighter'` those add.
@@ -452,6 +509,8 @@ export function buildGrid(
       drawn += 1
     }
   }
+  compositeGlow(g, farGlow.canvas, FAR_BAND_BLUR)
+  compositeGlow(g, nearGlow.canvas, NEAR_BAND_BLUR)
   g.globalCompositeOperation = 'destination-in'
   const mk = maskGeometry(scene)
   const radial = g.createRadialGradient(mk.cx, mk.cy, mk.r0, mk.cx, mk.cy, mk.r1)
