@@ -3,7 +3,7 @@ export const SITE = 'https://vgorte.github.io'
 export const BASE = '/react-native-nitro-h3'
 export const REPO = 'https://github.com/vgorte/react-native-nitro-h3'
 
-export const GROUPS = ['Start here', 'Core concepts', 'Performance', 'Reference'] as const
+export const GROUPS = ['Start Here', 'Core Concepts', 'Performance', 'Reference'] as const
 export type Group = (typeof GROUPS)[number]
 
 export type Page = {
@@ -24,11 +24,11 @@ export type Page = {
 export const PAGES: readonly Page[] = [
   {
     route: '/getting-started/',
-    label: 'Getting started',
+    label: 'Getting Started',
     source: 'docs/getting-started.md',
     description:
       'Install react-native-nitro-h3 with bun, npm or Expo and make a first H3 call on iOS and Android.',
-    group: 'Start here',
+    group: 'Start Here',
   },
   {
     route: '/requirements/',
@@ -36,7 +36,7 @@ export const PAGES: readonly Page[] = [
     source: 'docs/requirements.md',
     description:
       'The React Native, Nitro Modules, iOS, Android and C++ toolchain versions a project needs before react-native-nitro-h3 builds.',
-    group: 'Start here',
+    group: 'Start Here',
   },
   {
     route: '/showcase/',
@@ -44,7 +44,7 @@ export const PAGES: readonly Page[] = [
     source: 'docs/showcase.md',
     description:
       'The showcase app: five acts that put react-native-nitro-h3 under a map, inside a gesture and on a busy JS thread, with the video and the pattern behind each act.',
-    group: 'Start here',
+    group: 'Start Here',
   },
   {
     route: '/migrating-from-h3-js/',
@@ -52,43 +52,43 @@ export const PAGES: readonly Page[] = [
     source: 'docs/migrating-from-h3-js.md',
     description:
       'Before and after examples for moving from h3-js to react-native-nitro-h3: bigint cells, BigUint64Array cell sets, unit suffixes and strict validation.',
-    group: 'Start here',
+    group: 'Start Here',
   },
   {
     route: '/concepts/cells-and-bigint/',
-    label: 'Cell indexes and bigint',
+    label: 'Cell Indexes and bigint',
     source: 'docs/concepts/cells-and-bigint.md',
     description:
       'Why an H3 cell is a bigint in react-native-nitro-h3, how to convert at the boundary and how the package covers the h3-js 4.5.0 operation set.',
-    group: 'Core concepts',
+    group: 'Core Concepts',
   },
   {
     route: '/concepts/typed-arrays-and-batch/',
-    label: 'Typed arrays and batch calls',
+    label: 'Typed Arrays and Batch Calls',
     source: 'docs/concepts/typed-arrays-and-batch.md',
     description:
       'The contract of BigUint64Array cell sets, Float64Array coordinates and the batch calls latLngsToCells, cellsToLatLngs and cellsToBoundaries.',
-    group: 'Core concepts',
+    group: 'Core Concepts',
   },
   {
     route: '/concepts/sync-and-async/',
-    label: 'Sync and async',
+    label: 'Sync and Async',
     source: 'docs/concepts/sync-and-async.md',
     description:
       'Which four H3 operations have async variants in react-native-nitro-h3, what they guarantee and what the thread hop costs.',
-    group: 'Core concepts',
+    group: 'Core Concepts',
   },
   {
     route: '/concepts/errors-and-memory-safety/',
-    label: 'Errors and memory safety',
+    label: 'Errors and Memory Safety',
     source: 'docs/concepts/errors-and-memory-safety.md',
     description:
       'H3Error, native error codes and the optional cell ceiling that turns an oversized allocation into a catchable error.',
-    group: 'Core concepts',
+    group: 'Core Concepts',
   },
   {
     route: '/performance/',
-    label: 'Performance guide',
+    label: 'Performance Guide',
     source: 'docs/performance.md',
     description:
       'Where the speed of react-native-nitro-h3 comes from: one boundary crossing per call, no string conversion, and when a batch call or a cell ceiling pays.',
@@ -96,7 +96,7 @@ export const PAGES: readonly Page[] = [
   },
   {
     route: '/benchmark/',
-    label: 'Benchmark report',
+    label: 'Benchmark Report',
     source: 'docs/benchmark.md',
     description:
       'Methodology and full measurements of react-native-nitro-h3 against h3-js 4.5.0 on an iPhone XS and a Galaxy S23, with the size ledger.',
@@ -113,7 +113,7 @@ export const PAGES: readonly Page[] = [
   },
   {
     route: '/h3-function-table/',
-    label: 'H3 function reference',
+    label: 'H3 Function Reference',
     source: 'docs/h3-function-table.md',
     description:
       'Every react-native-nitro-h3 export mapped to the H3 v4.5.0 C function it binds, with the header declarations and implementation hazards.',
@@ -121,7 +121,7 @@ export const PAGES: readonly Page[] = [
   },
   {
     route: '/h3-js-divergences/',
-    label: 'h3-js divergences',
+    label: 'Divergences from h3-js',
     source: 'docs/h3-js-divergences.md',
     description:
       'Every intentional difference between react-native-nitro-h3 and h3-js 4.5.0, with the test or the vendored source that proves each one.',
