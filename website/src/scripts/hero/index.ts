@@ -28,12 +28,12 @@ import {
 } from './parallax'
 import { anchorCard, leaderAnchors, type ReadoutElements, segBox, updateReadout } from './readout'
 import {
-  buildGrid,
   buildKeepOut,
   buildSignature,
   drawLeader,
   drawScene,
   type GlowSprites,
+  type GridJob,
   type LitCell,
   type MaskExtent,
   makeGlows,
@@ -41,10 +41,14 @@ import {
   type Pulse,
   type Sparkle,
   sizeCanvas,
+  startGrid,
 } from './render'
 import { type Calibrated, calibrate, type Mode, pickMode, SCENES } from './scene'
 
 const RESIZE_DEBOUNCE_MS = 150
+// What one pumped chunk of the bake may take, leaving the rest of a 60 Hz frame to the loop itself.
+// A slow machine stretches the bake over more frames instead of losing them.
+const GRID_BUDGET_MS = 6
 const BREATH_RAMP_MS = 600
 const PULSE_MS = 620
 const PERF_SAMPLE = 300
@@ -71,7 +75,9 @@ export function start(): void {
   const debug = params.get('heroDebug') === '1'
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches
 
-  const grid = document.createElement('canvas')
+  let grid = document.createElement('canvas')
+  let staging: HTMLCanvasElement | null = null
+  let gridJob: GridJob | null = null
   const mask = document.createElement('canvas')
 
   let mode: Mode = pickMode(params)
@@ -196,7 +202,16 @@ export function start(): void {
     dpr = nextDpr
     scene = calibrate(SCENES[mode], stageRect.width, stageRect.height)
     ctx = sizeCanvas(canvas, scene.W, scene.H, dpr)
-    const gridCtx = sizeCanvas(grid, scene.W, scene.H, dpr)
+    // A bake this rebuild supersedes has a canvas nothing will ever show, so it goes back now.
+    if (staging) {
+      staging.width = 0
+      staging.height = 0
+    }
+    // Its own canvas, not the plate the frame loop blits: the loop keeps showing the plate it has,
+    // so a rebuild never puts an empty or half-built grid on the stage. The accepted cost is that
+    // a bake's few frames show the old plate, which after a resize covers the old box.
+    staging = document.createElement('canvas')
+    const gridCtx = sizeCanvas(staging, scene.W, scene.H, dpr)
     ko = nextKo
     shiftColumn()
     maskExtent = buildKeepOut(mask, scene.W, scene.H, ko)
@@ -205,10 +220,7 @@ export function start(): void {
     // The hole is baked at the column's rest position. The layer moves it by at most 12 px, the
     // 8 px amplitude at the 1.5 cap, which lies inside the 40 px feather, and the per-frame punch
     // carries the live offset.
-    const build = buildGrid(gridCtx, scene, sTarget, mask, maskExtent, [0, 0])
-    litCells = build.litCells
-    gridCells = build.cells
-    gridMs = build.buildMs
+    gridJob = startGrid(gridCtx, scene, sTarget, mask, maskExtent, [0, 0])
     if (openingPending) {
       openingPending = false
       placeOpening()
@@ -301,6 +313,23 @@ export function start(): void {
     if (!ctx) {
       raf = requestAnimationFrame(frame)
       return
+    }
+
+    if (gridJob && staging) {
+      const build = gridJob.step(GRID_BUDGET_MS)
+      if (build) {
+        const retired = grid
+        grid = staging
+        staging = null
+        gridJob = null
+        // Released rather than kept for the next bake, so a plate at rest costs one full stage.
+        // Rebuilds are debounced and rare, which bounds what the fresh canvas costs in churn.
+        retired.width = 0
+        retired.height = 0
+        litCells = build.litCells
+        gridCells = build.cells
+        gridMs = build.buildMs
+      }
     }
 
     const stageRect = stage.getBoundingClientRect()

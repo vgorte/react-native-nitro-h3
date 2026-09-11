@@ -38,8 +38,8 @@ function tracePolygon(g: CanvasRenderingContext2D, points: readonly Point[]): vo
 
 // The build's depth ramp, resolved to this many steps and precomputed once. A cell then costs a
 // table lookup instead of two colour strings, and the state only changes where the step does.
-// Sixteen keeps the quantisation invisible: the stroke alpha step is 0.013 and the blur step
-// 0.44 px.
+// Sixteen keeps the quantisation invisible: the stroke alpha step is 0.013 and the line width step
+// 0.07 px.
 const DEPTH_STEPS = 16
 
 type DepthStyle = {
@@ -66,6 +66,16 @@ const DEPTH_STYLES: readonly DepthStyle[] = Array.from({ length: DEPTH_STEPS }, 
 
 // Stands in for an index the clamp cannot produce, so the sweep never carries an optional.
 const FAR_STYLE = depthStyle(0)
+
+/**
+ * A shadowed draw under `'lighter'` cannot take the cheap shadow path, so every glowing cell would
+ * allocate full-canvas layers of its own. The outlines go into two half-resolution layers instead,
+ * split at the middle of the range above `FAR_PLAIN`, and each layer is blurred in a single draw.
+ */
+const BAND_SPLIT = FAR_PLAIN + 0.5 * (1 - FAR_PLAIN)
+// A band's blur is the ramp's own, read at the middle of the half that band covers.
+const FAR_BAND_BLUR = depthStyle(FAR_PLAIN + 0.25 * (1 - FAR_PLAIN)).blur
+const NEAR_BAND_BLUR = depthStyle(FAR_PLAIN + 0.75 * (1 - FAR_PLAIN)).blur
 
 /**
  * A blurred draw under `'lighter'` is what the frame's cost is made of: measured in the page, the
@@ -282,10 +292,19 @@ export function buildKeepOut(
   g.setTransform(1, 0, 0, 1, bx, by)
   const o = KO_FEATHER
   const sigma = KO_FEATHER / 2
-  g.filter = `blur(${sigma}px)`
+  // A shadow, not `ctx.filter`: Safari carries no such property, and assigning to it there leaves a
+  // plain expando that reads back the value it was given, so the rectangle would land hard-edged and
+  // a feather too wide on every side with nothing to say it had. `shadowBlur` is twice the
+  // Gaussian's standard deviation, so it spans the same feather. The transform is a unit
+  // translation, which leaves the offset the same length in both spaces.
+  const off = mask.width + 64
+  g.shadowColor = '#000'
+  g.shadowBlur = o
+  g.shadowOffsetX = off
   g.fillStyle = '#000'
-  g.fillRect(ko.left - o, ko.top - o, ko.right - ko.left + o * 2, ko.bottom - ko.top + o * 2)
-  g.filter = 'none'
+  g.fillRect(ko.left - o - off, ko.top - o, ko.right - ko.left + o * 2, ko.bottom - ko.top + o * 2)
+  g.shadowBlur = 0
+  g.shadowOffsetX = 0
   // Three sigma leaves under one part in 255 of the fill, and two more pixels cover the rounding.
   const spread = Math.ceil(3 * sigma) + 2
   const x0 = Math.max(0, Math.floor(ko.left - o + bx - spread))
@@ -386,17 +405,71 @@ export function buildSignature(
   return `${mode}|${Math.round(W)}|${Math.round(H)}|${dpr}|${column}`
 }
 
-/** Draws the static grid into its own canvas and records what the build cost. */
-export function buildGrid(
+/**
+ * Returns a half-resolution layer over the grid canvas's box, in the grid's own drawing units. The
+ * compositing draw scales it back up, so a stroke lands at the width it was given.
+ */
+function glowLayer(
+  grid: HTMLCanvasElement,
+  dpr: number,
+  bx: number,
+  by: number,
+): CanvasRenderingContext2D {
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.ceil(grid.width / 2)
+  canvas.height = Math.ceil(grid.height / 2)
+  const g = canvas.getContext('2d')
+  if (!g) throw new Error('the hero needs a 2d canvas context')
+  g.setTransform(dpr * 0.5, 0, 0, dpr * 0.5, 0, 0)
+  g.translate(bx, by)
+  g.globalCompositeOperation = 'lighter'
+  return g
+}
+
+/**
+ * Adds one band's blurred outlines to the plate. The layer is drawn clear of the canvas and only
+ * its shadow is offset back over the box, so the band costs one blurred draw.
+ */
+function compositeGlow(g: CanvasRenderingContext2D, layer: HTMLCanvasElement, blur: number): void {
+  const off = g.canvas.width + 64
+  g.save()
+  // Device pixels, like the frame's blit: the layer covers the same box at half the resolution.
+  g.setTransform(1, 0, 0, 1, 0, 0)
+  g.globalCompositeOperation = 'lighter'
+  g.shadowColor = '#2f7dff'
+  g.shadowBlur = blur
+  g.shadowOffsetX = off
+  // Twice the layer, not the canvas: an odd backing store would otherwise scale by a shade under
+  // two and drag the glow off its outlines across the width. The overhang falls outside the box.
+  g.drawImage(layer, -off, 0, layer.width * 2, layer.height * 2)
+  g.restore()
+}
+
+export type GridJob = {
+  /**
+   * Advances the bake for at most `budgetMs` and returns the result on the call that finishes it.
+   */
+  step(budgetMs: number): GridBuild | null
+}
+
+// Cells the sweep visits between two yields. Skipped cells count too, so a run of them cannot hold
+// the thread past the budget.
+const SWEEP_CHUNK = 32
+
+/**
+ * Starts the static grid's bake into its own canvas and returns the job that carries it. The plate
+ * is finished over as many calls to `step` as the caller's budget takes, so the thread is never
+ * held for the whole sweep.
+ */
+export function startGrid(
   g: CanvasRenderingContext2D,
   scene: Calibrated,
   s: number,
   mask: HTMLCanvasElement,
   maskExtent: MaskExtent | null,
   koOffset: Point,
-): GridBuild {
+): GridJob {
   const { W, H } = scene
-  const started = performance.now()
   let drawn = 0
   const [bx, by] = bleedOf(W, H)
   clearAll(g)
@@ -404,72 +477,115 @@ export function buildGrid(
   const q0 = Math.floor(scene.PU_MIN / (1.5 * s)) - 1
   const q1 = Math.ceil(scene.PU_MAX / (1.5 * s)) + 1
   const kk = s * Math.sqrt(3)
-  g.shadowColor = '#2f7dff'
+  // The context is `sizeCanvas`'s, so its horizontal scale is the device ratio.
+  const dpr = g.getTransform().a
+  const farGlow = glowLayer(g.canvas, dpr, bx, by)
+  const nearGlow = glowLayer(g.canvas, dpr, bx, by)
   let step = -1
   let style = FAR_STYLE
-  for (let q = q0; q <= q1; q++) {
-    const r0 = Math.floor(scene.PV_MIN2 / kk - q / 2) - 1
-    const r1 = Math.ceil(scene.PV_MAX2 / kk - q / 2) + 1
-    for (let r = r0; r <= r1; r++) {
-      const centre = centerOf(q, r, s)
-      if (centre[0] < scene.PU_MIN || centre[0] > scene.PU_MAX) continue
-      if (centre[1] < scene.PV_MIN2 || centre[1] > scene.PV_MAX2) continue
-      const screen = screenOf(scene, centre[0], centre[1])
-      if (screen[0] < -bx - 120 || screen[0] > W + bx + 120) continue
-      if (screen[1] < -by - 120 || screen[1] > H + by + 120) continue
-      const points = hexPts(scene, centre[0], centre[1], s * 0.985)
-      // A cell narrower than this is texture, not a hexagon, and only costs build time.
-      if (Math.abs(points[0][0] - points[3][0]) < MIN_HEX_PX) continue
-      const d = depth(scene, centre[1])
-      const next = Math.min(DEPTH_STEPS - 1, (d * DEPTH_STEPS) | 0)
-      if (next !== step) {
-        step = next
-        style = DEPTH_STYLES[next] ?? FAR_STYLE
-        g.strokeStyle = style.stroke
-        g.lineWidth = style.lineWidth
-        g.fillStyle = style.dot
-      }
-      tracePolygon(g, points)
-      // The glow and the vertex dots are what make the build expensive, and neither reads at the
-      // far end, so distant cells are a plain hairline.
-      if (d > FAR_PLAIN) {
-        g.shadowBlur = style.blur
-        g.stroke()
-        g.shadowBlur = 0
-        const rr = style.dotRadius
-        // One path for the six dots of this cell, but not one across cells: neighbouring cells put
-        // a dot on the same lattice vertex, and under `'lighter'` those add.
-        g.beginPath()
-        for (const [x, y] of points) {
-          // Without the `moveTo` the arcs are joined by a line.
-          g.moveTo(x + rr, y)
-          g.arc(x, y, rr, 0, 6.29)
+  let glow = farGlow
+  let visited = 0
+
+  function* sweepCells(): Generator<void> {
+    for (let q = q0; q <= q1; q++) {
+      const r0 = Math.floor(scene.PV_MIN2 / kk - q / 2) - 1
+      const r1 = Math.ceil(scene.PV_MAX2 / kk - q / 2) + 1
+      for (let r = r0; r <= r1; r++) {
+        visited += 1
+        if (visited % SWEEP_CHUNK === 0) yield
+        const centre = centerOf(q, r, s)
+        if (centre[0] < scene.PU_MIN || centre[0] > scene.PU_MAX) continue
+        if (centre[1] < scene.PV_MIN2 || centre[1] > scene.PV_MAX2) continue
+        const screen = screenOf(scene, centre[0], centre[1])
+        if (screen[0] < -bx - 120 || screen[0] > W + bx + 120) continue
+        if (screen[1] < -by - 120 || screen[1] > H + by + 120) continue
+        const points = hexPts(scene, centre[0], centre[1], s * 0.985)
+        // A cell narrower than this is texture, not a hexagon, and only costs build time.
+        if (Math.abs(points[0][0] - points[3][0]) < MIN_HEX_PX) continue
+        const d = depth(scene, centre[1])
+        const next = Math.min(DEPTH_STEPS - 1, (d * DEPTH_STEPS) | 0)
+        if (next !== step) {
+          step = next
+          style = DEPTH_STYLES[next] ?? FAR_STYLE
+          g.strokeStyle = style.stroke
+          g.lineWidth = style.lineWidth
+          g.fillStyle = style.dot
+          glow = (next + 0.5) / DEPTH_STEPS > BAND_SPLIT ? nearGlow : farGlow
+          glow.strokeStyle = style.stroke
+          glow.lineWidth = style.lineWidth
         }
-        g.fill()
-      } else {
-        g.stroke()
+        tracePolygon(g, points)
+        // The glow and the vertex dots are what make the build expensive, and neither reads at the
+        // far end, so distant cells are a plain hairline.
+        if (d > FAR_PLAIN) {
+          g.stroke()
+          tracePolygon(glow, points)
+          glow.stroke()
+          const rr = style.dotRadius
+          // One path for the six dots of this cell, but not one across cells: neighbouring cells
+          // put a dot on the same lattice vertex, and under `'lighter'` those add.
+          g.beginPath()
+          for (const [x, y] of points) {
+            // Without the `moveTo` the arcs are joined by a line.
+            g.moveTo(x + rr, y)
+            g.arc(x, y, rr, 0, 6.29)
+          }
+          g.fill()
+        } else {
+          g.stroke()
+        }
+        drawn += 1
       }
-      drawn += 1
     }
   }
-  g.globalCompositeOperation = 'destination-in'
-  const mk = maskGeometry(scene)
-  const radial = g.createRadialGradient(mk.cx, mk.cy, mk.r0, mk.cx, mk.cy, mk.r1)
-  radial.addColorStop(0, 'rgba(0,0,0,1)')
-  radial.addColorStop(1, 'rgba(0,0,0,0)')
-  g.fillStyle = radial
-  g.fillRect(-bx, -by, W + 2 * bx, H + 2 * by)
-  const linear = g.createLinearGradient(0, mk.fy0, 0, mk.fy1)
-  linear.addColorStop(0, 'rgba(0,0,0,0.04)')
-  linear.addColorStop(1, 'rgba(0,0,0,1)')
-  g.fillStyle = linear
-  g.fillRect(-bx, -by, W + 2 * bx, H + 2 * by)
-  g.globalCompositeOperation = 'source-over'
-  punchKeepOut(g, mask, maskExtent, [bx, by], koOffset)
+
+  // Not chunked, and it can overshoot the budget: it is a fixed handful of draws, two blurred
+  // composites and two full-canvas gradient fills, rather than a cost that grows with the cells.
+  const finish = (): void => {
+    compositeGlow(g, farGlow.canvas, FAR_BAND_BLUR)
+    compositeGlow(g, nearGlow.canvas, NEAR_BAND_BLUR)
+    g.globalCompositeOperation = 'destination-in'
+    const mk = maskGeometry(scene)
+    const radial = g.createRadialGradient(mk.cx, mk.cy, mk.r0, mk.cx, mk.cy, mk.r1)
+    radial.addColorStop(0, 'rgba(0,0,0,1)')
+    radial.addColorStop(1, 'rgba(0,0,0,0)')
+    g.fillStyle = radial
+    g.fillRect(-bx, -by, W + 2 * bx, H + 2 * by)
+    const linear = g.createLinearGradient(0, mk.fy0, 0, mk.fy1)
+    linear.addColorStop(0, 'rgba(0,0,0,0.04)')
+    linear.addColorStop(1, 'rgba(0,0,0,1)')
+    g.fillStyle = linear
+    g.fillRect(-bx, -by, W + 2 * bx, H + 2 * by)
+    g.globalCompositeOperation = 'source-over'
+    punchKeepOut(g, mask, maskExtent, [bx, by], koOffset)
+  }
+
+  const sweep = sweepCells()
+  let workMs = 0
+  let result: GridBuild | null = null
   return {
-    litCells: pickLitCells(scene, s),
-    cells: drawn,
-    buildMs: Number((performance.now() - started).toFixed(1)),
+    step(budgetMs: number): GridBuild | null {
+      // The finishing stage draws once. A late call gets the plate it already produced.
+      if (result) return result
+      const t0 = performance.now()
+      let done = false
+      while (performance.now() - t0 < budgetMs) {
+        if (sweep.next().done === true) {
+          finish()
+          done = true
+          break
+        }
+      }
+      workMs += performance.now() - t0
+      if (!done) return null
+      result = {
+        litCells: pickLitCells(scene, s),
+        cells: drawn,
+        // Work summed over the chunks, not wall clock: the frames between them are not the bake's.
+        buildMs: Number(workMs.toFixed(1)),
+      }
+      return result
+    },
   }
 }
 
