@@ -299,6 +299,8 @@ html[data-has-hero] .page > .header {
 }
 
 /* `Icon.astro` pins `--sl-icon-size` inline, so the size has to be set on the icon itself. */
+/* biome-ignore lint/style/noDescendingSpecificity: the chevron sits in the toggle button, never
+   inside a `.nh3-tabs-social` row. */
 .nh3-tabs-social svg {
   width: 1.5rem;
   height: 1.5rem;
@@ -310,12 +312,16 @@ html[data-has-hero] .page > .header {
   display: none;
 }
 
+/* biome-ignore lint/style/noDescendingSpecificity: the wide row is a sibling of the panel, so
+   no link is inside both. */
 .nh3-tabs-social-wide a {
   padding: 0.5rem;
   margin: 0;
   color: var(--sl-color-text-accent);
 }
 
+/* biome-ignore lint/style/noDescendingSpecificity: the wide row is a sibling of the panel, so
+   no link is inside both. */
 .nh3-tabs-social-wide a:hover,
 .nh3-tabs-social-wide a:focus-visible {
   color: var(--sl-color-white);
@@ -487,6 +493,8 @@ html[data-has-hero] .page > .header {
   border-inline-start-color: var(--sl-color-text-accent);
 }
 
+/* biome-ignore lint/style/noDescendingSpecificity: a table of contents link never sits inside
+   the header panel. */
 .nh3-toc-item a {
   display: block;
   padding-block: 0.35rem;
@@ -505,6 +513,8 @@ html[data-has-hero] .page > .header {
   font-weight: 600;
 }
 
+/* biome-ignore lint/style/noDescendingSpecificity: a table of contents link never sits inside
+   the header panel. */
 .nh3-toc-item a:hover {
   color: var(--sl-color-white);
 }
