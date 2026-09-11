@@ -1,16 +1,13 @@
-# 🔢 Cell indexes and bigint
+# 🔢 Cell Indexes and bigint
 
-## A cell is a `bigint`
+## A Cell as a `bigint`
 
-H3 indexes are represented as JavaScript `bigint` values:
+A cell is a JavaScript `bigint`, the 64-bit H3 index itself rather than its hexadecimal spelling:
 
 ```ts
 import { latLngToCell } from 'react-native-nitro-h3'
 
-const cell = latLngToCell(37.7749, -122.4194, 9)
-
-console.log(cell)
-// 0x89283082803ffffn
+const cell = latLngToCell(37.7749, -122.4194, 9) // 617700169957507071n
 ```
 
 This avoids converting every H3 index to and from a hexadecimal string on the hot path.
@@ -20,18 +17,18 @@ When a string representation is required, for example when communicating with a 
 ```ts
 import { cellFromString, cellToString } from 'react-native-nitro-h3'
 
-const hex = cellToString(cell)
-const restored = cellFromString(hex)
+const hex = cellToString(cell) // '89283082803ffff'
+const restored = cellFromString(hex) // 617700169957507071n
 ```
 
-> `JSON.stringify` does not support `bigint` directly.
+> [!NOTE]
+> `JSON.stringify` throws on a `bigint`, so convert at the boundary before serialising.
 
-## API compatibility with `h3-js`
+## API Compatibility with `h3-js`
 
-The package covers the **`h3-js` 4.5.0 operation set** under the same function names, and answers
-typed results instead of strings.
+The package covers the `h3-js` 4.5.0 operation set under the same function names, and answers typed results instead of strings.
 
-These are the differences a call site meets:
+These are the differences a call site meets on the first day:
 
 | `h3-js`                                                 | `react-native-nitro-h3`                         |
 | ------------------------------------------------------- | ----------------------------------------------- |
@@ -47,8 +44,5 @@ These are the differences a call site meets:
 | Loose JavaScript argument coercion                      | Strict native validation                        |
 | No cell allocation limit                                | Optional `maxCellCount`                         |
 
-The table above is the subset a call site meets on the first day.
-[Divergences from h3-js 4.5.0](../h3-js-divergences.md) is the exhaustive list, and names what
-proves each one: most rows are proved by a test, and the functions that follow upstream H3 point to
-the vendored source instead. The call-site changes are walked through in
-[Migrating from h3-js](../migrating-from-h3-js.md).
+[Divergences from h3-js](../h3-js-divergences.md) is the exhaustive list, and names what proves each one: most rows are proved by a test, and the functions that follow upstream H3 point to the vendored source instead.
+The call-site changes are walked through in [Migrating from h3-js](../migrating-from-h3-js.md).

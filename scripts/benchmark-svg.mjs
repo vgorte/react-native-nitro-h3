@@ -234,9 +234,10 @@ function caption(payload, bars, scaledBy) {
     `Measured on ${device === undefined ? '' : `${device}, `}` +
       `${platformName(platform)} ${platformVersion(platform, osVersion)}, ` +
       `${build} build, ` +
-      `react-native ${reactNative}, ` +
+      `React Native ${reactNative}, ` +
       `against h3-js ${h3js}, ${date}.`,
-    `Median of ${runCounts(bars)} after ${warmUps(warmupRuns)}. Bars are scaled per ${scaledBy}.`,
+    `Median of ${runCounts(bars)} after ${warmUps(warmupRuns)}. ` +
+      `Bars are scaled per ${scaledBy}. Lower is better.`,
   ]
   return lines
 }
