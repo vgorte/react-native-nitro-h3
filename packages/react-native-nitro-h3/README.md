@@ -16,16 +16,15 @@
 `react-native-nitro-h3` brings Uber's [H3](https://h3geo.org/), the hexagonal hierarchical geospatial index, to React Native on iOS and Android.
 It vendors the H3 C sources and calls them directly from C++ instead of running them through JavaScript.
 
-* ⚡ About **800×** [faster](https://vgorte.github.io/react-native-nitro-h3/benchmark/) than `h3-js` on [`compactCells`](https://vgorte.github.io/react-native-nitro-h3/api/#compactcells)
+* ⚡ About **800×** [faster](https://vgorte.github.io/react-native-nitro-h3/benchmark/) than `h3-js` on [`compactCells`](https://vgorte.github.io/react-native-nitro-h3/api/#compactcells) over a 1,261-cell disk, 20-run median
 * 🧬 H3 as compiled C++, called through Nitro Modules
-* 🔢 `bigint` cell indexes, no hexadecimal strings
+* 🔢 `bigint` cell indexes instead of hexadecimal strings
 * 📦 Typed-array results over the native buffer
 * 🧵 Batch calls for whole coordinate and cell arrays
 * ⏱️ Async variants on a background thread
 * 🔁 The [`h3-js`](https://github.com/uber/h3-js) names and a [migration guide](https://vgorte.github.io/react-native-nitro-h3/migrating-from-h3-js/)
 
 > 📚 [Read the documentation](https://vgorte.github.io/react-native-nitro-h3/).
-
 
 <br clear="all" />
 
@@ -40,7 +39,7 @@ bun add react-native-nitro-h3 react-native-nitro-modules
 cd ios && pod install
 ```
 
-[Getting started](https://vgorte.github.io/react-native-nitro-h3/getting-started/) has the npm and Expo commands and the New Architecture note, and [Requirements](https://vgorte.github.io/react-native-nitro-h3/requirements/) has the platform and toolchain versions.
+[Getting Started](https://vgorte.github.io/react-native-nitro-h3/getting-started/) has the npm and Expo commands and the New Architecture note, and [Requirements](https://vgorte.github.io/react-native-nitro-h3/requirements/) has the platform and toolchain versions.
 
 ---
 
@@ -59,20 +58,19 @@ const id = cellToString(cell) // '89283082803ffff'
 const neighbours = gridDisk(cell, 1) // BigUint64Array(7)
 ```
 
-Coming from `h3-js`?
-Read the [migration guide](https://vgorte.github.io/react-native-nitro-h3/migrating-from-h3-js/): the `h3-js` names with unit suffixes instead of a unit argument, cells as `bigint`, cell sets as `BigUint64Array`.
+Coming from `h3-js`, read the [migration guide](https://vgorte.github.io/react-native-nitro-h3/migrating-from-h3-js/): the `h3-js` names with unit suffixes instead of a unit argument, cells as `bigint`, cell sets as `BigUint64Array`.
 
 ---
 
 ### Links
 
 - [Documentation](https://vgorte.github.io/react-native-nitro-h3/)
-- [LLMs.txt](https://vgorte.github.io/react-native-nitro-h3/llms.txt): the docs for agents and assistants
+- [`llms.txt`](https://vgorte.github.io/react-native-nitro-h3/llms.txt): the docs for agents and assistants
 - [Showcase](https://vgorte.github.io/react-native-nitro-h3/showcase/): five acts of one app
-- [Getting started](https://vgorte.github.io/react-native-nitro-h3/getting-started/): install and first call
+- [Getting Started](https://vgorte.github.io/react-native-nitro-h3/getting-started/): install and first call
 - [Requirements](https://vgorte.github.io/react-native-nitro-h3/requirements/): platform and toolchain versions
-- [Migrating from h3-js](https://vgorte.github.io/react-native-nitro-h3/migrating-from-h3-js/)
-- [API reference](https://vgorte.github.io/react-native-nitro-h3/api/): every exported function
+- [Migrating from `h3-js`](https://vgorte.github.io/react-native-nitro-h3/migrating-from-h3-js/)
+- [API Reference](https://vgorte.github.io/react-native-nitro-h3/api/): every exported function
 - [Example app](https://github.com/vgorte/react-native-nitro-h3/tree/main/apps/example): the benchmark and harness app
 - [Contributing](https://github.com/vgorte/react-native-nitro-h3/blob/main/CONTRIBUTING.md): build, test, add an operation
 
@@ -80,4 +78,4 @@ Read the [migration guide](https://vgorte.github.io/react-native-nitro-h3/migrat
 
 ## 📄 License
 
-`react-native-nitro-h3` is released under the **MIT License**. The vendored H3 C sources keep their **Apache-2.0** `LICENSE` and `NOTICE` files.
+`react-native-nitro-h3` is released under the MIT licence, and the vendored H3 C sources under `third_party/h3` keep their Apache-2.0 `LICENSE` and `NOTICE` files.

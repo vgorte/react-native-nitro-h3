@@ -51,6 +51,6 @@ text { fill: #8b949e }
 <rect class="reference" x="154" y="396" width="512" height="18" rx="3" fill="#7d8590"/>
 <text class="strong" x="674" y="409" font-size="12" font-weight="600">112.0 ms</text>
 <text x="24" y="436" font-size="11">* The loop repeats one coordinate where the batch call indexes 100,000 distinct ones, so this figure is a floor rather than the win.</text>
-<text x="24" y="460" font-size="11">Measured on iPhone XS (iPhone11,2), iOS 18.7.9, Release build, react-native 0.87.0, against h3-js 4.5.0, 2026-09-01.</text>
-<text x="24" y="478" font-size="11">Median of 20 runs after one warm-up. Bars are scaled per pair.</text>
+<text x="24" y="460" font-size="11">Measured on iPhone XS (iPhone11,2), iOS 18.7.9, Release build, React Native 0.87.0, against h3-js 4.5.0, 2026-09-01.</text>
+<text x="24" y="478" font-size="11">Median of 20 runs after one warm-up. Bars are scaled per pair. Lower is better.</text>
 </svg>

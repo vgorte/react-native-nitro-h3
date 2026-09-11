@@ -21,6 +21,9 @@
   --sl-color-hairline: rgba(120, 170, 255, 0.28);
   --sl-font: "Inter Variable";
   --sl-font-mono: "JetBrains Mono Variable";
+  /* The width of the wide layout's right hand rail. The rail, the content column and the header's
+     search column all read it, so the three stay in one line. */
+  --nh3-toc-width: 17.5rem;
   /* The two ends are the grid's own, from `scripts/hero/render.ts`: the glow the baked plate draws
      its cells with, and the bright core of a sparkle sprite. The middle stop sits between them and
      is the one value here that the grid never draws. The word on the hero and the number on the
@@ -32,6 +35,37 @@
     #7cbcff 52%,
     var(--nh3-accent-light) 100%
   );
+}
+
+/* Wide layout */
+
+/* Starlight hands the right hand table of contents half of every pixel past the article's measure,
+   so the rail grows into empty space while the article keeps its 45rem and the reading column drifts
+   off centre. The rail takes a fixed width instead, the article takes a wider measure, and the main
+   pane keeps the rest. These rules are unlayered, so they beat `@layer starlight.core`, and they sit
+   inside Starlight's own `lg` breakpoint, the only place that two column layout exists. */
+@media (min-width: 72rem) {
+  :root {
+    --sl-content-width: 56rem;
+  }
+
+  .right-sidebar-container {
+    width: var(--nh3-toc-width);
+  }
+
+  /* `PageSidebar.astro` sizes the inner box off `--sl-sidebar-width` and caps it at a quarter of the
+     viewport, which would hold the links well inside the rail they sit in. */
+  .right-sidebar-panel > .sl-container {
+    width: calc(var(--nh3-toc-width) - 2 * var(--sl-sidebar-pad-x));
+    max-width: none;
+  }
+
+  /* The pane is what the rail leaves, and the article centres in it instead of being pushed against
+     the rail by Starlight's `auto 0`. */
+  [data-has-sidebar][data-has-toc] .main-pane {
+    --sl-content-margin-inline: auto;
+    width: calc(100% - var(--nh3-toc-width));
+  }
 }
 
 /* Starlight overrides */
@@ -135,7 +169,10 @@ html:has(.nh3-404) body {
 
 /* Starlight lines the search box up with the content column through `--__main-column-fr`, which it
    derives from `100%` of its own header. That header is now a flex item and lost the tabs' width,
-   so the same formula reads the full bar through `cqw` and the search box keeps its column. */
+   so the same formula reads the full bar through `cqw` and the search box keeps its column. The
+   right hand rail is a fixed width now, so the two terms Starlight spends on its own rail collapse
+   into one. The `--__toc-width` fallback stays: Starlight pins it to `0rem` on a page without a
+   table of contents, which is the page that has no rail. */
 @media (min-width: 50rem) {
   .page > .header {
     container-type: inline-size;
@@ -153,8 +190,7 @@ html:has(.nh3-404) body {
       (
         100cqw +
         var(--__sidebar-pad, 0rem) -
-        var(--__toc-width, var(--sl-sidebar-width)) -
-        (2 * var(--__toc-width, var(--sl-nav-pad-x))) -
+        var(--__toc-width, var(--nh3-toc-width)) -
         var(--sl-content-inline-start, 0rem) -
         var(--sl-content-width)
       ) /
@@ -526,7 +562,13 @@ html[data-has-hero] .page > .header {
   }
 }
 
+/* A printed page has no rail, and Starlight zeroes `--sl-sidebar-width` for the same reason. Without
+   this the main pane would keep paying for a column that is not printed. */
 @media print {
+  :root {
+    --nh3-toc-width: 0px;
+  }
+
   .nh3-toc {
     display: none;
   }
@@ -1023,4 +1065,35 @@ main:has(.nh3-404) .content-panel > .sl-container > footer {
 .sl-markdown-content .nh3-scroll-x:focus-visible {
   outline: 2px solid var(--sl-color-accent);
   outline-offset: 2px;
+}
+
+/* Content tabs */
+
+/* Starlight draws the tab row at reading size on a rule that runs the whole measure, which reads as
+   a second heading above the block it switches. The row is a label instead: small, low contrast, and
+   marked by the accent under the selected tab alone. Two of the three switchers on the install page
+   hold a sentence as well as a code block, so the row stays where it is. */
+starlight-tabs [role="tablist"] {
+  border-bottom: 0;
+}
+
+starlight-tabs .tab > [role="tab"] {
+  padding: 0.3rem 0.55rem 0.42rem;
+  border-bottom: 2px solid transparent;
+  box-shadow: none;
+  color: var(--sl-color-gray-3);
+  font-size: 0.74rem;
+  font-weight: 500;
+}
+
+starlight-tabs .tab > [role="tab"]:hover {
+  color: var(--sl-color-gray-1);
+}
+
+/* The weight is the same on every tab: a heavier selected label would shift the tabs beside it on
+   each switch. */
+starlight-tabs .tab > [role="tab"][aria-selected="true"] {
+  border-bottom-color: var(--sl-color-accent);
+  color: var(--nh3-accent-light);
+  font-weight: 500;
 }

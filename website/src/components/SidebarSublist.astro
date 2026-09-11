@@ -1,0 +1,135 @@
+---
+import { Badge } from '@astrojs/starlight/components'
+import type { StarlightRouteData } from '@astrojs/starlight/route-data'
+
+type SidebarEntry = StarlightRouteData['sidebar'][number]
+
+interface Props {
+  sublist: SidebarEntry[]
+  nested?: boolean
+  /** Id of the label naming this list, and the stem the nested group ids are built from. */
+  labelledBy?: string
+}
+
+const { sublist, nested, labelledBy } = Astro.props
+
+// Chaining the parent's id keeps every generated id unique without depending on the labels.
+const stem = labelledBy ?? 'sidebar'
+---
+
+<ul class:list={{ 'top-level': !nested }} aria-labelledby={labelledBy}>
+  {
+    sublist.map((entry, index) =>
+      entry.type === 'link' ? (
+        <li>
+          <a
+            href={entry.href}
+            aria-current={entry.isCurrent ? 'page' : undefined}
+            class:list={[{ large: !nested }, entry.attrs.class]}
+            {...entry.attrs}
+          >
+            <span>{entry.label}</span>
+            {entry.badge && (
+              <Badge
+                variant={entry.badge.variant}
+                class={entry.badge.class}
+                text={entry.badge.text}
+              />
+            )}
+          </a>
+        </li>
+      ) : (
+        <li>
+          <p class="group-label" id={`${stem}-${index}`}>
+            <span class="large">{entry.label}</span>
+            {entry.badge && (
+              <Badge
+                variant={entry.badge.variant}
+                class={entry.badge.class}
+                text={entry.badge.text}
+              />
+            )}
+          </p>
+          <Astro.self sublist={entry.entries} nested labelledBy={`${stem}-${index}`} />
+        </li>
+      )
+    )
+  }
+</ul>
+
+<style>
+  @layer starlight.core {
+    ul {
+      --sl-sidebar-item-padding-inline: 0.5rem;
+      list-style: none;
+      padding: 0;
+    }
+
+    li {
+      overflow-wrap: anywhere;
+    }
+
+    ul ul li {
+      margin-inline-start: var(--sl-sidebar-item-padding-inline);
+      border-inline-start: 1px solid var(--sl-color-hairline-light);
+      padding-inline-start: var(--sl-sidebar-item-padding-inline);
+    }
+
+    .large {
+      font-size: var(--sl-text-lg);
+      font-weight: 600;
+      color: var(--sl-color-white);
+    }
+
+    .top-level > li + li {
+      margin-top: 1.5rem;
+    }
+
+    .group-label {
+      display: flex;
+      align-items: center;
+      margin: 0;
+      padding: 0.2em var(--sl-sidebar-item-padding-inline);
+      line-height: 1.4;
+    }
+
+    a {
+      display: block;
+      border-radius: 0.25rem;
+      text-decoration: none;
+      color: var(--sl-color-gray-2);
+      padding: 0.5rem var(--sl-sidebar-item-padding-inline);
+      line-height: 1.4;
+    }
+
+    a:hover,
+    a:focus {
+      color: var(--sl-color-white);
+    }
+
+    [aria-current='page'],
+    [aria-current='page']:hover,
+    [aria-current='page']:focus {
+      font-weight: 600;
+      color: var(--sl-color-text-invert);
+      background-color: var(--sl-color-text-accent);
+    }
+
+    a > *:not(:last-child),
+    .group-label > *:not(:last-child) {
+      margin-inline-end: 0.25em;
+    }
+
+    @media (min-width: 50rem) {
+      .top-level > li + li {
+        margin-top: 1.5rem;
+      }
+      .large {
+        font-size: var(--sl-text-base);
+      }
+      a {
+        font-size: var(--sl-text-sm);
+      }
+    }
+  }
+</style>

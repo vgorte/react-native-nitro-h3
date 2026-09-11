@@ -71,6 +71,8 @@ export default defineConfig({
         MarkdownContent: './src/components/MarkdownContent.astro',
         MobileTableOfContents: './src/components/MobileTableOfContents.astro',
         PageTitle: './src/components/PageTitle.astro',
+        Sidebar: './src/components/Sidebar.astro',
+        TableOfContents: './src/components/TableOfContents.astro',
         ThemeProvider: './src/components/ThemeProvider.astro',
         ThemeSelect: './src/components/ThemeSelect.astro',
       },
