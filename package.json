@@ -3,7 +3,7 @@
   "private": true,
   "workspaces": [
     "packages/*",
-    "apps/*"
+    "apps/example"
   ],
   "scripts": {
     "typecheck": "bun run --cwd packages/react-native-nitro-h3 typecheck && bun run --cwd packages/react-native-nitro-h3 typecheck:tests && bun run --cwd apps/example typecheck && tsc --noEmit -p scripts && tsc --noEmit -p website && bun run --cwd website check",
@@ -15,10 +15,15 @@
     "benchmark:svg": "bun scripts/benchmark-svg.mjs",
     "vendor:h3": "bun run scripts/vendor-h3.ts",
     "icons": "bun run scripts/generate-app-icons.ts",
+    "icons:showcase": "bun run scripts/generate-app-icons.ts --target showcase",
     "docs:api": "bun run scripts/gen-api-docs.ts",
     "example": "bun run --cwd apps/example",
     "example:ios": "bun run --cwd apps/example ios",
     "example:android": "bun run --cwd apps/example android",
+    "showcase": "bun run --cwd apps/showcase",
+    "showcase:ios": "bun run --cwd apps/showcase ios",
+    "showcase:android": "bun run --cwd apps/showcase android",
+    "promo": "cd tools/promo && bun run render",
     "release": "./scripts/release.sh"
   },
   "release-it": {
@@ -86,10 +91,10 @@
     }
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.11",
+    "@biomejs/biome": "^2.5.12",
     "@release-it/bumper": "^8.0.0",
     "@release-it/conventional-changelog": "^12.0.0",
-    "@types/bun": "^1.4.0",
+    "@types/bun": "^1.4.1",
     "release-it": "^21.0.2",
     "typescript": "^6.0.3"
   },

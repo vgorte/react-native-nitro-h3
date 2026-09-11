@@ -1,0 +1,27 @@
+{
+  "name": "promo",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Cuts the showcase takes into the landing video of the README",
+  "scripts": {
+    "clips": "scripts/clips.sh",
+    "studio": "remotion studio",
+    "render": "bun run render:wide && bun run render:portrait",
+    "render:wide": "remotion render Showcase out/showcase.mp4 --codec h264 --crf 18 && remotion render ShowcaseHero out/hero.mp4 --codec h264 --crf 18 && scripts/gif.sh",
+    "render:portrait": "remotion render ShowcasePortrait out/showcase-portrait.mp4 --codec h264 --crf 18 && remotion render ShowcasePortraitHero out/portrait-hero.mp4 --codec h264 --crf 18 && scripts/gif.sh out/portrait-hero.mp4 out/showcase-portrait-hero.gif 320 15",
+    "test": "bun test ./src/__tests__",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.520",
+    "@remotion/media": "4.0.520",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "remotion": "4.0.520"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.1",
+    "@types/react": "19.2.18",
+    "typescript": "6.0.3"
+  }
+}

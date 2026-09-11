@@ -20,6 +20,8 @@ jobs:
       # The website sits outside the root workspace and carries its own lockfile, and the typecheck
       # reaches into it for the hero scripts and `astro check`.
       - run: bun install --frozen-lockfile --cwd website
+      # the showcase has its own install: Expo pins a React Native the harness must not see
+      - run: bun install --frozen-lockfile --cwd apps/showcase
       - run: bun run lint
       - run: bun run typecheck
       - run: bun run build
@@ -27,7 +29,12 @@ jobs:
         run: bun run docs:api --check
       # The parity suite needs the compiled probe this job does not build, so `parity.yml` runs it.
       - run: bun test packages/react-native-nitro-h3/__tests__
+      # the showcase is its own install, so its checks run in its own root
+      - run: bun run --cwd apps/showcase typecheck
+      - run: bun run --cwd apps/showcase test
       - name: Vendored h3 matches the pinned upstream tag
         run: bun run vendor:h3 --check
       - name: App icons match the logo
         run: bun run icons --check
+      - name: Showcase icons match the logo
+        run: bun run icons:showcase --check

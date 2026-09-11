@@ -1,0 +1,3 @@
+# `bun test` would parse the font `require` as JavaScript
+[loader]
+".ttf" = "file"
