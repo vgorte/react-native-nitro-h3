@@ -15,10 +15,21 @@ const STEPS_OPEN = '<!-- steps -->'
 const STEPS_CLOSE = '<!-- /steps -->'
 const TABS_OPEN = '<!-- tabs -->'
 const TABS_CLOSE = '<!-- /tabs -->'
+const TABS = /^<!-- tabs(?::(.*))? -->$/
 const TAB = /^<!-- tab:(.*)-->$/
+const SYNC_KEY = /^[a-z0-9-]+$/
+const DEFAULT_SYNC_KEY = 'package-manager'
+const ALERT = /^>\s*\[!(\w+)\]\s*$/
+// `PLATFORM` is this repository's own type; GitHub degrades it to a plain blockquote.
+const ASIDES = new Map([
+  ['NOTE', ':::note'],
+  ['TIP', ':::tip'],
+  ['WARNING', ':::caution'],
+  ['PLATFORM', ':::note[Platform]'],
+])
 // The tag lines this script emits; every other `<` outside code is a JSX error in MDX.
 const EMITTED_TAG =
-  /^(?:<\/?Steps>|<Tabs syncKey="package-manager">|<\/Tabs>|<TabItem label="[^"]*">|<\/TabItem>)$/
+  /^(?:<\/?Steps>|<Tabs syncKey="[a-z0-9-]+">|<\/Tabs>|<TabItem label="[^"]*">|<\/TabItem>)$/
 
 /** Returns the H1 text and the body without it. Exactly one H1 outside fenced blocks is required. */
 export function splitTitle(markdown: string): { title: string; body: string } {
@@ -178,9 +189,10 @@ export function hasSteps(body: string): boolean {
 }
 
 /**
- * Replaces the tabs markers with a `<Tabs>` block whose tabs sync on `package-manager`.
- * A block opens with `<!-- tabs -->`, every `<!-- tab: LABEL -->` opens a tab and closes the
- * previous one, and `<!-- /tabs -->` closes the last tab and the block; GitHub hides all three.
+ * Replaces the tabs markers with a `<Tabs>` block whose tabs sync on the key of its opening marker.
+ * A block opens with `<!-- tabs -->` or `<!-- tabs: KEY -->` and falls back to `package-manager`,
+ * every `<!-- tab: LABEL -->` opens a tab and closes the previous one, and `<!-- /tabs -->` closes
+ * the last tab and the block; GitHub hides all three.
  */
 export function tabsToMdx(body: string): string {
   let inFence = false
@@ -190,13 +202,17 @@ export function tabsToMdx(body: string): string {
   for (const [index, line] of body.split('\n').entries()) {
     if (FENCE.test(line)) inFence = !inFence
     const trimmed = inFence ? '' : line.trim()
-    if (trimmed === TABS_OPEN) {
+    const open = TABS.exec(trimmed)
+    if (open) {
       if (openedAt !== 0)
         throw new Error(
           `line ${index + 1}: ${TABS_OPEN} inside the block opened on line ${openedAt}`,
         )
+      const key = open[1]?.trim() ?? DEFAULT_SYNC_KEY
+      if (!SYNC_KEY.test(key))
+        throw new Error(`line ${index + 1}: "${key}" is not a lowercase, hyphenated tabs key`)
       openedAt = index + 1
-      lines.push('<Tabs syncKey="package-manager">')
+      lines.push(`<Tabs syncKey="${key}">`)
       continue
     }
     if (trimmed === TABS_CLOSE) {
@@ -227,8 +243,38 @@ export function hasTabs(body: string): boolean {
   let inFence = false
   return body.split('\n').some((line) => {
     if (FENCE.test(line)) inFence = !inFence
-    return !inFence && line.trim() === TABS_OPEN
+    return !inFence && TABS.test(line.trim())
   })
+}
+
+/**
+ * Replaces every GitHub alert with the Starlight aside of the same meaning. The block runs from
+ * the alert line to the last `>` line after it; a type outside the four the documentation style
+ * allows is refused, because Starlight has no aside for it.
+ */
+export function calloutsToAsides(body: string, source: string): string {
+  const input = body.split('\n')
+  const lines: string[] = []
+  let inFence = false
+  for (let index = 0; index < input.length; index++) {
+    const line = input[index] ?? ''
+    if (FENCE.test(line)) inFence = !inFence
+    const alert = inFence ? null : ALERT.exec(line.trim())
+    if (!alert) {
+      lines.push(line)
+      continue
+    }
+    const type = alert[1] ?? ''
+    const aside = ASIDES.get(type)
+    if (!aside) throw new Error(`${source}:${index + 1}: [!${type}] is not a documented callout`)
+    lines.push(aside)
+    while ((input[index + 1] ?? '').trimStart().startsWith('>')) {
+      index += 1
+      lines.push((input[index] ?? '').replace(/^\s*>\s?/, ''))
+    }
+    lines.push(':::')
+  }
+  return lines.join('\n')
 }
 
 /**
@@ -270,9 +316,8 @@ export function transform(
   page: Page,
   base: string,
 ): { content: string; extension: 'md' | 'mdx' } {
-  const alert = markdown.match(/^> \[!\w+\]/m)
-  if (alert) throw new Error(`${page.source} uses ${alert[0]}, which Starlight renders literally`)
-  const { title, body } = splitTitle(markdown)
+  // Asides render in plain Markdown, so a page of callouts alone stays `md`.
+  const { title, body } = splitTitle(calloutsToAsides(markdown, page.source))
   const rewritten = stripHeadingEmoji(rewriteLinks(body, page, base))
   const head = frontmatter(page, stripLeadingEmoji(title))
   const steps = hasSteps(rewritten)

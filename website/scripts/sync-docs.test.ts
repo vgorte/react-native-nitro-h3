@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { EXCLUDED, PAGES, type Page } from '../pages'
 import {
+  calloutsToAsides,
   forceDarkSvg,
   frontmatter,
   hasSteps,
@@ -288,6 +289,20 @@ describe('tabsToMdx', () => {
   test('throws on an unclosed marker', () => {
     expect(() => tabsToMdx('<!-- tabs -->\n<!-- tab: bun -->\n')).toThrow(/line 1: unclosed/)
   })
+
+  test('syncs on package-manager when the marker carries no key', () => {
+    expect(tabsToMdx(tabsBody)).toContain('<Tabs syncKey="package-manager">')
+  })
+
+  test('syncs on the key the marker carries', () => {
+    const text = tabsBody.replace('<!-- tabs -->', '<!-- tabs: platform -->')
+    expect(tabsToMdx(text)).toContain('<Tabs syncKey="platform">')
+  })
+
+  test('throws on a key that is not lowercase and hyphenated', () => {
+    const text = tabsBody.replace('<!-- tabs -->', '<!-- tabs: Package Manager -->')
+    expect(() => tabsToMdx(text)).toThrow(/line 1: "Package Manager"/)
+  })
 })
 
 describe('hasTabs', () => {
@@ -301,6 +316,53 @@ describe('hasTabs', () => {
 
   test('is true for a marker outside fenced blocks', () => {
     expect(hasTabs(tabsBody)).toBe(true)
+  })
+
+  test('is true for a marker that carries a key', () => {
+    expect(hasTabs('<!-- tabs: platform -->\n<!-- tab: iOS -->\n<!-- /tabs -->\n')).toBe(true)
+  })
+})
+
+describe('calloutsToAsides', () => {
+  test('maps the four documented types to their aside', () => {
+    expect(calloutsToAsides('> [!NOTE]\n> A caveat.\n', 'docs/x.md')).toBe(
+      ':::note\nA caveat.\n:::\n',
+    )
+    expect(calloutsToAsides('> [!TIP]\n> A pointer.\n', 'docs/x.md')).toBe(
+      ':::tip\nA pointer.\n:::\n',
+    )
+    expect(calloutsToAsides('> [!WARNING]\n> A crash.\n', 'docs/x.md')).toBe(
+      ':::caution\nA crash.\n:::\n',
+    )
+    expect(calloutsToAsides('> [!PLATFORM]\n> On Android this is a no-op.\n', 'docs/x.md')).toBe(
+      ':::note[Platform]\nOn Android this is a no-op.\n:::\n',
+    )
+  })
+
+  test('keeps a blank line inside a multi-line callout', () => {
+    const text = '> [!NOTE]\n> First line.\n>\n> Second line.\n\nAfter.\n'
+    expect(calloutsToAsides(text, 'docs/x.md')).toBe(
+      ':::note\nFirst line.\n\nSecond line.\n:::\n\nAfter.\n',
+    )
+  })
+
+  test('leaves a plain blockquote alone', () => {
+    const text = '> See the site.\n'
+    expect(calloutsToAsides(text, 'docs/x.md')).toBe(text)
+  })
+
+  test('leaves an alert inside a fenced block untouched', () => {
+    const text = '```md\n> [!NOTE]\n> A caveat.\n```\n'
+    expect(calloutsToAsides(text, 'docs/x.md')).toBe(text)
+  })
+
+  test('throws on a type the documentation style forbids', () => {
+    expect(() => calloutsToAsides('> [!CAUTION]\n> x\n', 'docs/x.md')).toThrow(
+      'docs/x.md:1: [!CAUTION] is not a documented callout',
+    )
+    expect(() => calloutsToAsides('text\n\n> [!IMPORTANT]\n> x\n', 'docs/x.md')).toThrow(
+      'docs/x.md:3: [!IMPORTANT] is not a documented callout',
+    )
   })
 })
 
@@ -326,6 +388,15 @@ describe('mdxGuard', () => {
   test('passes on the Tabs and TabItem lines', () => {
     const text =
       '<Tabs syncKey="package-manager">\n<TabItem label="bun">\ntext\n</TabItem>\n</Tabs>\n'
+    expect(() => mdxGuard(text, 'docs/x.md')).not.toThrow()
+  })
+
+  test('passes on a Tabs line with another key', () => {
+    expect(() => mdxGuard('<Tabs syncKey="platform">\n</Tabs>\n', 'docs/x.md')).not.toThrow()
+  })
+
+  test('passes on the aside lines', () => {
+    const text = ':::note[Platform]\nOn Android this is a no-op.\n:::\n'
     expect(() => mdxGuard(text, 'docs/x.md')).not.toThrow()
   })
 })
@@ -362,8 +433,16 @@ describe('transform', () => {
     expect(out.content.endsWith('---\n\n## Installation\n')).toBe(true)
   })
 
-  test('refuses GitHub alert syntax', () => {
-    expect(() => transform('# T\n\n> [!NOTE]\n> x\n', perf, base)).toThrow(/\[!NOTE\]/)
+  test('turns a callout into an aside and stays Markdown', () => {
+    const out = transform('# T\n\n> [!PLATFORM]\n> On Android this is a no-op.\n', perf, base)
+    expect(out.extension).toBe('md')
+    expect(out.content).toContain(':::note[Platform]\nOn Android this is a no-op.\n:::\n')
+  })
+
+  test('refuses a forbidden alert type and names the file', () => {
+    expect(() => transform('# T\n\n> [!CAUTION]\n> x\n', perf, base)).toThrow(
+      `${perf.source}:3: [!CAUTION]`,
+    )
   })
 
   test('a page without markers stays Markdown and gets no import', () => {
