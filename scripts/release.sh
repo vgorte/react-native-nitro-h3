@@ -30,6 +30,9 @@ cd "${ROOT}"
 
 # Verification gate, before the first publish rather than after it
 bun install --frozen-lockfile
+# The website sits outside the root workspace and carries its own lockfile, and the typecheck
+# reaches into it for `astro check` and the Astro type definitions.
+bun install --frozen-lockfile --cwd website
 bun run lint
 bun run typecheck
 bun run build
