@@ -67,12 +67,19 @@ jobs:
       # the workspace have to be installed first.
       - run: bun install --frozen-lockfile
 
+      # `lib/` is not tracked, and the prepack check refuses a tarball without it; the release script
+      # builds the same way before it publishes.
+      - run: bun run build
+
       # The tarball name carries the version, so the path is read from the step output rather than
-      # hardcoded.
+      # hardcoded. `pipefail` keeps a failed `npm pack` from passing as an empty name.
       - name: Pack the package
         id: pack
         working-directory: packages/react-native-nitro-h3
-        run: echo "tarball=$RUNNER_TEMP/$(npm pack --pack-destination "$RUNNER_TEMP" | tail -1)" >> "$GITHUB_OUTPUT"
+        run: |
+          set -o pipefail
+          tarball="$(npm pack --pack-destination "$RUNNER_TEMP" | tail -1)"
+          echo "tarball=$RUNNER_TEMP/$tarball" >> "$GITHUB_OUTPUT"
 
       # The SDK is pinned so that an Expo release cannot turn a pull request red, the same reasoning
       # as `nitro-latest.yml` inverted: this job gates pull requests, so bump the template tag
