@@ -19,6 +19,7 @@ import {
   uncompactCells,
   uncompactCellsAsync,
 } from 'react-native-nitro-h3'
+import { WORKLOAD_IDS, type WorkloadId } from './benchmarkPlan'
 
 const SAN_FRANCISCO = { lat: 37.7749, lng: -122.4194 }
 const BERLIN = { lat: 52.52, lng: 13.405 }
@@ -54,7 +55,7 @@ const BATCH_COLUMNS = 320
 const SINGLE_CALL_YIELD = 100
 
 // the factor against the work one call does; `k=20` stays `W2`
-const DISK_SERIES = [
+const DISK_SERIES: { id: WorkloadId; k: number; runs: number }[] = [
   { id: 'W2a', k: 1, runs: RUNS },
   { id: 'W2b', k: 5, runs: RUNS },
   { id: 'W2c', k: 10, runs: RUNS },
@@ -99,26 +100,41 @@ function uncompactLabel(res: number, asynchronous: boolean): string {
   return `W8 uncompactCells${asynchronous ? 'Async' : ''}, SF res 9 compacted, to res ${res}`
 }
 
-function planOf(uncompactRes: number): string[] {
+/** One card of the plan: the workload's id and the label the row carries. */
+export interface PlanEntry {
+  id: WorkloadId
+  label: string
+}
+
+function planOf(uncompactRes: number): PlanEntry[] {
   return [
-    LABELS.w0,
-    LABELS.w1,
-    LABELS.w2,
-    ...DISK_SERIES.map(diskSeriesLabel),
-    LABELS.w3,
-    LABELS.w3Async,
-    LABELS.w4,
-    LABELS.w5,
-    LABELS.w6,
-    LABELS.w7,
-    uncompactLabel(uncompactRes, false),
-    uncompactLabel(uncompactRes, true),
-    LABELS.w9,
-    LABELS.w10,
-    LABELS.w11,
-    LABELS.w12,
-    LABELS.w13,
+    { id: 'W0', label: LABELS.w0 },
+    { id: 'W1', label: LABELS.w1 },
+    { id: 'W2', label: LABELS.w2 },
+    ...DISK_SERIES.map((series) => ({ id: series.id, label: diskSeriesLabel(series) })),
+    { id: 'W3', label: LABELS.w3 },
+    { id: 'W3Async', label: LABELS.w3Async },
+    { id: 'W4', label: LABELS.w4 },
+    { id: 'W5', label: LABELS.w5 },
+    { id: 'W6', label: LABELS.w6 },
+    { id: 'W7', label: LABELS.w7 },
+    { id: 'W8', label: uncompactLabel(uncompactRes, false) },
+    { id: 'W8Async', label: uncompactLabel(uncompactRes, true) },
+    { id: 'W9', label: LABELS.w9 },
+    { id: 'W10', label: LABELS.w10 },
+    { id: 'W11', label: LABELS.w11 },
+    { id: 'W12', label: LABELS.w12 },
+    { id: 'W13', label: LABELS.w13 },
   ]
+}
+
+/**
+ * Returns the plan the screen lists before a run.
+ *
+ * The budget can drop `W8`'s resolution, so a run reports its own plan; only the labels differ.
+ */
+export function initialPlan(): PlanEntry[] {
+  return planOf(UNCOMPACT_RES)
 }
 
 export interface Stats {
@@ -129,6 +145,7 @@ export interface Stats {
 }
 
 export interface Row {
+  id: WorkloadId
   workload: string
   runs: number
   millis: number
@@ -144,11 +161,11 @@ export interface Row {
 /**
  * Reports what the run is doing between two samples, so the screen can show one line per workload.
  *
- * `index` is the workload being measured; every workload before it is finished and carried in
- * `rows`. `passes` of `0` means the workload has not started timing yet.
+ * `index` is the plan position of the workload being measured; a subset run skips the positions it
+ * did not select. `passes` of `0` means the workload has not started timing yet.
  */
 export interface RunState {
-  plan: string[]
+  plan: PlanEntry[]
   rows: Row[]
   index: number
   engine: string
@@ -374,6 +391,7 @@ async function pause(signal: RunSignal): Promise<boolean> {
 }
 
 function toRow(
+  id: WorkloadId,
   workload: string,
   runs: number,
   stats: Stats,
@@ -383,6 +401,7 @@ function toRow(
   singleCall = false,
 ): Row {
   return {
+    id,
     workload,
     runs,
     millis: stats.median,
@@ -417,6 +436,28 @@ function batchInputs(): Float64Array {
   return coords
 }
 
+// the cells `W11` answers with, which `W12` and `W13` take as their input
+interface BatchCells {
+  cells: BigUint64Array
+  reference: string[]
+  same: boolean
+}
+
+// one untimed pass of `W11`, for a run that selected a consumer but not the producer
+function batchCellsOf(): BatchCells {
+  const coordinates = batchInputs()
+  const produced = latLngsToCells(coordinates, 9)
+  const reference = new Array<string>(CALLS)
+  for (let i = 0; i < CALLS; i++) {
+    reference[i] = h3.latLngToCell(
+      coordinates[2 * i] as number,
+      coordinates[2 * i + 1] as number,
+      9,
+    )
+  }
+  return { cells: produced, reference, same: sameCellsInOrder(produced, reference) }
+}
+
 // both engines allocate whatever is asked for, so the row drops a resolution to stay in budget
 function fittingResolution(cells: BigUint64Array, target: number): number {
   // nothing below the input's finest cell is left to uncompact
@@ -436,15 +477,29 @@ function fittingResolution(cells: BigUint64Array, target: number): number {
   return floor
 }
 
+/**
+ * Times the selected workloads against `h3-js` and reports the run between samples.
+ *
+ * The reported plan stays the full plan, so a subset run leaves every other card untouched. A
+ * workload a selected one reads from is produced untimed when it was not selected itself.
+ */
 export async function runBenchmark(
   signal: RunSignal,
   onState: (state: RunState) => void,
+  selected: readonly WorkloadId[] = WORKLOAD_IDS,
 ): Promise<{ rows: Row[]; seconds: number } | undefined> {
   const started = now()
   // plan starts at the target; the budget sets resolution after setup
   let plan = planOf(UNCOMPACT_RES)
   const rows: Row[] = []
-  let index = 0
+  const wanted = new Set(selected)
+  // the plan positions to measure, in plan order, so the spinner skips what is not selected
+  const queue = plan.flatMap((entry, at) => (wanted.has(entry.id) ? [at] : []))
+  let position = 0
+  let index = queue[0] ?? plan.length
+  function wants(id: WorkloadId): boolean {
+    return wanted.has(id)
+  }
   function report(engine: string, pass: number, passes: number): void {
     onState({ plan, rows: [...rows], index, engine, pass, passes })
   }
@@ -455,7 +510,8 @@ export async function runBenchmark(
   }
   function finish(row: Row): void {
     rows.push(row)
-    index += 1
+    position += 1
+    index = queue[position] ?? plan.length
     report(OWN, 0, 0)
   }
   report(OWN, 0, 0)
@@ -479,657 +535,732 @@ export async function runBenchmark(
   plan = planOf(uncompactRes)
   report(OWN, 0, 0)
 
-  const singleInputs = singleCallInputs()
-  // an empty body over the loop measures its own cost
-  const w0Baseline = await timeCalls(
-    signal,
-    SINGLE_CALLS,
-    () => undefined,
-    track(BASELINE, SINGLE_CALLS),
-  )
-  if (w0Baseline == null) {
-    return undefined
-  }
-  const w0 = await timeCalls(
-    signal,
-    SINGLE_CALLS,
-    (call) => {
-      const input = singleInputs[call] as LatLng
-      return latLngToCell(input.lat, input.lng, 9)
-    },
-    track(OWN, SINGLE_CALLS),
-  )
-  if (w0 == null) {
-    return undefined
-  }
-  const w0Reference = await timeCalls(
-    signal,
-    SINGLE_CALLS,
-    (call) => {
-      const input = singleInputs[call] as LatLng
-      return h3.latLngToCell(input.lat, input.lng, 9)
-    },
-    track(REFERENCE, SINGLE_CALLS),
-  )
-  if (w0Reference == null) {
-    return undefined
-  }
-  const baselineMillis = w0Baseline.stats.median
-  finish(
-    toRow(
-      LABELS.w0,
+  if (wants('W0')) {
+    const singleInputs = singleCallInputs()
+    // an empty body over the loop measures its own cost
+    const w0Baseline = await timeCalls(
+      signal,
       SINGLE_CALLS,
-      withoutBaseline(w0.samples, baselineMillis),
-      withoutBaseline(w0Reference.samples, baselineMillis),
-      singleInputs.every(
-        (input) =>
-          latLngToCell(input.lat, input.lng, 9).toString(16) ===
-          h3.latLngToCell(input.lat, input.lng, 9).toLowerCase(),
+      () => undefined,
+      track(BASELINE, SINGLE_CALLS),
+    )
+    if (w0Baseline == null) {
+      return undefined
+    }
+    const w0 = await timeCalls(
+      signal,
+      SINGLE_CALLS,
+      (call) => {
+        const input = singleInputs[call] as LatLng
+        return latLngToCell(input.lat, input.lng, 9)
+      },
+      track(OWN, SINGLE_CALLS),
+    )
+    if (w0 == null) {
+      return undefined
+    }
+    const w0Reference = await timeCalls(
+      signal,
+      SINGLE_CALLS,
+      (call) => {
+        const input = singleInputs[call] as LatLng
+        return h3.latLngToCell(input.lat, input.lng, 9)
+      },
+      track(REFERENCE, SINGLE_CALLS),
+    )
+    if (w0Reference == null) {
+      return undefined
+    }
+    const baselineMillis = w0Baseline.stats.median
+    finish(
+      toRow(
+        'W0',
+        LABELS.w0,
+        SINGLE_CALLS,
+        withoutBaseline(w0.samples, baselineMillis),
+        withoutBaseline(w0Reference.samples, baselineMillis),
+        singleInputs.every(
+          (input) =>
+            latLngToCell(input.lat, input.lng, 9).toString(16) ===
+            h3.latLngToCell(input.lat, input.lng, 9).toLowerCase(),
+        ),
+        `${SINGLE_CALLS} distinct inputs, median and p95 per call, ` +
+          `${baselineMillis.toFixed(4)} ms baseline subtracted`,
+        true,
       ),
-      `${SINGLE_CALLS} distinct inputs, median and p95 per call, ` +
-        `${baselineMillis.toFixed(4)} ms baseline subtracted`,
-      true,
-    ),
-  )
+    )
+  }
 
   if (await pause(signal)) {
     return undefined
   }
 
-  const w1 = await timeRuns(
-    signal,
-    RUNS,
-    () => {
-      let last = 0n
-      for (let i = 0; i < CALLS; i++) {
-        last = latLngToCell(SAN_FRANCISCO.lat, SAN_FRANCISCO.lng, 9)
-      }
-      return last
-    },
-    track(OWN, RUNS),
-  )
-  if (w1 == null) {
-    return undefined
-  }
-  const w1Reference = await timeRuns(
-    signal,
-    RUNS,
-    () => {
-      let last = ''
-      for (let i = 0; i < CALLS; i++) {
-        last = h3.latLngToCell(SAN_FRANCISCO.lat, SAN_FRANCISCO.lng, 9)
-      }
-      return last
-    },
-    track(REFERENCE, RUNS),
-  )
-  if (w1Reference == null) {
-    return undefined
-  }
-  finish(
-    toRow(
-      LABELS.w1,
+  if (wants('W1')) {
+    const w1 = await timeRuns(
+      signal,
       RUNS,
-      w1.stats,
-      w1Reference.stats,
-      w1.value.toString(16) === w1Reference.value.toLowerCase(),
-      w1.value.toString(16),
-    ),
-  )
+      () => {
+        let last = 0n
+        for (let i = 0; i < CALLS; i++) {
+          last = latLngToCell(SAN_FRANCISCO.lat, SAN_FRANCISCO.lng, 9)
+        }
+        return last
+      },
+      track(OWN, RUNS),
+    )
+    if (w1 == null) {
+      return undefined
+    }
+    const w1Reference = await timeRuns(
+      signal,
+      RUNS,
+      () => {
+        let last = ''
+        for (let i = 0; i < CALLS; i++) {
+          last = h3.latLngToCell(SAN_FRANCISCO.lat, SAN_FRANCISCO.lng, 9)
+        }
+        return last
+      },
+      track(REFERENCE, RUNS),
+    )
+    if (w1Reference == null) {
+      return undefined
+    }
+    finish(
+      toRow(
+        'W1',
+        LABELS.w1,
+        RUNS,
+        w1.stats,
+        w1Reference.stats,
+        w1.value.toString(16) === w1Reference.value.toLowerCase(),
+        w1.value.toString(16),
+      ),
+    )
+  }
 
   if (await pause(signal)) {
     return undefined
   }
 
-  const w2 = await timeRuns(
-    signal,
-    RUNS,
-    () => {
-      let last = disk
-      for (let i = 0; i < CALLS_PER_RUN; i++) {
-        last = gridDisk(origin, DISK_K)
-      }
-      return last
-    },
-    track(OWN, RUNS),
-  )
-  if (w2 == null) {
-    return undefined
-  }
-  const w2Reference = await timeRuns(
-    signal,
-    RUNS,
-    () => {
-      let last = referenceDisk
-      for (let i = 0; i < CALLS_PER_RUN; i++) {
-        last = h3.gridDisk(referenceOrigin, DISK_K)
-      }
-      return last
-    },
-    track(REFERENCE, RUNS),
-  )
-  if (w2Reference == null) {
-    return undefined
-  }
-  finish(
-    toRow(
-      LABELS.w2,
+  if (wants('W2')) {
+    const w2 = await timeRuns(
+      signal,
       RUNS,
-      w2.stats,
-      w2Reference.stats,
-      sameCells(w2.value, w2Reference.value),
-      `${w2.value.length} cells per call`,
-    ),
-  )
+      () => {
+        let last = disk
+        for (let i = 0; i < CALLS_PER_RUN; i++) {
+          last = gridDisk(origin, DISK_K)
+        }
+        return last
+      },
+      track(OWN, RUNS),
+    )
+    if (w2 == null) {
+      return undefined
+    }
+    const w2Reference = await timeRuns(
+      signal,
+      RUNS,
+      () => {
+        let last = referenceDisk
+        for (let i = 0; i < CALLS_PER_RUN; i++) {
+          last = h3.gridDisk(referenceOrigin, DISK_K)
+        }
+        return last
+      },
+      track(REFERENCE, RUNS),
+    )
+    if (w2Reference == null) {
+      return undefined
+    }
+    finish(
+      toRow(
+        'W2',
+        LABELS.w2,
+        RUNS,
+        w2.stats,
+        w2Reference.stats,
+        sameCells(w2.value, w2Reference.value),
+        `${w2.value.length} cells per call`,
+      ),
+    )
+  }
 
   if (await pause(signal)) {
     return undefined
   }
 
   for (const series of DISK_SERIES) {
-    const own = await timeRuns(
-      signal,
-      series.runs,
-      () => {
-        let last = disk
-        for (let i = 0; i < CALLS_PER_RUN; i++) {
-          last = gridDisk(origin, series.k)
-        }
-        return last
-      },
-      track(OWN, series.runs),
-    )
-    if (own == null) {
-      return undefined
-    }
-    const reference = await timeRuns(
-      signal,
-      series.runs,
-      () => {
-        let last = referenceDisk
-        for (let i = 0; i < CALLS_PER_RUN; i++) {
-          last = h3.gridDisk(referenceOrigin, series.k)
-        }
-        return last
-      },
-      track(REFERENCE, series.runs),
-    )
-    if (reference == null) {
-      return undefined
-    }
-    finish(
-      toRow(
-        diskSeriesLabel(series),
+    if (wants(series.id)) {
+      const own = await timeRuns(
+        signal,
         series.runs,
-        own.stats,
-        reference.stats,
-        sameCells(own.value, reference.value),
-        `${own.value.length} cells per call`,
-      ),
-    )
+        () => {
+          let last = disk
+          for (let i = 0; i < CALLS_PER_RUN; i++) {
+            last = gridDisk(origin, series.k)
+          }
+          return last
+        },
+        track(OWN, series.runs),
+      )
+      if (own == null) {
+        return undefined
+      }
+      const reference = await timeRuns(
+        signal,
+        series.runs,
+        () => {
+          let last = referenceDisk
+          for (let i = 0; i < CALLS_PER_RUN; i++) {
+            last = h3.gridDisk(referenceOrigin, series.k)
+          }
+          return last
+        },
+        track(REFERENCE, series.runs),
+      )
+      if (reference == null) {
+        return undefined
+      }
+      finish(
+        toRow(
+          series.id,
+          diskSeriesLabel(series),
+          series.runs,
+          own.stats,
+          reference.stats,
+          sameCells(own.value, reference.value),
+          `${own.value.length} cells per call`,
+        ),
+      )
+    }
 
     if (await pause(signal)) {
       return undefined
     }
   }
 
-  const w3 = await timeRuns(
-    signal,
-    RUNS_SLOW,
-    () => polygonToCells(SAN_FRANCISCO_POLYGON, 12),
-    track(OWN, RUNS_SLOW),
-  )
-  if (w3 == null) {
-    return undefined
-  }
-  const w3Reference = await timeRuns(
-    signal,
-    RUNS_SLOW,
-    () => h3.polygonToCells(SAN_FRANCISCO_POLYGON, 12),
-    track(REFERENCE, RUNS_SLOW),
-  )
-  if (w3Reference == null) {
-    return undefined
-  }
-  const w3Hex = sortedHex(w3.value)
-  finish(
-    toRow(
-      LABELS.w3,
+  // `W3Async` checks against these cells, so they outlive the block that measured them
+  let w3Hex: string[] | undefined
+  if (wants('W3')) {
+    const w3 = await timeRuns(
+      signal,
       RUNS_SLOW,
-      w3.stats,
-      w3Reference.stats,
-      sameCells(w3.value, w3Reference.value),
-      `${w3.value.length} cells`,
-    ),
-  )
-
-  if (await pause(signal)) {
-    return undefined
-  }
-
-  const w3Async = await timeRunsAsync(
-    signal,
-    RUNS_SLOW,
-    () => polygonToCellsAsync(SAN_FRANCISCO_POLYGON, 12),
-    track(OWN, RUNS_SLOW),
-  )
-  if (w3Async == null) {
-    return undefined
-  }
-  finish(
-    toRow(
-      LABELS.w3Async,
+      () => polygonToCells(SAN_FRANCISCO_POLYGON, 12),
+      track(OWN, RUNS_SLOW),
+    )
+    if (w3 == null) {
+      return undefined
+    }
+    const w3Reference = await timeRuns(
+      signal,
       RUNS_SLOW,
-      w3Async.stats,
-      undefined,
-      sameStrings(sortedHex(w3Async.value), w3Hex),
-      `${w3Async.value.length} cells`,
-    ),
-  )
+      () => h3.polygonToCells(SAN_FRANCISCO_POLYGON, 12),
+      track(REFERENCE, RUNS_SLOW),
+    )
+    if (w3Reference == null) {
+      return undefined
+    }
+    w3Hex = sortedHex(w3.value)
+    finish(
+      toRow(
+        'W3',
+        LABELS.w3,
+        RUNS_SLOW,
+        w3.stats,
+        w3Reference.stats,
+        sameCells(w3.value, w3Reference.value),
+        `${w3.value.length} cells`,
+      ),
+    )
+  }
 
   if (await pause(signal)) {
     return undefined
   }
 
-  const w4 = await timeRuns(signal, RUNS, () => compactCells(disk), track(OWN, RUNS))
-  if (w4 == null) {
-    return undefined
+  if (wants('W3Async')) {
+    const w3Async = await timeRunsAsync(
+      signal,
+      RUNS_SLOW,
+      () => polygonToCellsAsync(SAN_FRANCISCO_POLYGON, 12),
+      track(OWN, RUNS_SLOW),
+    )
+    if (w3Async == null) {
+      return undefined
+    }
+    // untimed and unreported, for a run that left `W3` out
+    w3Hex ??= sortedHex(polygonToCells(SAN_FRANCISCO_POLYGON, 12))
+    finish(
+      toRow(
+        'W3Async',
+        LABELS.w3Async,
+        RUNS_SLOW,
+        w3Async.stats,
+        undefined,
+        sameStrings(sortedHex(w3Async.value), w3Hex),
+        `${w3Async.value.length} cells`,
+      ),
+    )
   }
-  const w4Reference = await timeRuns(
-    signal,
-    RUNS,
-    () => h3.compactCells(referenceDisk),
-    track(REFERENCE, RUNS),
-  )
-  if (w4Reference == null) {
-    return undefined
-  }
-  finish(
-    toRow(
-      LABELS.w4,
-      RUNS,
-      w4.stats,
-      w4Reference.stats,
-      sameCells(w4.value, w4Reference.value),
-      `${w4.value.length} cells`,
-    ),
-  )
 
   if (await pause(signal)) {
     return undefined
   }
 
-  const w5 = await timeRuns(signal, RUNS, () => cellsToMultiPolygon(disk), track(OWN, RUNS))
-  if (w5 == null) {
-    return undefined
-  }
-  const w5Reference = await timeRuns(
-    signal,
-    RUNS,
-    () => h3.cellsToMultiPolygon(referenceDisk),
-    track(REFERENCE, RUNS),
-  )
-  if (w5Reference == null) {
-    return undefined
-  }
-  finish(
-    toRow(
-      LABELS.w5,
+  if (wants('W4')) {
+    const w4 = await timeRuns(signal, RUNS, () => compactCells(disk), track(OWN, RUNS))
+    if (w4 == null) {
+      return undefined
+    }
+    const w4Reference = await timeRuns(
+      signal,
       RUNS,
-      w5.stats,
-      w5Reference.stats,
-      samePolygons(w5.value, w5Reference.value),
-      `${w5.value.length} polygons`,
-    ),
-  )
+      () => h3.compactCells(referenceDisk),
+      track(REFERENCE, RUNS),
+    )
+    if (w4Reference == null) {
+      return undefined
+    }
+    finish(
+      toRow(
+        'W4',
+        LABELS.w4,
+        RUNS,
+        w4.stats,
+        w4Reference.stats,
+        sameCells(w4.value, w4Reference.value),
+        `${w4.value.length} cells`,
+      ),
+    )
+  }
 
   if (await pause(signal)) {
     return undefined
   }
 
-  const w6 = await timeRuns(
-    signal,
-    RUNS,
-    () => {
-      let last: LatLng = { lat: 0, lng: 0 }
-      for (let i = 0; i < CALLS; i++) {
-        last = cellToLatLng(cells[i % cells.length] as bigint)
-      }
-      return last
-    },
-    track(OWN, RUNS),
-  )
-  if (w6 == null) {
-    return undefined
-  }
-  const w6Reference = await timeRuns(
-    signal,
-    RUNS,
-    () => {
-      let last: number[] = []
-      for (let i = 0; i < CALLS; i++) {
-        last = h3.cellToLatLng(referenceDisk[i % referenceDisk.length] as string)
-      }
-      return last
-    },
-    track(REFERENCE, RUNS),
-  )
-  if (w6Reference == null) {
-    return undefined
-  }
-  finish(
-    toRow(
-      LABELS.w6,
+  if (wants('W5')) {
+    const w5 = await timeRuns(signal, RUNS, () => cellsToMultiPolygon(disk), track(OWN, RUNS))
+    if (w5 == null) {
+      return undefined
+    }
+    const w5Reference = await timeRuns(
+      signal,
       RUNS,
-      w6.stats,
-      w6Reference.stats,
-      cells.length === referenceDisk.length &&
-        cells.every((cell, at) =>
-          sameLatLng(cellToLatLng(cell), h3.cellToLatLng(referenceDisk[at] as string)),
-        ),
-      `${CALLS} calls over ${cells.length} distinct cells`,
-    ),
-  )
+      () => h3.cellsToMultiPolygon(referenceDisk),
+      track(REFERENCE, RUNS),
+    )
+    if (w5Reference == null) {
+      return undefined
+    }
+    finish(
+      toRow(
+        'W5',
+        LABELS.w5,
+        RUNS,
+        w5.stats,
+        w5Reference.stats,
+        samePolygons(w5.value, w5Reference.value),
+        `${w5.value.length} polygons`,
+      ),
+    )
+  }
 
   if (await pause(signal)) {
     return undefined
   }
 
-  const w7 = await timeRuns(
-    signal,
-    RUNS,
-    () => {
-      let last: LatLng[] = []
-      for (let i = 0; i < CALLS; i++) {
-        last = cellToBoundary(cells[i % cells.length] as bigint)
-      }
-      return last
-    },
-    track(OWN, RUNS),
-  )
-  if (w7 == null) {
-    return undefined
-  }
-  const w7Reference = await timeRuns(
-    signal,
-    RUNS,
-    () => {
-      let last: number[][] = []
-      for (let i = 0; i < CALLS; i++) {
-        last = h3.cellToBoundary(referenceDisk[i % referenceDisk.length] as string)
-      }
-      return last
-    },
-    track(REFERENCE, RUNS),
-  )
-  if (w7Reference == null) {
-    return undefined
-  }
-  finish(
-    toRow(
-      LABELS.w7,
+  if (wants('W6')) {
+    const w6 = await timeRuns(
+      signal,
       RUNS,
-      w7.stats,
-      w7Reference.stats,
-      cells.length === referenceDisk.length &&
-        cells.every((cell, at) =>
-          sameBoundary(cellToBoundary(cell), h3.cellToBoundary(referenceDisk[at] as string)),
-        ),
-      `${CALLS} calls over ${cells.length} distinct cells`,
-    ),
-  )
+      () => {
+        let last: LatLng = { lat: 0, lng: 0 }
+        for (let i = 0; i < CALLS; i++) {
+          last = cellToLatLng(cells[i % cells.length] as bigint)
+        }
+        return last
+      },
+      track(OWN, RUNS),
+    )
+    if (w6 == null) {
+      return undefined
+    }
+    const w6Reference = await timeRuns(
+      signal,
+      RUNS,
+      () => {
+        let last: number[] = []
+        for (let i = 0; i < CALLS; i++) {
+          last = h3.cellToLatLng(referenceDisk[i % referenceDisk.length] as string)
+        }
+        return last
+      },
+      track(REFERENCE, RUNS),
+    )
+    if (w6Reference == null) {
+      return undefined
+    }
+    finish(
+      toRow(
+        'W6',
+        LABELS.w6,
+        RUNS,
+        w6.stats,
+        w6Reference.stats,
+        cells.length === referenceDisk.length &&
+          cells.every((cell, at) =>
+            sameLatLng(cellToLatLng(cell), h3.cellToLatLng(referenceDisk[at] as string)),
+          ),
+        `${CALLS} calls over ${cells.length} distinct cells`,
+      ),
+    )
+  }
 
   if (await pause(signal)) {
     return undefined
   }
 
-  const w8 = await timeRuns(
-    signal,
-    RUNS,
-    () => uncompactCells(compacted, uncompactRes),
-    track(OWN, RUNS),
-  )
-  if (w8 == null) {
-    return undefined
-  }
-  const w8Reference = await timeRuns(
-    signal,
-    RUNS,
-    () => h3.uncompactCells(referenceCompacted, uncompactRes),
-    track(REFERENCE, RUNS),
-  )
-  if (w8Reference == null) {
-    return undefined
-  }
-  const w8Hex = sortedHex(w8.value)
-  finish(
-    toRow(
-      uncompactLabel(uncompactRes, false),
+  if (wants('W7')) {
+    const w7 = await timeRuns(
+      signal,
       RUNS,
-      w8.stats,
-      w8Reference.stats,
-      sameUncompactInput && sameCells(w8.value, w8Reference.value),
-      `${compacted.length} cells in, ${w8.value.length} cells out`,
-    ),
-  )
+      () => {
+        let last: LatLng[] = []
+        for (let i = 0; i < CALLS; i++) {
+          last = cellToBoundary(cells[i % cells.length] as bigint)
+        }
+        return last
+      },
+      track(OWN, RUNS),
+    )
+    if (w7 == null) {
+      return undefined
+    }
+    const w7Reference = await timeRuns(
+      signal,
+      RUNS,
+      () => {
+        let last: number[][] = []
+        for (let i = 0; i < CALLS; i++) {
+          last = h3.cellToBoundary(referenceDisk[i % referenceDisk.length] as string)
+        }
+        return last
+      },
+      track(REFERENCE, RUNS),
+    )
+    if (w7Reference == null) {
+      return undefined
+    }
+    finish(
+      toRow(
+        'W7',
+        LABELS.w7,
+        RUNS,
+        w7.stats,
+        w7Reference.stats,
+        cells.length === referenceDisk.length &&
+          cells.every((cell, at) =>
+            sameBoundary(cellToBoundary(cell), h3.cellToBoundary(referenceDisk[at] as string)),
+          ),
+        `${CALLS} calls over ${cells.length} distinct cells`,
+      ),
+    )
+  }
 
   if (await pause(signal)) {
     return undefined
   }
 
-  const w8Async = await timeRunsAsync(
-    signal,
-    RUNS,
-    () => uncompactCellsAsync(compacted, uncompactRes),
-    track(OWN, RUNS),
-  )
-  if (w8Async == null) {
-    return undefined
-  }
-  finish(
-    toRow(
-      uncompactLabel(uncompactRes, true),
+  // `W8Async` checks against these cells, so they outlive the block that measured them
+  let w8Hex: string[] | undefined
+  if (wants('W8')) {
+    const w8 = await timeRuns(
+      signal,
       RUNS,
-      w8Async.stats,
-      undefined,
-      sameStrings(sortedHex(w8Async.value), w8Hex),
-      `${compacted.length} cells in, ${w8Async.value.length} cells out`,
-    ),
-  )
+      () => uncompactCells(compacted, uncompactRes),
+      track(OWN, RUNS),
+    )
+    if (w8 == null) {
+      return undefined
+    }
+    const w8Reference = await timeRuns(
+      signal,
+      RUNS,
+      () => h3.uncompactCells(referenceCompacted, uncompactRes),
+      track(REFERENCE, RUNS),
+    )
+    if (w8Reference == null) {
+      return undefined
+    }
+    w8Hex = sortedHex(w8.value)
+    finish(
+      toRow(
+        'W8',
+        uncompactLabel(uncompactRes, false),
+        RUNS,
+        w8.stats,
+        w8Reference.stats,
+        sameUncompactInput && sameCells(w8.value, w8Reference.value),
+        `${compacted.length} cells in, ${w8.value.length} cells out`,
+      ),
+    )
+  }
 
   if (await pause(signal)) {
     return undefined
   }
 
-  const parent = latLngToCell(SAN_FRANCISCO.lat, SAN_FRANCISCO.lng, CHILDREN_PARENT_RES)
-  const referenceParent = h3.latLngToCell(SAN_FRANCISCO.lat, SAN_FRANCISCO.lng, CHILDREN_PARENT_RES)
-  const w9 = await timeRuns(
-    signal,
-    RUNS,
-    () => cellToChildren(parent, CHILDREN_RES),
-    track(OWN, RUNS),
-  )
-  if (w9 == null) {
-    return undefined
-  }
-  const w9Reference = await timeRuns(
-    signal,
-    RUNS,
-    () => h3.cellToChildren(referenceParent, CHILDREN_RES),
-    track(REFERENCE, RUNS),
-  )
-  if (w9Reference == null) {
-    return undefined
-  }
-  finish(
-    toRow(
-      LABELS.w9,
+  if (wants('W8Async')) {
+    const w8Async = await timeRunsAsync(
+      signal,
       RUNS,
-      w9.stats,
-      w9Reference.stats,
-      sameCells(w9.value, w9Reference.value),
-      `${w9.value.length} children of ${parent.toString(16)}`,
-    ),
-  )
+      () => uncompactCellsAsync(compacted, uncompactRes),
+      track(OWN, RUNS),
+    )
+    if (w8Async == null) {
+      return undefined
+    }
+    // untimed and unreported, for a run that left `W8` out
+    w8Hex ??= sortedHex(uncompactCells(compacted, uncompactRes))
+    finish(
+      toRow(
+        'W8Async',
+        uncompactLabel(uncompactRes, true),
+        RUNS,
+        w8Async.stats,
+        undefined,
+        sameStrings(sortedHex(w8Async.value), w8Hex),
+        `${compacted.length} cells in, ${w8Async.value.length} cells out`,
+      ),
+    )
+  }
 
   if (await pause(signal)) {
     return undefined
   }
 
-  const berlin = latLngToCell(BERLIN.lat, BERLIN.lng, PATH_RES)
-  const hamburg = latLngToCell(HAMBURG.lat, HAMBURG.lng, PATH_RES)
-  const referenceBerlin = h3.latLngToCell(BERLIN.lat, BERLIN.lng, PATH_RES)
-  const referenceHamburg = h3.latLngToCell(HAMBURG.lat, HAMBURG.lng, PATH_RES)
-  const w10 = await timeRuns(
-    signal,
-    RUNS,
-    () => {
-      let last: BigUint64Array = new BigUint64Array(0)
-      for (let i = 0; i < CALLS_PER_RUN; i++) {
-        last = gridPathCells(berlin, hamburg)
-      }
-      return last
-    },
-    track(OWN, RUNS),
-  )
-  if (w10 == null) {
-    return undefined
-  }
-  const w10Reference = await timeRuns(
-    signal,
-    RUNS,
-    () => {
-      let last: string[] = []
-      for (let i = 0; i < CALLS_PER_RUN; i++) {
-        last = h3.gridPathCells(referenceBerlin, referenceHamburg)
-      }
-      return last
-    },
-    track(REFERENCE, RUNS),
-  )
-  if (w10Reference == null) {
-    return undefined
-  }
-  finish(
-    toRow(
-      LABELS.w10,
+  if (wants('W9')) {
+    const parent = latLngToCell(SAN_FRANCISCO.lat, SAN_FRANCISCO.lng, CHILDREN_PARENT_RES)
+    const referenceParent = h3.latLngToCell(
+      SAN_FRANCISCO.lat,
+      SAN_FRANCISCO.lng,
+      CHILDREN_PARENT_RES,
+    )
+    const w9 = await timeRuns(
+      signal,
       RUNS,
-      w10.stats,
-      w10Reference.stats,
-      sameCellsInOrder(w10.value, w10Reference.value),
-      `${w10.value.length} cells per path`,
-    ),
-  )
+      () => cellToChildren(parent, CHILDREN_RES),
+      track(OWN, RUNS),
+    )
+    if (w9 == null) {
+      return undefined
+    }
+    const w9Reference = await timeRuns(
+      signal,
+      RUNS,
+      () => h3.cellToChildren(referenceParent, CHILDREN_RES),
+      track(REFERENCE, RUNS),
+    )
+    if (w9Reference == null) {
+      return undefined
+    }
+    finish(
+      toRow(
+        'W9',
+        LABELS.w9,
+        RUNS,
+        w9.stats,
+        w9Reference.stats,
+        sameCells(w9.value, w9Reference.value),
+        `${w9.value.length} children of ${parent.toString(16)}`,
+      ),
+    )
+  }
 
   if (await pause(signal)) {
     return undefined
   }
 
-  const coordinates = batchInputs()
-  const w11 = await timeRuns(signal, RUNS, () => latLngsToCells(coordinates, 9), track(OWN, RUNS))
-  if (w11 == null) {
-    return undefined
-  }
-  // the batch answers for the whole set, so the loop it replaces collects too
-  const w11Reference = await timeRuns(
-    signal,
-    RUNS,
-    () => {
-      const cells = new Array<string>(CALLS)
-      for (let i = 0; i < CALLS; i++) {
-        cells[i] = h3.latLngToCell(
-          coordinates[2 * i] as number,
-          coordinates[2 * i + 1] as number,
-          9,
-        )
-      }
-      return cells
-    },
-    track(REFERENCE, RUNS),
-  )
-  if (w11Reference == null) {
-    return undefined
-  }
-  // `W12` compares two engines if both start from the same cells, which is what `W11` answered
-  const sameBatchCells = sameCellsInOrder(w11.value, w11Reference.value)
-  finish(
-    toRow(
-      LABELS.w11,
+  if (wants('W10')) {
+    const berlin = latLngToCell(BERLIN.lat, BERLIN.lng, PATH_RES)
+    const hamburg = latLngToCell(HAMBURG.lat, HAMBURG.lng, PATH_RES)
+    const referenceBerlin = h3.latLngToCell(BERLIN.lat, BERLIN.lng, PATH_RES)
+    const referenceHamburg = h3.latLngToCell(HAMBURG.lat, HAMBURG.lng, PATH_RES)
+    const w10 = await timeRuns(
+      signal,
       RUNS,
-      w11.stats,
-      w11Reference.stats,
-      sameBatchCells,
-      `${CALLS} pairs in one call, ${CALLS} h3-js calls`,
-    ),
-  )
+      () => {
+        let last: BigUint64Array = new BigUint64Array(0)
+        for (let i = 0; i < CALLS_PER_RUN; i++) {
+          last = gridPathCells(berlin, hamburg)
+        }
+        return last
+      },
+      track(OWN, RUNS),
+    )
+    if (w10 == null) {
+      return undefined
+    }
+    const w10Reference = await timeRuns(
+      signal,
+      RUNS,
+      () => {
+        let last: string[] = []
+        for (let i = 0; i < CALLS_PER_RUN; i++) {
+          last = h3.gridPathCells(referenceBerlin, referenceHamburg)
+        }
+        return last
+      },
+      track(REFERENCE, RUNS),
+    )
+    if (w10Reference == null) {
+      return undefined
+    }
+    finish(
+      toRow(
+        'W10',
+        LABELS.w10,
+        RUNS,
+        w10.stats,
+        w10Reference.stats,
+        sameCellsInOrder(w10.value, w10Reference.value),
+        `${w10.value.length} cells per path`,
+      ),
+    )
+  }
 
   if (await pause(signal)) {
     return undefined
   }
 
-  const w12 = await timeRuns(signal, RUNS, () => cellsToLatLngs(w11.value), track(OWN, RUNS))
-  if (w12 == null) {
-    return undefined
+  // `W12` and `W13` read `W11`'s answer, produced untimed for a run that left `W11` out
+  let batch: BatchCells | undefined
+  function batchOf(): BatchCells {
+    if (batch === undefined) {
+      batch = batchCellsOf()
+    }
+    return batch
   }
-  const w12Reference = await timeRuns(
-    signal,
-    RUNS,
-    () => {
-      const centres = new Array<number[]>(CALLS)
-      for (let i = 0; i < CALLS; i++) {
-        centres[i] = h3.cellToLatLng(w11Reference.value[i] as string)
-      }
-      return centres
-    },
-    track(REFERENCE, RUNS),
-  )
-  if (w12Reference == null) {
-    return undefined
-  }
-  finish(
-    toRow(
-      LABELS.w12,
+
+  if (wants('W11')) {
+    const coordinates = batchInputs()
+    const w11 = await timeRuns(signal, RUNS, () => latLngsToCells(coordinates, 9), track(OWN, RUNS))
+    if (w11 == null) {
+      return undefined
+    }
+    // the batch answers for the whole set, so the loop it replaces collects too
+    const w11Reference = await timeRuns(
+      signal,
       RUNS,
-      w12.stats,
-      w12Reference.stats,
-      sameBatchCells && sameLatLngPairs(w12.value, w12Reference.value),
-      `${CALLS} cells in one call, ${CALLS} h3-js calls`,
-    ),
-  )
+      () => {
+        const cells = new Array<string>(CALLS)
+        for (let i = 0; i < CALLS; i++) {
+          cells[i] = h3.latLngToCell(
+            coordinates[2 * i] as number,
+            coordinates[2 * i + 1] as number,
+            9,
+          )
+        }
+        return cells
+      },
+      track(REFERENCE, RUNS),
+    )
+    if (w11Reference == null) {
+      return undefined
+    }
+    // `W12` compares two engines if both start from the same cells, which is what `W11` answered
+    const sameBatchCells = sameCellsInOrder(w11.value, w11Reference.value)
+    batch = { cells: w11.value, reference: w11Reference.value, same: sameBatchCells }
+    finish(
+      toRow(
+        'W11',
+        LABELS.w11,
+        RUNS,
+        w11.stats,
+        w11Reference.stats,
+        sameBatchCells,
+        `${CALLS} pairs in one call, ${CALLS} h3-js calls`,
+      ),
+    )
+  }
 
   if (await pause(signal)) {
     return undefined
   }
 
-  const w13 = await timeRuns(signal, RUNS, () => cellsToBoundaries(w11.value), track(OWN, RUNS))
-  if (w13 == null) {
-    return undefined
-  }
-  const w13Reference = await timeRuns(
-    signal,
-    RUNS,
-    () => {
-      const boundaries = new Array<number[][]>(CALLS)
-      for (let i = 0; i < CALLS; i++) {
-        boundaries[i] = h3.cellToBoundary(w11Reference.value[i] as string)
-      }
-      return boundaries
-    },
-    track(REFERENCE, RUNS),
-  )
-  if (w13Reference == null) {
-    return undefined
-  }
-  finish(
-    toRow(
-      LABELS.w13,
+  if (wants('W12')) {
+    const { cells: batchCells, reference: batchReference, same: sameBatchCells } = batchOf()
+    const w12 = await timeRuns(signal, RUNS, () => cellsToLatLngs(batchCells), track(OWN, RUNS))
+    if (w12 == null) {
+      return undefined
+    }
+    const w12Reference = await timeRuns(
+      signal,
       RUNS,
-      w13.stats,
-      w13Reference.stats,
-      sameBatchCells && sameBoundaryBuffers(w13.value, w13Reference.value),
-      `${CALLS} cells in one call, ${CALLS} h3-js calls`,
-    ),
-  )
+      () => {
+        const centres = new Array<number[]>(CALLS)
+        for (let i = 0; i < CALLS; i++) {
+          centres[i] = h3.cellToLatLng(batchReference[i] as string)
+        }
+        return centres
+      },
+      track(REFERENCE, RUNS),
+    )
+    if (w12Reference == null) {
+      return undefined
+    }
+    finish(
+      toRow(
+        'W12',
+        LABELS.w12,
+        RUNS,
+        w12.stats,
+        w12Reference.stats,
+        sameBatchCells && sameLatLngPairs(w12.value, w12Reference.value),
+        `${CALLS} cells in one call, ${CALLS} h3-js calls`,
+      ),
+    )
+  }
+
+  if (await pause(signal)) {
+    return undefined
+  }
+
+  if (wants('W13')) {
+    const { cells: batchCells, reference: batchReference, same: sameBatchCells } = batchOf()
+    const w13 = await timeRuns(signal, RUNS, () => cellsToBoundaries(batchCells), track(OWN, RUNS))
+    if (w13 == null) {
+      return undefined
+    }
+    const w13Reference = await timeRuns(
+      signal,
+      RUNS,
+      () => {
+        const boundaries = new Array<number[][]>(CALLS)
+        for (let i = 0; i < CALLS; i++) {
+          boundaries[i] = h3.cellToBoundary(batchReference[i] as string)
+        }
+        return boundaries
+      },
+      track(REFERENCE, RUNS),
+    )
+    if (w13Reference == null) {
+      return undefined
+    }
+    finish(
+      toRow(
+        'W13',
+        LABELS.w13,
+        RUNS,
+        w13.stats,
+        w13Reference.stats,
+        sameBatchCells && sameBoundaryBuffers(w13.value, w13Reference.value),
+        `${CALLS} cells in one call, ${CALLS} h3-js calls`,
+      ),
+    )
+  }
 
   return { rows, seconds: (now() - started) / 1000 }
 }

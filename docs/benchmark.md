@@ -113,6 +113,7 @@ The notes below cover only the workloads whose framing is not obvious from the i
 | `W10` | `gridPathCells`, Berlin to Hamburg at res 9, 1,000 calls |
 | `W11` | `latLngsToCells`, 100,000 coordinate pairs in one call |
 | `W12` | `cellsToLatLngs`, 100,000 cells in one call |
+| `W13` | `cellsToBoundaries`, 100,000 cells in one call |
 
 ## Results
 
@@ -318,9 +319,18 @@ bun run benchmark:device --platform ios --udid <device-udid> --out run.json
 bun run benchmark:device --platform android --serial <adb-serial> --out run.json
 ```
 
-The script opens the app in its own automation session, starts log capture, presses **Benchmark** and then **Run benchmark**, and waits for the payload to appear in the captured log.
-It writes `run.json` and the raw log beside it as `run.device.log`, then prints the row count, the equivalence count, the duration and the widest factor.
-`--timeout-minutes` defaults to 45, against about ten minutes for a Galaxy S23 run and about twenty for an iPhone XS.
+The script opens the app in its own automation session, starts log capture, presses **Benchmark** and then **Run full benchmark** (or fills the **Workloads** field and submits it), and waits for the payload to appear in the captured log.
+It reports every workload the screen finishes, then writes `run.json` and the raw log beside it as `run.device.log` and prints the row count, the equivalence count, the duration and the widest factor.
+
+Three flags shape the run:
+
+- `--timeout-minutes`: the ceiling for the whole run, against about ten minutes for a Galaxy S23 run and about twenty for an iPhone XS (default 45).
+- `--stall-minutes`: how long the script waits between two of those progress lines before it gives up on a wedged run (default 10).
+- `--workloads`: a comma separated subset such as `W13,W7`, which measures only those rows (default: every workload).
+
+A subset run is not publishable, so the script refuses `--workloads` together with `--publish` and marks the summary of any run the screen reports as a subset.
+The **Workloads** field above the button takes the same ids by hand, and a card's own **Run** button measures that one workload.
+Submit the field with the return key or with the button, which reads **Run selected workloads** while the field is not empty.
 
 Two rules the script exists to enforce, because breaking either costs the whole run:
 
@@ -332,7 +342,8 @@ Two rules the script exists to enforce, because breaking either costs the whole 
 
 ### 3. Render the Charts
 
-Review the run, then copy it to `apps/example/benchmark.json` and render:
+Review the run, then copy it to `apps/example/benchmark.json` and render.
+Copy only a full run: a subset payload carries no marker of its own, so nothing downstream would notice.
 
 ```sh
 cp run.json apps/example/benchmark.json

@@ -6,13 +6,19 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native'
-import type { Row, RunSignal, RunState, Stats } from './benchmarkWorkloads'
-import { runBenchmark } from './benchmarkWorkloads'
+import type { WorkloadId } from './benchmarkPlan'
+import { formatProgress, parseWorkloadIds } from './benchmarkPlan'
+import type { PlanEntry, Row, RunSignal, RunState, Stats } from './benchmarkWorkloads'
+import { initialPlan, runBenchmark } from './benchmarkWorkloads'
 
 // the unified log on iOS truncates a message at about a kilobyte
 const CHUNK = 700
+
+// the cards are listed before the first run; a run reports its own plan, with `W8`'s fitted label
+const PLAN = initialPlan()
 
 interface Payload {
   rows: {
@@ -215,22 +221,35 @@ function Status({ row, running }: { row: Row | undefined; running: boolean }): R
 }
 
 function WorkloadCard({
-  label,
+  entry,
   row,
   progress,
+  running,
+  onRun,
 }: {
-  label: string
+  entry: PlanEntry
   row: Row | undefined
   progress: string | undefined
+  running: boolean
+  onRun: (id: WorkloadId) => void
 }): React.JSX.Element {
   const factor = row == null ? undefined : factorOf(row)
   return (
     <View style={styles.card}>
       <View style={styles.cardHeader}>
         <Text style={row == null ? styles.workloadWaiting : styles.workload}>
-          {row?.workload ?? label}
+          {row?.workload ?? entry.label}
         </Text>
         <Status row={row} running={progress != null} />
+        <Pressable
+          accessibilityLabel={`Run ${entry.id}`}
+          disabled={running}
+          onPress={() => {
+            onRun(entry.id)
+          }}
+        >
+          <Text style={running ? styles.runOneDisabled : styles.runOne}>Run</Text>
+        </Pressable>
       </View>
       {row == null ? undefined : (
         <View style={styles.measures}>
@@ -248,31 +267,68 @@ function WorkloadCard({
   )
 }
 
+function buttonLabel(running: boolean, workloads: string): string {
+  if (running) {
+    return 'Running'
+  }
+  return workloads.trim() === '' ? 'Run full benchmark' : 'Run selected workloads'
+}
+
+// a subset says so, so a short list of rows is not read as a full run
+function summaryLine(
+  rows: number,
+  planned: number,
+  selected: number,
+  seconds: number | undefined,
+): string {
+  if (selected === planned) {
+    return seconds == null
+      ? `${rows} of ${planned} workloads`
+      : `${rows} workloads, ${seconds.toFixed(0)} s`
+  }
+  return seconds == null
+    ? `${rows} of ${selected} workloads, subset of ${planned}`
+    : `${rows} workloads, subset of ${planned}, ${seconds.toFixed(0)} s`
+}
+
 function Results({
+  plan,
   state,
   seconds,
+  selected,
+  running,
+  onRun,
 }: {
-  state: RunState
+  plan: PlanEntry[]
+  state: RunState | undefined
   seconds: number | undefined
+  selected: number
+  running: boolean
+  onRun: (id: WorkloadId) => void
 }): React.JSX.Element {
+  const rows = state?.rows ?? []
   return (
     <View style={styles.results}>
-      <Text style={styles.summaryMeta}>
-        {seconds == null
-          ? `${state.rows.length} of ${state.plan.length} workloads`
-          : `${state.rows.length} workloads, ${seconds.toFixed(0)} s`}
-      </Text>
-      {state.plan.map((label, index) => (
+      {state == null ? undefined : (
+        <Text style={styles.summaryMeta}>
+          {summaryLine(rows.length, plan.length, selected, seconds)}
+        </Text>
+      )}
+      {plan.map((entry, index) => (
         <WorkloadCard
-          key={label}
-          label={label}
-          row={state.rows[index]}
-          progress={seconds == null && index === state.index ? progressLabel(state) : undefined}
+          key={entry.id}
+          entry={entry}
+          row={rows.find((row) => row.id === entry.id)}
+          progress={
+            state != null && seconds == null && index === state.index
+              ? progressLabel(state)
+              : undefined
+          }
+          running={running}
+          onRun={onRun}
         />
       ))}
-      {seconds == null ? undefined : (
-        <Text style={styles.caption}>{caption(state.rows, seconds)}</Text>
-      )}
+      {seconds == null ? undefined : <Text style={styles.caption}>{caption(rows, seconds)}</Text>}
     </View>
   )
 }
@@ -289,6 +345,8 @@ export function BenchmarkScreen(): React.JSX.Element {
   const [seconds, setSeconds] = React.useState<number | undefined>(undefined)
   const [running, setRunning] = React.useState(false)
   const [failure, setFailure] = React.useState<string | undefined>(undefined)
+  const [workloads, setWorkloads] = React.useState('')
+  const [selected, setSelected] = React.useState(PLAN.length)
   const signal = React.useRef<RunSignal | undefined>(undefined)
   // a failing run reports rows reached before the setter commits them
   const latest = React.useRef<RunState | undefined>(undefined)
@@ -303,7 +361,7 @@ export function BenchmarkScreen(): React.JSX.Element {
     }
   }, [])
 
-  const run = React.useCallback(() => {
+  const run = React.useCallback((ids: readonly WorkloadId[]) => {
     const current: RunSignal = { cancelled: false }
     signal.current = current
     latest.current = undefined
@@ -311,15 +369,38 @@ export function BenchmarkScreen(): React.JSX.Element {
     setState(undefined)
     setSeconds(undefined)
     setFailure(undefined)
+    setSelected(ids.length)
     const startedAt = Date.now()
     // a frame, so the disabled button paints before the workload starts
     requestAnimationFrame(() => {
-      void runBenchmark(current, (next) => {
-        latest.current = next
-        if (!current.cancelled) {
-          setState(next)
-        }
-      })
+      // the host script follows a long run off these lines, one per finished workload
+      let logged = 0
+      console.log(formatProgress({ kind: 'start', selected: [...ids], planned: PLAN.length }))
+      void runBenchmark(
+        current,
+        (next) => {
+          latest.current = next
+          while (logged < next.rows.length) {
+            const row = next.rows[logged] as Row
+            logged += 1
+            console.log(
+              formatProgress({
+                kind: 'done',
+                id: row.id,
+                position: logged,
+                selected: ids.length,
+                millis: row.millis,
+                referenceMillis: row.referenceMillis ?? null,
+                elapsedSeconds: Number(((Date.now() - startedAt) / 1000).toFixed(1)),
+              }),
+            )
+          }
+          if (!current.cancelled) {
+            setState(next)
+          }
+        },
+        ids,
+      )
         .then((measured) => {
           if (measured == null) {
             return
@@ -350,6 +431,22 @@ export function BenchmarkScreen(): React.JSX.Element {
     })
   }, [])
 
+  const runTyped = React.useCallback(() => {
+    const parsed = parseWorkloadIds(workloads)
+    if (parsed.ids === undefined) {
+      setFailure(parsed.error)
+      return
+    }
+    run(parsed.ids)
+  }, [run, workloads])
+
+  const runOne = React.useCallback(
+    (id: WorkloadId) => {
+      run([id])
+    },
+    [run],
+  )
+
   return (
     <ScrollView contentContainerStyle={styles.content}>
       <Text style={styles.title}>Benchmark</Text>
@@ -357,10 +454,30 @@ export function BenchmarkScreen(): React.JSX.Element {
         Run this in a Release build. Numbers from a Debug build must not go in the README. The app
         only answers between measurements, and leaving this tab abandons the run.
       </Text>
-      <Pressable style={styles.button} onPress={run} disabled={running}>
-        <Text style={styles.buttonLabel}>{running ? 'Running' : 'Run benchmark'}</Text>
+      <Text style={styles.inputLabel}>Workloads</Text>
+      <TextInput
+        style={styles.input}
+        value={workloads}
+        onChangeText={setWorkloads}
+        accessibilityLabel="Workload ids"
+        placeholder="All, or ids such as W13, W7"
+        autoCapitalize="none"
+        autoCorrect={false}
+        editable={!running}
+        returnKeyType="go"
+        onSubmitEditing={runTyped}
+      />
+      <Pressable style={styles.button} onPress={runTyped} disabled={running}>
+        <Text style={styles.buttonLabel}>{buttonLabel(running, workloads)}</Text>
       </Pressable>
-      {state == null ? undefined : <Results state={state} seconds={seconds} />}
+      <Results
+        plan={state?.plan ?? PLAN}
+        state={state}
+        seconds={seconds}
+        selected={selected}
+        running={running}
+        onRun={runOne}
+      />
       {failure == null ? undefined : <Text style={styles.failure}>Run failed: {failure}</Text>}
     </ScrollView>
   )
@@ -373,6 +490,16 @@ const styles = StyleSheet.create({
   content: { padding: 20 },
   title: { fontSize: 22, fontWeight: '600', marginBottom: 8 },
   note: { fontSize: 13, marginBottom: 16 },
+  inputLabel: { fontSize: 11, color: MUTED, marginBottom: 4 },
+  input: {
+    borderWidth: 1,
+    borderColor: '#e4e4e4',
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    fontSize: 14,
+    marginBottom: 12,
+  },
   button: {
     paddingVertical: 12,
     paddingHorizontal: 16,
@@ -389,6 +516,8 @@ const styles = StyleSheet.create({
   equivalent: { fontSize: 15, fontWeight: '700', color: HIGHLIGHT },
   differs: { fontSize: 15, fontWeight: '700', color: '#b3261e' },
   waiting: { fontSize: 15, color: MUTED },
+  runOne: { fontSize: 13, color: '#1f6feb' },
+  runOneDisabled: { fontSize: 13, color: MUTED },
   measures: { flexDirection: 'row', gap: 12 },
   measure: { flex: 1, gap: 2 },
   measureLabel: { fontSize: 11, color: MUTED },
