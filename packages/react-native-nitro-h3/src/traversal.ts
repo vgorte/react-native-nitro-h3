@@ -120,8 +120,8 @@ export function gridDistance(origin: bigint, destination: bigint): number {
 /**
  * Finds the local IJ coordinates of a cell relative to an origin.
  *
- * This is not a serialization format: H3 does not guarantee these coordinates across its own
- * versions, so do not store them or send them between systems that may run different versions.
+ * This is not a serialization format: the coordinates may change when the vendored H3 version
+ * changes, so do not store them or send them between systems that may run different versions.
  *
  * @param origin The anchoring cell.
  * @param cell The cell to locate, at the same resolution and near enough to `origin`.
@@ -141,8 +141,8 @@ export function cellToLocalIj(origin: bigint, cell: bigint): CoordIJ {
  * Finds the cell at local IJ coordinates relative to an origin, inverting
  * {@linkcode cellToLocalIj}.
  *
- * The coordinates come from {@linkcode cellToLocalIj}, whose output H3 does not guarantee across its
- * own versions, so do not read them from storage written by a different H3 version.
+ * The coordinates come from {@linkcode cellToLocalIj} and may change when the vendored H3 version
+ * changes, so do not read them from storage written by a different H3 version.
  *
  * @param origin The anchoring cell.
  * @param coords The coordinates {@linkcode cellToLocalIj} answered, whose `i` and `j` must both be

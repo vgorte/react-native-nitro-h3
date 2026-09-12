@@ -34,7 +34,7 @@ The four variants are:
 
 Each of the four can answer a result set of hundreds of thousands of cells, which is what makes a thread hop worth considering, and what the hop actually costs is measured below.
 
-[`polygonToCellsExperimentalAsync`](../../packages/react-native-nitro-h3/docs/api.md#polygontocellsexperimentalasync) binds the same experimental H3 API as [`polygonToCellsExperimental`](../../packages/react-native-nitro-h3/docs/api.md#polygontocellsexperimental), so its results may change in a minor version of the underlying C library.
+[`polygonToCellsExperimentalAsync`](../../packages/react-native-nitro-h3/docs/api.md#polygontocellsexperimentalasync) binds the same experimental H3 API as [`polygonToCellsExperimental`](../../packages/react-native-nitro-h3/docs/api.md#polygontocellsexperimental), so its results may change when the vendored H3 version changes.
 It is one of four exports that follow the upstream H3 library rather than this package's own compatibility promise, listed in [Functions That Follow Upstream H3](../h3-js-divergences.md#functions-that-follow-upstream-h3).
 
 ## Guarantees

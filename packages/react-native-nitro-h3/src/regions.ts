@@ -49,8 +49,8 @@ export function polygonToCells(rings: Ring[], res: number): BigUint64Array {
  * containment rule.
  *
  * The mode is either a {@linkcode ContainmentMode} constant or the h3-js name for it; the constants
- * are cheaper and are what this package recommends. This is an experimental H3 API and may change
- * behaviour in a minor version of the underlying C library.
+ * are cheaper and are what this package recommends. This binds an experimental H3 API, so its
+ * results may change when the vendored H3 version changes.
  *
  * @param rings The outer ring first, then holes, as `[latitude, longitude]` degrees.
  * @param res The resolution, `0` to `15`.

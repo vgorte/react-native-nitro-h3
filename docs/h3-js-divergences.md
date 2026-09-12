@@ -1,15 +1,15 @@
 # 🔀 Divergences from h3-js
 
-`h3-js` 4.5.0 bundles exactly the H3 C library this package vendors, so it is an oracle rather than an approximation.
+This package covers the `h3-js` 4.5.0 operation set under the same names and answers typed results.
+Nothing outside the list below answers differently over the corpus `parity/` compares.
+
+That release bundles exactly the H3 C library this package vendors, so it is an oracle rather than an approximation.
 `parity/` compares the two over all 122 resolution 0 cells, all sixteen resolutions, all 192 pentagons, the immediate neighbourhood of every pentagon up to resolution 5, the poles, the antimeridian and seeded random coordinates.
 Test paths below are relative to `packages/react-native-nitro-h3/`.
 
 Every row and section below is proved by a test in `parity/divergences.test.ts`, except the error contract's package half, proved in `__tests__/H3Error.test.ts`, and the section on functions that follow upstream H3, which quotes the vendored sources instead of asserting against a test.
 Where `parity/divergences.test.ts` does the proving, it asserts both sides; the type-surface rows are proved there for `h3-js` at run time and for this package by `tsc`, because the probe the suite drives speaks JSON.
 The additive batch section leans on `parity/batches.test.ts` as well, which is where the three calls are compared with `h3-js` element for element.
-
-This package covers the `h3-js` 4.5.0 operation set under the same names and answers typed results.
-Nothing outside the list below answers differently over the corpus `parity/` compares.
 
 `h3-js` runs anywhere JavaScript does, needs no native build step and no New Architecture, and its cells are strings that serialise without a thought.
 It is the wider-adopted library and the right one on the web.
