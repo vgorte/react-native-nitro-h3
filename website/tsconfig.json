@@ -6,6 +6,8 @@
     "noEmit": true
   },
   "include": [
+    "lastmod.ts",
+    "lastmod.test.ts",
     "pages.ts",
     "scripts/gen-cell-table.ts",
     "scripts/gen-cloud-plate.ts",

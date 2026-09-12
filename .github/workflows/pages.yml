@@ -35,7 +35,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 0  # the sync script reads each page's last commit date from git history
+          fetch-depth: 0  # the sitemap takes each page's lastmod from its last commit in git history
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.14  # <-- pinned: `latest` turns an upstream release into a red build

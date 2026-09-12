@@ -1,8 +1,10 @@
 import { readdir, readFile, writeFile } from 'node:fs/promises'
+import sitemap from '@astrojs/sitemap'
 import starlight from '@astrojs/starlight'
 import { defineConfig } from 'astro/config'
 import starlightLinksValidator from 'starlight-links-validator'
 import starlightLlmsTxt from 'starlight-llms-txt'
+import { serializeSitemapItem } from './lastmod'
 import { BASE, REPO, SITE, sidebar } from './pages'
 
 // The two subsets English text actually renders in; `unicode-range` gates the other eleven.
@@ -60,6 +62,9 @@ export default defineConfig({
   base: BASE,
   integrations: [
     preloadHead(),
+    // Starlight adds this integration itself unless it is already listed, which is how the
+    // `lastmod` stamp gets in.
+    sitemap({ serialize: serializeSitemapItem }),
     starlight({
       title: 'react-native-nitro-h3',
       description: 'Fast H3 geospatial indexing for React Native, powered by Nitro Modules.',
