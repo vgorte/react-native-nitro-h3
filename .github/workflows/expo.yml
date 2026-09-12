@@ -1,0 +1,142 @@
+name: Expo
+
+# Proves the install path `docs/getting-started.md` documents for Expo: a fresh project installs the
+# tarball packed from this checkout, prebuilds, and builds for both platforms. Nothing is run on a
+# simulator, and on a pull request the job is opt-in through the `expo` label.
+
+on:
+  workflow_dispatch:
+  # The job is long, so it is opt-in per pull request: the label makes it run, and a later push to a
+  # labelled pull request runs it again.
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+  push:
+    branches: [main]
+    paths:
+      - 'packages/react-native-nitro-h3/cpp/**'
+      - 'packages/react-native-nitro-h3/third_party/**'
+      - 'packages/react-native-nitro-h3/nitrogen/generated/**'
+      - 'packages/react-native-nitro-h3/src/**'
+      - 'packages/react-native-nitro-h3/*.podspec'
+      - 'packages/react-native-nitro-h3/nitro.json'
+      - 'packages/react-native-nitro-h3/package.json'
+      - '.github/workflows/expo.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: expo-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Expo (${{ matrix.platform }})
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'expo')
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: ${{ matrix.timeout }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: ios
+            runner: macos-latest
+            timeout: 60
+          - platform: android
+            runner: ubuntu-latest
+            timeout: 45
+    env:
+      # Without a UTF-8 locale, `pod install` inside prebuild fails with `Unicode Normalization not
+      # appropriate for ASCII-8BIT`.
+      LANG: en_US.UTF-8
+      LC_ALL: en_US.UTF-8
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14  # <-- pinned: `latest` turns an upstream release into a red build
+
+      # `create-expo-app` and `expo` run through `npx`, and npm is the package manager the
+      # documented install path assumes.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      # `npm pack` runs the prepack hook, which is `bun run ../../scripts/check-pack.ts`, so bun and
+      # the workspace have to be installed first.
+      - run: bun install --frozen-lockfile
+
+      # The tarball name carries the version, so the path is read from the step output rather than
+      # hardcoded.
+      - name: Pack the package
+        id: pack
+        working-directory: packages/react-native-nitro-h3
+        run: echo "tarball=$RUNNER_TEMP/$(npm pack --pack-destination "$RUNNER_TEMP" | tail -1)" >> "$GITHUB_OUTPUT"
+
+      # The SDK is pinned so that an Expo release cannot turn a pull request red, the same reasoning
+      # as `nitro-latest.yml` inverted: this job gates pull requests, so bump the template tag
+      # deliberately. The project lives outside the checkout because Expo detects a monorepo through
+      # the root `workspaces` field and would rewire Metro to it.
+      - name: Scaffold an Expo project
+        working-directory: ${{ runner.temp }}
+        run: npx --yes create-expo-app@4.0.0 expoapp --template blank-typescript@sdk-57 --no-agents-md
+
+      # The documentation installs both packages with one `expo install`; here the tarball goes
+      # through `npm install` because `expo install` silently drops a tarball path, writing an
+      # `undefined` key into package.json and installing nothing with exit code 0 (expo 57.0.22).
+      - name: Install the package
+        working-directory: ${{ runner.temp }}/expoapp
+        run: |
+          npx expo install react-native-nitro-modules
+          npm install "${{ steps.pack.outputs.tarball }}"
+
+      - name: Report the resolved versions
+        working-directory: ${{ runner.temp }}/expoapp
+        run: |
+          expo="$(jq -r .version node_modules/expo/package.json)"
+          rn="$(jq -r .version node_modules/react-native/package.json)"
+          nitro="$(jq -r .version node_modules/react-native-nitro-modules/package.json)"
+          h3="$(jq -r .version node_modules/react-native-nitro-h3/package.json)"
+          echo "Built with Expo $expo, React Native $rn, \`react-native-nitro-modules\` $nitro" \
+            "and \`react-native-nitro-h3\` $h3." >> "$GITHUB_STEP_SUMMARY"
+
+      # Prebuild runs `pod install` itself and exits 0 even when that fails, so the lockfile is the
+      # assertion.
+      - name: Generate the native project
+        if: matrix.platform == 'ios'
+        working-directory: ${{ runner.temp }}/expoapp
+        run: |
+          npx expo prebuild --platform ios
+          test -f ios/Podfile.lock
+
+      - name: Generate the native project
+        if: matrix.platform == 'android'
+        working-directory: ${{ runner.temp }}/expoapp
+        run: npx expo prebuild --platform android --no-install
+
+      - uses: actions/setup-java@v6
+        if: matrix.platform == 'android'
+        with:
+          distribution: zulu
+          java-version: '17'
+
+      # One ABI: this job proves the package links into an Expo app, not that the tarball ships
+      # every architecture, which `build-android.yml` already covers.
+      - name: Build the app
+        if: matrix.platform == 'android'
+        working-directory: ${{ runner.temp }}/expoapp/android
+        run: |
+          ./gradlew :app:assembleDebug --no-daemon --build-cache \
+            -PreactNativeArchitectures=arm64-v8a
+
+      # Workspace and scheme follow the project name given to `create-expo-app`, and the simulator
+      # SDK without signing needs no certificate on the runner.
+      - name: Build the app
+        if: matrix.platform == 'ios'
+        working-directory: ${{ runner.temp }}/expoapp
+        run: |
+          set -o pipefail
+          xcodebuild -workspace ios/expoapp.xcworkspace -scheme expoapp -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO build -quiet | tail -50
