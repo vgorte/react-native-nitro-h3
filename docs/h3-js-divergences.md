@@ -141,7 +141,6 @@ These are the differences a migration notices first, and nothing outside them an
 | A polygon | `Ring[]`, so a single loop is still wrapped in an array, and `Ring` is a tuple type that a bare `number[][]` fails `tsc` against | `number[][] \| number[][][]`, so a single loop may be passed unwrapped and a ring is a plain `number[][]` |
 | Units | separate functions (`cellAreaKm2`) | a string argument (`cellArea(cell, 'km2')`), and an `E_UNKNOWN_UNIT` this package cannot raise |
 | `greatCircleDistance` | four scalars with the unit in the name: `greatCircleDistanceKm(lat1, lng1, lat2, lng2)` | two arrays and a unit string: `greatCircleDistance([lat1, lng1], [lat2, lng2], 'km')` |
-| `localIjToCell` | an origin and two coordinate scalars: `localIjToCell(origin, i, j)` | an origin and a `CoordIJ` object: `localIjToCell(origin, coords)` |
 | `gridDiskDistances` | one `BigUint64Array` per ring, so `BigUint64Array[]` | one `H3Index[]` per ring, so `string[][]` |
 | `UNITS`, `POLYGON_TO_CELLS_FLAGS` | no counterpart: the unit is in the function name and a containment mode is a number | two frozen objects of strings |
 | `ContainmentMode` | a frozen object of H3's four `ContainmentMode` numbers | no counterpart |
