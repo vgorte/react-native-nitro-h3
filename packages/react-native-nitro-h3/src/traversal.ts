@@ -145,15 +145,16 @@ export function cellToLocalIj(origin: bigint, cell: bigint): CoordIJ {
  * own versions, so do not read them from storage written by a different H3 version.
  *
  * @param origin The anchoring cell.
- * @param i The `i` coordinate, which must be an integer.
- * @param j The `j` coordinate, which must be an integer.
+ * @param coords The coordinates {@linkcode cellToLocalIj} answered, whose `i` and `j` must both be
+ * integers.
  * @returns The cell at those coordinates.
  * @throws {@linkcode H3Error} if the origin is not valid, a coordinate is fractional, or the
  * coordinates do not name a cell.
  */
-export function localIjToCell(origin: bigint, i: number, j: number): bigint {
+export function localIjToCell(origin: bigint, coords: CoordIJ): bigint {
   try {
-    return native.localIjToCell(origin as UInt64, i, j)
+    // the spec takes two doubles; the object is what `h3-js` and `cellToLocalIj` use
+    return native.localIjToCell(origin as UInt64, coords.i, coords.j)
   } catch (error) {
     rethrowAsH3Error(error)
   }

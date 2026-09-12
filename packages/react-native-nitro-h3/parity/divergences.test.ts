@@ -15,6 +15,7 @@ import {
   ContainmentMode,
   type ContainmentModeName,
   type ContainmentModeValue,
+  type CoordIJ,
   type LatLng,
   type Ring,
 } from '../src/types'
@@ -62,9 +63,6 @@ export type GridDiskDistancesIsTypedArrays = Expect<
 >
 export type GreatCircleDistanceTakesFourScalars = Expect<
   IsExactly<Parameters<typeof api.greatCircleDistanceKm>, [number, number, number, number]>
->
-export type LocalIjToCellTakesScalars = Expect<
-  IsExactly<Parameters<typeof api.localIjToCell>, [bigint, number, number]>
 >
 // the four functions h3-js gives a GeoJSON flag take no such argument here
 export type BoundaryTakesNoFlag = Expect<IsExactly<Parameters<typeof api.cellToBoundary>, [bigint]>>
@@ -468,6 +466,11 @@ describe.skipIf(skipWithoutProbe)('parity: error codes and wording', () => {
   })
 })
 
+// the signature row that used to diverge: `tsc` proves the shape, the test below the answer
+export type LocalIjToCellTakesACoordIJ = Expect<
+  IsExactly<Parameters<typeof api.localIjToCell>, [bigint, CoordIJ]>
+>
+
 describe.skipIf(skipWithoutProbe)('parity: where a divergence would be easy to assume', () => {
   test('getResolution answers -1 for an invalid index, exactly as h3-js does', () => {
     for (const index of ['ffffffffffffffff', '0', '1']) {
@@ -486,6 +489,14 @@ describe.skipIf(skipWithoutProbe)('parity: where a divergence would be easy to a
     expect(refusal(`constructCell 9 ${digits.join(',')} 20`)).toBe(
       'Resolution argument was outside of acceptable range (code: 4)',
     )
+  })
+
+  test('localIjToCell reads the CoordIJ cellToLocalIj answers, exactly as h3-js does', () => {
+    // the `[bigint, CoordIJ]` parameters this package takes are proved by `tsc` above
+    const ij = h3.cellToLocalIj(CELL, CELL)
+    expect(h3.localIjToCell(CELL, ij)).toBe(CELL)
+    // the probe takes the two coordinates the wrapper unpacks the object into
+    expect(answer(`localIjToCell ${CELL} ${ij.i} ${ij.j}`)).toBe(CELL)
   })
 
   test('a containment mode number covers the same cells as the h3-js flag name', () => {
@@ -758,19 +769,6 @@ describe.skipIf(skipWithoutProbe)('divergence: the shape of the public surface',
     expect(Object.keys(h3)).not.toContain('greatCircleDistanceKm')
     const ours = answer('greatCircleDistanceKm 0 0 1 1') as number
     expect(ours).toBeCloseTo(h3.greatCircleDistance([0, 0], [1, 1], 'km'), 10)
-  })
-
-  test('localIjToCell takes a CoordIJ object in h3-js, where this package takes two scalars', () => {
-    // the `[bigint, number, number]` parameters this package takes are proved by `tsc` above
-    const ij = h3.cellToLocalIj(CELL, CELL)
-    expect(h3.localIjToCell(CELL, ij)).toBe(CELL)
-    // h3-js refuses the scalar form this package takes
-    const scalarForm = h3.localIjToCell as unknown as (
-      origin: string,
-      i: number,
-      j: number,
-    ) => string
-    expect(() => scalarForm(CELL, 0, 0)).toThrow('Coordinates must be provided as an {i, j} object')
   })
 
   test('gridDiskDistances answers arrays of strings in h3-js', () => {

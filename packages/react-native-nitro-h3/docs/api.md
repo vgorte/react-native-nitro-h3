@@ -366,7 +366,7 @@ Throws: `H3Error` with `code` `9` and the message `"Pentagon distortion was enco
 ### localIjToCell
 
 ```ts
-function localIjToCell(origin: bigint, i: number, j: number): bigint
+function localIjToCell(origin: bigint, coords: CoordIJ): bigint
 ```
 
 Finds the cell at local IJ coordinates relative to an origin, inverting
@@ -376,8 +376,7 @@ The coordinates come from `cellToLocalIj`, whose output H3 does not guarantee ac
 own versions, so do not read them from storage written by a different H3 version.
 
 - `origin`: The anchoring cell.
-- `i`: The `i` coordinate, which must be an integer.
-- `j`: The `j` coordinate, which must be an integer.
+- `coords`: The coordinates `cellToLocalIj` answered, whose `i` and `j` must both be integers.
 
 Returns: The cell at those coordinates.
 
