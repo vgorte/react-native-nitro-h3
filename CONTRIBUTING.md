@@ -159,6 +159,10 @@ H3_PARITY_PROBE="$PWD/build/host/parity_probe" H3_PARITY_REQUIRED=1 \
 
 If the vendored H3 sources changed, `bun run vendor:h3 --check` has to pass too.
 
+If the change affects how a consumer installs the package (`package.json`, the podspec, `nitro.json`, the `files` list), add the `expo` label to the pull request.
+The label runs `.github/workflows/expo.yml`, which installs the packed tarball into a fresh Expo project and builds it for iOS and Android.
+The job is opt-in because it takes as long as a full app build, and it runs on every push to `main` that touches the package whether or not a label was set.
+
 ## Conventions
 
 Code and comments are in English.
