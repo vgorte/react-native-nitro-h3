@@ -12,6 +12,8 @@
  *
  *   --app <id>              bundle id or package name, defaults to the example app
  *   --timeout-minutes <n>   ceiling for the whole run, default 45
+ *   --stall-minutes <n>     ceiling between two progress lines, default 10
+ *   --workloads <ids>       run a subset, comma separated, e.g. `w13,w7`; not publishable
  *   --publish               allow `--out apps/example/benchmark.json`, the published payload
  */
 
@@ -20,6 +22,8 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, dirname, extname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import type { RunStarted, WorkloadDone, WorkloadId } from '../apps/example/src/benchmarkPlan'
+import { parseProgress, parseWorkloadIds } from '../apps/example/src/benchmarkPlan'
 import type { BenchmarkPayload, BenchmarkRow } from './benchmark-payload'
 import { validatePayload } from './benchmark-payload'
 
@@ -53,6 +57,9 @@ interface Options {
   app: string
   out: string
   timeoutMinutes: number
+  stallMinutes: number
+  /** The selection to type into the screen's `Workloads` field, or `undefined` for a full run. */
+  workloads: WorkloadId[] | undefined
   publish: boolean
   session: string
 }
@@ -69,15 +76,22 @@ export interface Chunks {
   parts: Map<number, string>
 }
 
+/** Marks a rejected command line, so `parseArgs` stays callable from a test. */
+export class UsageError extends Error {}
+
+const USAGE = [
+  'Usage: bun run benchmark:device --platform ios|android',
+  '       --udid <udid> | --serial <serial> --out <file>',
+  '       [--app <id>] [--timeout-minutes <n>] [--stall-minutes <n>]',
+  '       [--workloads <ids>] [--publish]',
+]
+
 function usage(message: string): never {
-  console.error(`benchmark-device: ${message}`)
-  console.error('Usage: bun run benchmark:device --platform ios|android')
-  console.error('       --udid <udid> | --serial <serial> --out <file>')
-  console.error('       [--app <id>] [--timeout-minutes <n>] [--publish]')
-  process.exit(1)
+  throw new UsageError(message)
 }
 
-function parseArgs(argv: string[]): Options {
+/** Parses the command line, throwing {@linkcode UsageError} for anything it cannot accept. */
+export function parseArgs(argv: string[]): Options {
   const flags = new Map<string, string>()
   let publish = false
   for (let index = 0; index < argv.length; index += 1) {
@@ -113,6 +127,24 @@ function parseArgs(argv: string[]): Options {
   if (!Number.isFinite(timeoutMinutes) || timeoutMinutes <= 0) {
     usage('`--timeout-minutes` must be a positive number')
   }
+  const stallMinutes = Number(flags.get('stall-minutes') ?? '10')
+  if (!Number.isFinite(stallMinutes) || stallMinutes <= 0) {
+    usage('`--stall-minutes` must be a positive number')
+  }
+  const requested = flags.get('workloads')
+  let workloads: WorkloadId[] | undefined
+  if (requested !== undefined) {
+    if (publish) {
+      usage(
+        '`--workloads` cannot be combined with `--publish`; the published payload is a full run',
+      )
+    }
+    const parsed = parseWorkloadIds(requested)
+    if (parsed.ids === undefined) {
+      usage(parsed.error)
+    }
+    workloads = parsed.ids
+  }
   const resolved = resolve(out)
   if (resolved === PUBLISHED && !publish) {
     usage(
@@ -126,6 +158,8 @@ function parseArgs(argv: string[]): Options {
     app: flags.get('app') ?? (platform === 'ios' ? IOS_BUNDLE_ID : ANDROID_PACKAGE),
     out: resolved,
     timeoutMinutes,
+    stallMinutes,
+    workloads,
     publish,
     // unique per invocation: a session named for the device alone could be closed by any other
     // invocation, and closing the session ends the runner, which terminates the app mid-run
@@ -319,22 +353,100 @@ export function joinChunks(chunks: Chunks): string {
   return parts.join('')
 }
 
+/**
+ * Returns the progress events of the last run in `log`, ignoring every other line it carries.
+ *
+ * `starts` counts every start line seen, so a repeated identical selection still reads as a new run.
+ */
+export function collectProgress(log: string): {
+  started: RunStarted | undefined
+  done: WorkloadDone[]
+  starts: number
+} {
+  let started: RunStarted | undefined
+  let done: WorkloadDone[] = []
+  let starts = 0
+  for (const line of log.split('\n')) {
+    const progress = parseProgress(line)
+    if (progress === undefined) {
+      continue
+    }
+    // a second run appends its own events, and the last start line opens the run being watched
+    if (progress.kind === 'start') {
+      started = progress
+      done = []
+      starts += 1
+      continue
+    }
+    done.push(progress)
+  }
+  return { started, done, starts }
+}
+
+/** Reports whether `stallMinutes` have passed since the log last carried anything new. */
+export function isStalled(lastProgressAt: number, now: number, stallMinutes: number): boolean {
+  return now - lastProgressAt >= stallMinutes * 60_000
+}
+
+function elapsedSince(startedAt: number): string {
+  const millis = Date.now() - startedAt
+  return millis < 60_000
+    ? `${Math.round(millis / 1000)} s elapsed`
+    : `${Math.round(millis / 60_000)} min elapsed`
+}
+
+function position(event: WorkloadDone): string {
+  return `${event.id} (${event.position} of ${event.selected})`
+}
+
 async function readLog(path: string): Promise<string> {
   const file = Bun.file(path)
   return (await file.exists()) ? await file.text() : ''
 }
 
-async function awaitPayload(logPath: string, timeoutMinutes: number): Promise<Chunks> {
+interface Captured {
+  chunks: Chunks
+  started: RunStarted | undefined
+}
+
+async function awaitPayload(
+  logPath: string,
+  timeoutMinutes: number,
+  stallMinutes: number,
+): Promise<Captured> {
   const startedAt = Date.now()
   const deadline = startedAt + timeoutMinutes * 60_000
   let announcedAt = startedAt
+  let lastProgressAt = startedAt
   let failedAt: number | undefined
+  let started: RunStarted | undefined
+  let seenStarts = 0
+  let reported = 0
+  let seenChunks = 0
   while (Date.now() < deadline) {
     const log = await readLog(logPath)
     const chunks = collectChunks(log)
-    const seen = chunks === undefined ? 0 : chunks.parts.size
+    const progress = collectProgress(log)
+
+    if (progress.starts !== seenStarts) {
+      seenStarts = progress.starts
+      started = progress.started
+      reported = 0
+      lastProgressAt = Date.now()
+    }
+    while (reported < progress.done.length) {
+      const event = progress.done[reported] as WorkloadDone
+      reported += 1
+      lastProgressAt = Date.now()
+      step(`  ${event.id} done, ${event.position} of ${event.selected}, ${elapsedSince(startedAt)}`)
+    }
+    if (chunks !== undefined && chunks.parts.size !== seenChunks) {
+      seenChunks = chunks.parts.size
+      lastProgressAt = Date.now()
+    }
+
     if (isComplete(chunks)) {
-      return chunks
+      return { chunks, started }
     }
     if (log.includes(FAILURE_MARKER)) {
       failedAt ??= Date.now()
@@ -342,10 +454,19 @@ async function awaitPayload(logPath: string, timeoutMinutes: number): Promise<Ch
         throw new Error(`The benchmark screen reported a failed run. See ${logPath}.`)
       }
     }
+    const last = progress.done.at(-1)
+    if (isStalled(lastProgressAt, Date.now(), stallMinutes)) {
+      const where = last === undefined ? 'before the first workload' : `after ${position(last)}`
+      throw new Error(
+        `No progress for ${stallMinutes} minutes, ${where}. The app is untouched and its results ` +
+          `may still be on screen; do not relaunch it. See ${logPath}.`,
+      )
+    }
     if (Date.now() - announcedAt >= PROGRESS_MS) {
       announcedAt = Date.now()
-      const minutes = Math.round((Date.now() - startedAt) / 60_000)
-      step(`  running, ${minutes} min elapsed, ${seen} payload chunks so far`)
+      const tail =
+        last === undefined ? 'no workload finished yet' : `last finished ${position(last)}`
+      step(`  running, ${elapsedSince(startedAt)}, ${tail}`)
     }
     await Bun.sleep(POLL_MS)
   }
@@ -428,10 +549,21 @@ function widestFactor(rows: BenchmarkRow[]): string {
     : `${best.factor.toFixed(best.factor < 10 ? 1 : 0)}× (${best.workload})`
 }
 
-function summarise(payload: BenchmarkPayload, out: string, logOut: string): void {
+function summarise(
+  payload: BenchmarkPayload,
+  out: string,
+  logOut: string,
+  started: RunStarted | undefined,
+): void {
   const equivalent = payload.rows.filter((row) => row.equivalent === true).length
   const duration = payload.measuredOn.durationSeconds
   console.log('')
+  if (started !== undefined && started.selected.length < started.planned) {
+    console.log(
+      `Subset run    ${started.selected.length} of ${started.planned} workloads, ` +
+        'not publishable',
+    )
+  }
   console.log(`Rows          ${payload.rows.length}, ${equivalent} equivalent to h3-js`)
   console.log(`Measured on   ${payload.measuredOn.device ?? payload.measuredOn.platform}`)
   console.log(`Duration      ${duration === undefined ? 'not recorded' : `${duration} s`}`)
@@ -491,18 +623,38 @@ async function run(options: Options): Promise<void> {
 
     // no `--settle` on the press: the run holds the JavaScript thread for the next several minutes,
     // and waiting for a quiet UI would spend accessibility captures on a screen that is busy
-    step('Pressing Run benchmark')
-    const button = agentDevice(['wait', 'text', 'Run benchmark', '30000', ...target(options)])
+    const button = agentDevice(['wait', 'text', 'Run full benchmark', '30000', ...target(options)])
     if (!button.ok) {
       throw new Error(`The Benchmark tab did not open. ${button.message}`)
     }
-    const start = agentDevice(['press', 'text="Run benchmark"', ...target(options)])
-    if (!start.ok) {
-      throw new Error(`Could not start the run. ${start.message}`)
+    if (options.workloads === undefined) {
+      step('Pressing Run full benchmark')
+      const start = agentDevice(['press', 'text="Run full benchmark"', ...target(options)])
+      if (!start.ok) {
+        throw new Error(`Could not start the run. ${start.message}`)
+      }
+    } else {
+      const selection = options.workloads.join(',')
+      step(`Selecting ${selection}`)
+      // the only editable element on the tab; Android names the field by its placeholder
+      const filled = agentDevice(['fill', 'editable', selection, '--settle', ...target(options)])
+      if (!filled.ok) {
+        throw new Error(`Could not fill the Workloads field. ${filled.message}`)
+      }
+      // the field submits on return, which sidesteps a soft keyboard that has moved the button
+      step('Pressing return')
+      const start = agentDevice(['keyboard', 'return', ...target(options)])
+      if (!start.ok) {
+        throw new Error(`Could not start the run. ${start.message}`)
+      }
     }
 
     step(`Waiting for the payload, up to ${options.timeoutMinutes} minutes`)
-    const chunks = await awaitPayload(logPath, options.timeoutMinutes)
+    const { chunks, started } = await awaitPayload(
+      logPath,
+      options.timeoutMinutes,
+      options.stallMinutes,
+    )
 
     const confirmed = agentDevice(['wait', 'text', CAPTION_TAIL, '60000', ...target(options)])
     if (!confirmed.ok) {
@@ -512,10 +664,22 @@ async function run(options: Options): Promise<void> {
     await writeFile(paths.log, await readLog(logPath), 'utf8')
 
     const payload = validatePayload(JSON.parse(joinChunks(chunks)), options.out)
+    // the field on the screen can hold a selection this invocation did not ask for, and a payload
+    // without a start line in its log cannot prove it came from a full run
+    if (options.publish && (started === undefined || started.selected.length < started.planned)) {
+      const covered =
+        started === undefined
+          ? 'The log carries no start line for this run'
+          : `The run covered ${started.selected.length} of ${started.planned} workloads`
+      throw new Error(
+        `${covered}, so it cannot become the published payload. Clear the Workloads field on the ` +
+          'screen and run again.',
+      )
+    }
     // the screen reads a model on Android only, so iOS gets its name from the host
     payload.measuredOn.device ??= hostDeviceName(options)
     await writeFile(options.out, `${JSON.stringify(payload, null, 2)}\n`, 'utf8')
-    summarise(payload, options.out, paths.log)
+    summarise(payload, options.out, paths.log, started)
   } catch (error) {
     if (logPath !== undefined) {
       await writeFile(paths.log, await readLog(logPath), 'utf8')
@@ -534,6 +698,13 @@ if (import.meta.main) {
   try {
     await run(parseArgs(process.argv.slice(2)))
   } catch (error) {
+    if (error instanceof UsageError) {
+      console.error(`benchmark-device: ${error.message}`)
+      for (const line of USAGE) {
+        console.error(line)
+      }
+      process.exit(1)
+    }
     console.error(error instanceof Error ? error.message : String(error))
     process.exit(1)
   }
