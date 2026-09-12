@@ -251,8 +251,8 @@ function cellToLocalIj(origin: bigint, cell: bigint): CoordIJ
 
 Finds the local IJ coordinates of a cell relative to an origin.
 
-This is not a serialization format: H3 does not guarantee these coordinates across its own
-versions, so do not store them or send them between systems that may run different versions.
+This is not a serialization format: the coordinates may change when the vendored H3 version
+changes, so do not store them or send them between systems that may run different versions.
 
 - `origin`: The anchoring cell.
 - `cell`: The cell to locate, at the same resolution and near enough to `origin`.
@@ -372,8 +372,8 @@ function localIjToCell(origin: bigint, coords: CoordIJ): bigint
 Finds the cell at local IJ coordinates relative to an origin, inverting
 `cellToLocalIj`.
 
-The coordinates come from `cellToLocalIj`, whose output H3 does not guarantee across its
-own versions, so do not read them from storage written by a different H3 version.
+The coordinates come from `cellToLocalIj` and may change when the vendored H3 version
+changes, so do not read them from storage written by a different H3 version.
 
 - `origin`: The anchoring cell.
 - `coords`: The coordinates `cellToLocalIj` answered, whose `i` and `j` must both be integers.
@@ -570,8 +570,8 @@ Finds the cells covering a polygon as `polygonToCells` does, with a choice of
 containment rule.
 
 The mode is either a `ContainmentMode` constant or the h3-js name for it; the constants
-are cheaper and are what this package recommends. This is an experimental H3 API and may change
-behaviour in a minor version of the underlying C library.
+are cheaper and are what this package recommends. This binds an experimental H3 API, so its
+results may change when the vendored H3 version changes.
 
 - `rings`: The outer ring first, then holes, as `[latitude, longitude]` degrees.
 - `res`: The resolution, `0` to `15`.
@@ -1157,8 +1157,8 @@ thread.
 
 The mode is resolved on the JS thread, by the helper the synchronous call uses, so the two take
 the same arguments and answer alike. This binds the same experimental H3 API as
-`polygonToCellsExperimental`, so its results may change in a minor version of the
-underlying C library.
+`polygonToCellsExperimental`, so its results may change when the vendored H3 version
+changes.
 
 - `rings`: The outer ring first, then holes, as `[latitude, longitude]` degrees.
 - `res`: The resolution, `0` to `15`.
