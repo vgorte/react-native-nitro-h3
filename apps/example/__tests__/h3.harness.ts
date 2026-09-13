@@ -7,12 +7,14 @@ import {
   cellsToMultiPolygon,
   cellToBoundary,
   cellToLatLng,
+  cellToVertex,
   getResolution,
   gridDisk,
   H3Error,
   latLngsToCells,
   latLngToCell,
   polygonToCellsExperimental,
+  vertexToLatLng,
 } from 'react-native-nitro-h3'
 
 const SAN_FRANCISCO_RES_9 = 0x89283082803ffffn
@@ -135,6 +137,12 @@ test('a cell boundary is a flat array of pairs', () => {
 test('a cell centre round-trips to the same cell', () => {
   const [lat, lng] = cellToLatLng(SAN_FRANCISCO_RES_9)
   expect(latLngToCell(lat, lng, 9)).toBe(SAN_FRANCISCO_RES_9)
+})
+
+test('a vertex answers its coordinate latitude first', () => {
+  const [lat, lng] = vertexToLatLng(cellToVertex(SAN_FRANCISCO_RES_9, 0))
+  expect(lat).toBeCloseTo(37.7720104773324, 9)
+  expect(lng).toBeCloseTo(-122.41701147197293, 9)
 })
 
 test('getResolution answers -1 for anything that is not a cell', () => {

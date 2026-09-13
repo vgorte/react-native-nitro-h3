@@ -389,6 +389,24 @@ describe.skipIf(skipWithoutProbe)('divergence: a malformed polygon', () => {
   })
 })
 
+describe('divergence: a distance coordinate that is not a pair', () => {
+  // the three `greatCircleDistance*` functions refuse every input below in TypeScript, before the
+  // native call the probe drives, so `__tests__/measurement.test.ts` proves this package's half
+  test('h3-js answers what this package refuses', () => {
+    const notAFinitePair: number[][] = [[Number.NaN, 0], [Number.POSITIVE_INFINITY, 0], [0]]
+    for (const argument of notAFinitePair) {
+      expect(h3.greatCircleDistance(argument, [1, 1], 'km'), String(argument)).toBeNaN()
+    }
+    expect(
+      h3.greatCircleDistance({ lat: 0, lng: 0 } as unknown as number[], [1, 1], 'km'),
+    ).toBeNaN()
+    // a third element goes unread and a numeric string is coerced
+    const fromAPair = h3.greatCircleDistance([0, 0], [1, 1], 'km')
+    expect(h3.greatCircleDistance([0, 0, 0], [1, 1], 'km')).toBe(fromAPair)
+    expect(h3.greatCircleDistance(['0', 0] as unknown as number[], [1, 1], 'km')).toBe(fromAPair)
+  })
+})
+
 describe.skipIf(skipWithoutProbe)('parity: error codes and wording', () => {
   test('a failure from H3 carries the same code and the same text as h3-js', () => {
     const cases: [string, () => unknown][] = [

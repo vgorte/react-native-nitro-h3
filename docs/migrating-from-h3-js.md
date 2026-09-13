@@ -49,7 +49,7 @@ Array.from(ring, (cell) => cellToLatLng(cell))
 
 Use `Array.from` with a mapping function, or loop with `for...of`.
 
-## Polygons as `Ring[]`
+## Polygons and Coordinates as Pairs
 
 A polygon with a single loop still passes it as [`Ring[]`](../packages/react-native-nitro-h3/docs/api.md#ring), where `h3-js` also accepts the loop unwrapped as `number[][]`.
 [`Ring`](../packages/react-native-nitro-h3/docs/api.md#ring) is a tuple type, so `tsc` rejects a bare `number[][]` against it.
