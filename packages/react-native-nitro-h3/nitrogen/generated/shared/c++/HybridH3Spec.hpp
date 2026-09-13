@@ -13,14 +13,12 @@
 #error NitroModules cannot be found! Are you sure you installed NitroModules properly?
 #endif
 
-// Forward declaration of `LatLng` to properly resolve imports.
-namespace margelo::nitro::h3 { struct LatLng; }
 // Forward declaration of `CoordIJ` to properly resolve imports.
 namespace margelo::nitro::h3 { struct CoordIJ; }
 // Forward declaration of `CellBoundaryBuffers` to properly resolve imports.
 namespace margelo::nitro::h3 { struct CellBoundaryBuffers; }
 
-#include "LatLng.hpp"
+#include <tuple>
 #include <vector>
 #include <NitroModules/ArrayBuffer.hpp>
 #include "CoordIJ.hpp"
@@ -60,9 +58,9 @@ namespace margelo::nitro::h3 {
     public:
       // Methods
       virtual uint64_t latLngToCell(double lat, double lng, double res) = 0;
-      virtual LatLng cellToLatLng(uint64_t cell) = 0;
-      virtual std::vector<LatLng> cellToBoundary(uint64_t cell) = 0;
-      virtual std::vector<std::vector<std::vector<LatLng>>> cellsToMultiPolygon(const std::shared_ptr<ArrayBuffer>& cells) = 0;
+      virtual std::tuple<double, double> cellToLatLng(uint64_t cell) = 0;
+      virtual std::vector<std::tuple<double, double>> cellToBoundary(uint64_t cell) = 0;
+      virtual std::vector<std::vector<std::vector<std::tuple<double, double>>>> cellsToMultiPolygon(const std::shared_ptr<ArrayBuffer>& cells) = 0;
       virtual std::shared_ptr<ArrayBuffer> polygonToCells(const std::vector<std::vector<std::vector<double>>>& rings, double res) = 0;
       virtual std::shared_ptr<ArrayBuffer> polygonToCellsExperimental(const std::vector<std::vector<std::vector<double>>>& rings, double res, double flags) = 0;
       virtual std::shared_ptr<ArrayBuffer> gridDisk(uint64_t origin, double k) = 0;
@@ -80,13 +78,13 @@ namespace margelo::nitro::h3 {
       virtual uint64_t reverseDirectedEdge(uint64_t edge) = 0;
       virtual std::shared_ptr<ArrayBuffer> directedEdgeToCells(uint64_t edge) = 0;
       virtual std::shared_ptr<ArrayBuffer> originToDirectedEdges(uint64_t origin) = 0;
-      virtual std::vector<LatLng> directedEdgeToBoundary(uint64_t edge) = 0;
+      virtual std::vector<std::tuple<double, double>> directedEdgeToBoundary(uint64_t edge) = 0;
       virtual double edgeLengthKm(uint64_t edge) = 0;
       virtual double edgeLengthM(uint64_t edge) = 0;
       virtual double edgeLengthRads(uint64_t edge) = 0;
       virtual uint64_t cellToVertex(uint64_t cell, double vertexNum) = 0;
       virtual std::shared_ptr<ArrayBuffer> cellToVertexes(uint64_t cell) = 0;
-      virtual LatLng vertexToLatLng(uint64_t vertex) = 0;
+      virtual std::tuple<double, double> vertexToLatLng(uint64_t vertex) = 0;
       virtual double degsToRads(double degrees) = 0;
       virtual double radsToDegs(double radians) = 0;
       virtual bool isValidCell(uint64_t cell) = 0;
@@ -128,7 +126,7 @@ namespace margelo::nitro::h3 {
       virtual std::vector<double> getIcosahedronFaces(uint64_t cell) = 0;
       virtual std::shared_ptr<Promise<std::shared_ptr<ArrayBuffer>>> polygonToCellsAsync(const std::vector<std::vector<std::vector<double>>>& rings, double res) = 0;
       virtual std::shared_ptr<Promise<std::shared_ptr<ArrayBuffer>>> polygonToCellsExperimentalAsync(const std::vector<std::vector<std::vector<double>>>& rings, double res, double flags) = 0;
-      virtual std::shared_ptr<Promise<std::vector<std::vector<std::vector<LatLng>>>>> cellsToMultiPolygonAsync(const std::shared_ptr<ArrayBuffer>& cells) = 0;
+      virtual std::shared_ptr<Promise<std::vector<std::vector<std::vector<std::tuple<double, double>>>>>> cellsToMultiPolygonAsync(const std::shared_ptr<ArrayBuffer>& cells) = 0;
       virtual std::shared_ptr<Promise<std::shared_ptr<ArrayBuffer>>> uncompactCellsAsync(const std::shared_ptr<ArrayBuffer>& cells, double res) = 0;
       virtual void setMaxCellCount(double maxCellCount) = 0;
 

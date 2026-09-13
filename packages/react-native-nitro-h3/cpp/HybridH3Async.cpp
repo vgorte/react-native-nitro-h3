@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <exception>
 #include <memory>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -41,18 +42,19 @@ HybridH3::polygonToCellsExperimentalAsync(const std::vector<std::vector<std::vec
       });
 }
 
-std::shared_ptr<Promise<std::vector<std::vector<std::vector<LatLng>>>>>
+std::shared_ptr<Promise<std::vector<std::vector<std::vector<std::tuple<double, double>>>>>>
 HybridH3::cellsToMultiPolygonAsync(const std::shared_ptr<ArrayBuffer>& cells) {
   std::shared_ptr<ArrayBuffer> owned;
   // a malformed cell set rejects the promise rather than throwing out of a promise-returning method
   try {
     owned = detail::copyInbound(cells);
   } catch (...) {
-    return Promise<std::vector<std::vector<std::vector<LatLng>>>>::rejected(std::current_exception());
+    return Promise<std::vector<std::vector<std::vector<std::tuple<double, double>>>>>::rejected(
+        std::current_exception());
   }
-  return Promise<std::vector<std::vector<std::vector<LatLng>>>>::async(
-      [owned = std::move(owned)]() -> std::vector<std::vector<std::vector<LatLng>>> {
-        return detail::toLatLngGrid(h3ops::cellsToMultiPolygon(detail::cellsOf(owned), detail::countOf(owned)));
+  return Promise<std::vector<std::vector<std::vector<std::tuple<double, double>>>>>::async(
+      [owned = std::move(owned)]() -> std::vector<std::vector<std::vector<std::tuple<double, double>>>> {
+        return detail::toCoordPairGrid(h3ops::cellsToMultiPolygon(detail::cellsOf(owned), detail::countOf(owned)));
       });
 }
 

@@ -1,11 +1,8 @@
 import type { HybridObject, UInt64 } from 'react-native-nitro-modules'
 
-// a latitude and longitude in degrees. Nitrogen generates a C++ struct of the same name in
-// `margelo::nitro::h3`, which is not H3's own `::LatLng`, and that one carries radians.
-export interface LatLng {
-  lat: number
-  lng: number
-}
+// a latitude and longitude in degrees. Nitrogen maps a tuple to `std::tuple<double, double>`, which
+// crosses as a JavaScript array of two numbers rather than as a generated struct.
+export type CoordPair = [lat: number, lng: number]
 
 // local IJ hexagon coordinates. Nitrogen generates a C++ struct of the same name in
 // `margelo::nitro::h3`, which is not H3's own `::CoordIJ`.
@@ -26,10 +23,10 @@ export interface CellBoundaryBuffers {
 export interface H3 extends HybridObject<{ ios: 'c++'; android: 'c++' }> {
   // `bigint` without signedness is a nitrogen error, so cells are `UInt64`.
   latLngToCell(lat: number, lng: number, res: number): UInt64
-  cellToLatLng(cell: UInt64): LatLng
-  cellToBoundary(cell: UInt64): LatLng[]
+  cellToLatLng(cell: UInt64): CoordPair
+  cellToBoundary(cell: UInt64): CoordPair[]
   // three levels of nesting: polygons of loops of points, which nitrogen expands recursively.
-  cellsToMultiPolygon(cells: ArrayBuffer): LatLng[][][]
+  cellsToMultiPolygon(cells: ArrayBuffer): CoordPair[][][]
   // `number[][][]` rather than a named point struct, so the public `Ring[]` passes straight through;
   // nitrogen maps it to `const std::vector<std::vector<std::vector<double>>>&`.
   polygonToCells(rings: number[][][], res: number): ArrayBuffer
@@ -56,14 +53,14 @@ export interface H3 extends HybridObject<{ ios: 'c++'; android: 'c++' }> {
   // both of these have a fixed length, so the `ArrayBuffer` is two or six cells rather than a query.
   directedEdgeToCells(edge: UInt64): ArrayBuffer
   originToDirectedEdges(origin: UInt64): ArrayBuffer
-  directedEdgeToBoundary(edge: UInt64): LatLng[]
+  directedEdgeToBoundary(edge: UInt64): CoordPair[]
   edgeLengthKm(edge: UInt64): number
   edgeLengthM(edge: UInt64): number
   edgeLengthRads(edge: UInt64): number
 
   cellToVertex(cell: UInt64, vertexNum: number): UInt64
   cellToVertexes(cell: UInt64): ArrayBuffer
-  vertexToLatLng(vertex: UInt64): LatLng
+  vertexToLatLng(vertex: UInt64): CoordPair
 
   degsToRads(degrees: number): number
   radsToDegs(radians: number): number
@@ -132,7 +129,7 @@ export interface H3 extends HybridObject<{ ios: 'c++'; android: 'c++' }> {
   ): Promise<ArrayBuffer>
   // a rejection carries `what()` alone, without the `H3.<method>(...): ` prefix a synchronous throw
   // gets; the wrapper's regex in `src/H3Error.ts` tolerates both shapes.
-  cellsToMultiPolygonAsync(cells: ArrayBuffer): Promise<LatLng[][][]>
+  cellsToMultiPolygonAsync(cells: ArrayBuffer): Promise<CoordPair[][][]>
   uncompactCellsAsync(cells: ArrayBuffer, res: number): Promise<ArrayBuffer>
 
   // the cell ceiling crosses as a `number` because `Infinity` has to survive the trip; C++ maps it
