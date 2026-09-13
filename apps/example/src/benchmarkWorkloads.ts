@@ -1,5 +1,5 @@
 import h3 from 'h3-js'
-import type { CellBoundaries, LatLng, Ring } from 'react-native-nitro-h3'
+import type { CellBoundaries, CoordPair, Ring } from 'react-native-nitro-h3'
 import {
   cellsToBoundaries,
   cellsToLatLngs,
@@ -20,6 +20,12 @@ import {
   uncompactCellsAsync,
 } from 'react-native-nitro-h3'
 import { WORKLOAD_IDS, type WorkloadId } from './benchmarkPlan'
+
+/** Holds one benchmark input coordinate, which is app data rather than an answer from the package. */
+interface Coordinate {
+  lat: number
+  lng: number
+}
 
 const SAN_FRANCISCO = { lat: 37.7749, lng: -122.4194 }
 const BERLIN = { lat: 52.52, lng: 13.405 }
@@ -316,10 +322,10 @@ function sameCellsInOrder(subject: BigUint64Array, reference: string[]): boolean
   )
 }
 
-function sameLatLng(subject: LatLng, reference: number[]): boolean {
+function sameLatLng(subject: CoordPair, reference: number[]): boolean {
   return (
-    Math.abs(subject.lat - (reference[0] as number)) < EPSILON &&
-    Math.abs(subject.lng - (reference[1] as number)) < EPSILON
+    Math.abs(subject[0] - (reference[0] as number)) < EPSILON &&
+    Math.abs(subject[1] - (reference[1] as number)) < EPSILON
   )
 }
 
@@ -329,7 +335,7 @@ function sameLatLngPairs(subject: Float64Array, reference: number[][]): boolean 
     return false
   }
   return reference.every((point, index) =>
-    sameLatLng({ lat: subject[2 * index] as number, lng: subject[2 * index + 1] as number }, point),
+    sameLatLng([subject[2 * index] as number, subject[2 * index + 1] as number], point),
   )
 }
 
@@ -345,24 +351,24 @@ function sameBoundaryBuffers(subject: CellBoundaries, reference: number[][][]): 
     const base = index * subject.stride
     return boundary.every((point, vertex) =>
       sameLatLng(
-        {
-          lat: subject.vertices[base + 2 * vertex] as number,
-          lng: subject.vertices[base + 2 * vertex + 1] as number,
-        },
+        [
+          subject.vertices[base + 2 * vertex] as number,
+          subject.vertices[base + 2 * vertex + 1] as number,
+        ],
         point,
       ),
     )
   })
 }
 
-function sameBoundary(subject: LatLng[], reference: number[][]): boolean {
+function sameBoundary(subject: CoordPair[], reference: number[][]): boolean {
   return (
     subject.length === reference.length &&
     subject.every((point, index) => sameLatLng(point, reference[index] as number[]))
   )
 }
 
-function samePolygons(subject: LatLng[][][], reference: number[][][][]): boolean {
+function samePolygons(subject: CoordPair[][][], reference: number[][][][]): boolean {
   return (
     subject.length === reference.length &&
     subject.every((polygon, p) => {
@@ -415,8 +421,8 @@ function toRow(
 }
 
 // a grid of distinct coordinates over San Francisco, so no call repeats an input
-function singleCallInputs(): LatLng[] {
-  const inputs = new Array<LatLng>(SINGLE_CALLS)
+function singleCallInputs(): Coordinate[] {
+  const inputs = new Array<Coordinate>(SINGLE_CALLS)
   for (let index = 0; index < SINGLE_CALLS; index++) {
     inputs[index] = {
       lat: SAN_FRANCISCO.lat + (index % SINGLE_CALL_COLUMNS) * SINGLE_CALL_STEP,
@@ -551,7 +557,7 @@ export async function runBenchmark(
       signal,
       SINGLE_CALLS,
       (call) => {
-        const input = singleInputs[call] as LatLng
+        const input = singleInputs[call] as Coordinate
         return latLngToCell(input.lat, input.lng, 9)
       },
       track(OWN, SINGLE_CALLS),
@@ -563,7 +569,7 @@ export async function runBenchmark(
       signal,
       SINGLE_CALLS,
       (call) => {
-        const input = singleInputs[call] as LatLng
+        const input = singleInputs[call] as Coordinate
         return h3.latLngToCell(input.lat, input.lng, 9)
       },
       track(REFERENCE, SINGLE_CALLS),
@@ -876,7 +882,7 @@ export async function runBenchmark(
       signal,
       RUNS,
       () => {
-        let last: LatLng = { lat: 0, lng: 0 }
+        let last: CoordPair = [0, 0]
         for (let i = 0; i < CALLS; i++) {
           last = cellToLatLng(cells[i % cells.length] as bigint)
         }
@@ -927,7 +933,7 @@ export async function runBenchmark(
       signal,
       RUNS,
       () => {
-        let last: LatLng[] = []
+        let last: CoordPair[] = []
         for (let i = 0; i < CALLS; i++) {
           last = cellToBoundary(cells[i % cells.length] as bigint)
         }
