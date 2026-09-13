@@ -62,15 +62,14 @@ Coming from `h3-js`, read the [migration guide](https://vgorte.github.io/react-n
 
 ### Links
 
-- [Documentation](https://vgorte.github.io/react-native-nitro-h3/)
-- [`llms.txt`](https://vgorte.github.io/react-native-nitro-h3/llms.txt): the docs for agents and assistants
-- [Showcase](https://vgorte.github.io/react-native-nitro-h3/showcase/): five acts of one app
-- [Getting Started](https://vgorte.github.io/react-native-nitro-h3/getting-started/): install and first call
-- [Requirements](https://vgorte.github.io/react-native-nitro-h3/requirements/): platform and toolchain versions
-- [Migrating from h3-js](https://vgorte.github.io/react-native-nitro-h3/migrating-from-h3-js/)
-- [API Reference](https://vgorte.github.io/react-native-nitro-h3/api/): every exported function
-- [Example app](https://github.com/vgorte/react-native-nitro-h3/tree/main/apps/example): the benchmark and harness app
-- [Contributing](https://github.com/vgorte/react-native-nitro-h3/blob/main/CONTRIBUTING.md): build, test, add an operation
+- [Getting Started](https://vgorte.github.io/react-native-nitro-h3/getting-started/)
+- [Requirements](https://vgorte.github.io/react-native-nitro-h3/requirements/)
+- [API](https://vgorte.github.io/react-native-nitro-h3/api/)
+- [Migration](https://vgorte.github.io/react-native-nitro-h3/migrating-from-h3-js/)
+- [Showcase](https://vgorte.github.io/react-native-nitro-h3/showcase/)
+- [Example Benchmark App](https://github.com/vgorte/react-native-nitro-h3/tree/main/apps/example)
+- [Contributing](https://github.com/vgorte/react-native-nitro-h3/blob/main/CONTRIBUTING.md)
+- [llms.txt](https://vgorte.github.io/react-native-nitro-h3/llms.txt)
 
 ---
 
