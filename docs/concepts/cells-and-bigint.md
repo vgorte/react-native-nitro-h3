@@ -44,5 +44,6 @@ These are the differences a call site meets on the first day:
 | Loose JavaScript argument coercion                      | Strict native validation                        |
 | No cell allocation limit                                | Optional `maxCellCount`                         |
 
-[Divergences from h3-js](../h3-js-divergences.md) is the exhaustive list, and names what proves each one: most rows are proved by a test, and the functions that follow upstream H3 point to the vendored source instead.
+[Divergences from h3-js](../h3-js-divergences.md) is the exhaustive list, and names what proves each one.
+Most rows are proved by a test, and the functions that follow upstream H3 point to the vendored source instead.
 The call-site changes are walked through in [Migrating from h3-js](../migrating-from-h3-js.md).

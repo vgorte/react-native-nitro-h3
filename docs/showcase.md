@@ -17,7 +17,7 @@ A readout in every act watches the JS thread and reports the longest block of th
 
 A grid that picks its resolution from the zoom and rebuilds while you pinch, at most every 120 ms, then once more where the map settles.
 Each cell is coloured by its ring distance inside its parent.
-This act takes the classic path, cell boundaries as a GeoJSON string for MapLibre, and the panel shows what that string costs next to the JS thread readout.
+This act takes the classic path, cell boundaries as a GeoJSON string for the map layer, and the panel shows what that string costs next to the JS thread readout.
 
 <p class="use"><strong>Derive spatial layers directly from the viewport.</strong></p>
 
@@ -27,7 +27,8 @@ Coverage layers, pricing zones, service areas, cells instead of polygons.
 
 [`cellToChildren`](../packages/react-native-nitro-h3/docs/api.md#celltochildren) · [`cellToParent`](../packages/react-native-nitro-h3/docs/api.md#celltoparent)
 
-Tap a cell and it splits into its seven children; long-press and they fold back into the parent.
+Tap a cell and it splits into its seven children.
+Long-press and they fold back into the parent.
 Every split is one call, so the detail follows your finger.
 
 <p class="use"><strong>Drill down where the data is dense.</strong></p>

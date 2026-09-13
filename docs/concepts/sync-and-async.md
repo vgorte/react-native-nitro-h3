@@ -46,7 +46,9 @@ The result is the one its synchronous sibling produces, which `apps/example/__te
 
 ## What the Hop Costs
 
-On the iPhone XS the hop is inside the noise: [`polygonToCellsAsync`](../../packages/react-native-nitro-h3/docs/api.md#polygontocellsasync) came in at 214.5 ms against 220.7 ms for [`polygonToCells`](../../packages/react-native-nitro-h3/docs/api.md#polygontocells), and [`uncompactCellsAsync`](../../packages/react-native-nitro-h3/docs/api.md#uncompactcellsasync) at 4.1 ms against 3.9 ms for [`uncompactCells`](../../packages/react-native-nitro-h3/docs/api.md#uncompactcells).
+On the iPhone XS the hop is inside the noise.
+[`polygonToCellsAsync`](../../packages/react-native-nitro-h3/docs/api.md#polygontocellsasync) came in at 214.5 ms against 220.7 ms for [`polygonToCells`](../../packages/react-native-nitro-h3/docs/api.md#polygontocells), and [`uncompactCellsAsync`](../../packages/react-native-nitro-h3/docs/api.md#uncompactcellsasync) at 4.1 ms against 3.9 ms for [`uncompactCells`](../../packages/react-native-nitro-h3/docs/api.md#uncompactcells).
 On the Galaxy S23 the same hop costs about 97 ms on the 178.5 ms [`polygonToCells`](../../packages/react-native-nitro-h3/docs/api.md#polygontocells) call, and about 0.7 ms on the 4.3 ms [`uncompactCells`](../../packages/react-native-nitro-h3/docs/api.md#uncompactcells) call.
-Both figures in each pair come from one run of [Benchmark Report](../benchmark.md): the `W3` rows are the median of 3 timed passes, the `W8` rows the median of 20.
+Both figures in each pair come from one run of [Benchmark Report](../benchmark.md).
+The `W3` rows are the median of 3 timed passes, the `W8` rows the median of 20.
 Measure the hop on your own device before you move a call off the JavaScript thread, because the two devices here disagree on whether it costs anything at all.

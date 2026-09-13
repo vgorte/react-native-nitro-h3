@@ -8,7 +8,8 @@ That release bundles exactly the H3 C library this package vendors, so it is an 
 Test paths below are relative to `packages/react-native-nitro-h3/`.
 
 Every row and section below is proved by a test in `parity/divergences.test.ts`, except the error contract's package half, proved in `__tests__/H3Error.test.ts`, and the section on functions that follow upstream H3, which quotes the vendored sources instead of asserting against a test.
-Where `parity/divergences.test.ts` does the proving, it asserts both sides; the type-surface rows are proved there for `h3-js` at run time and for this package by `tsc`, because the probe the suite drives speaks JSON.
+Where `parity/divergences.test.ts` does the proving, it asserts both sides.
+The type-surface rows are proved there for `h3-js` at run time and for this package by `tsc`, because the probe the suite drives speaks JSON.
 The additive batch section leans on `parity/batches.test.ts` as well, which is where the three calls are compared with `h3-js` element for element.
 
 `h3-js` runs anywhere JavaScript does, needs no native build step and no New Architecture, and its cells are strings that serialise without a thought.
@@ -31,7 +32,8 @@ This page lists where the two answer differently, not where one is better.
 | `uncompactCells` over a set with an invalid member | throws `E_CELL_INVALID` (code 5) | throws `E_MEMORY_BOUNDS` (code 14) after sizing the output from the invalid member, an allocation that leaves its Emscripten heap unusable for the rest of the process | As above. |
 | `constructCell` with a digit count that is not the resolution | throws `constructCell needs exactly res digits`, with no `code` | throws `E_DIGIT_DOMAIN` (code 18) with `, value: 3` | H3 never sees the digit count, so it cannot report on it. |
 
-The nine exemptions have no error channel and answer for any input, exactly as `h3-js` does: [`isValidCell`](../packages/react-native-nitro-h3/docs/api.md#isvalidcell), [`isValidIndex`](../packages/react-native-nitro-h3/docs/api.md#isvalidindex), [`isPentagon`](../packages/react-native-nitro-h3/docs/api.md#ispentagon), [`isResClassIII`](../packages/react-native-nitro-h3/docs/api.md#isresclassiii), [`isValidDirectedEdge`](../packages/react-native-nitro-h3/docs/api.md#isvaliddirectededge), [`isValidVertex`](../packages/react-native-nitro-h3/docs/api.md#isvalidvertex), [`getResolution`](../packages/react-native-nitro-h3/docs/api.md#getresolution), [`getBaseCellNumber`](../packages/react-native-nitro-h3/docs/api.md#getbasecellnumber) and [`cellToString`](../packages/react-native-nitro-h3/docs/api.md#celltostring).
+The nine exemptions have no error channel and answer for any input, exactly as `h3-js` does.
+They are [`isValidCell`](../packages/react-native-nitro-h3/docs/api.md#isvalidcell), [`isValidIndex`](../packages/react-native-nitro-h3/docs/api.md#isvalidindex), [`isPentagon`](../packages/react-native-nitro-h3/docs/api.md#ispentagon), [`isResClassIII`](../packages/react-native-nitro-h3/docs/api.md#isresclassiii), [`isValidDirectedEdge`](../packages/react-native-nitro-h3/docs/api.md#isvaliddirectededge), [`isValidVertex`](../packages/react-native-nitro-h3/docs/api.md#isvalidvertex), [`getResolution`](../packages/react-native-nitro-h3/docs/api.md#getresolution), [`getBaseCellNumber`](../packages/react-native-nitro-h3/docs/api.md#getbasecellnumber) and [`cellToString`](../packages/react-native-nitro-h3/docs/api.md#celltostring).
 [`getResolution`](../packages/react-native-nitro-h3/docs/api.md#getresolution) answers `-1` for an index that is not a valid cell, which is what `h3-js` answers too.
 [`cellFromString`](../packages/react-native-nitro-h3/docs/api.md#cellfromstring) takes text rather than a cell index, so it converts whatever parses and leaves the verdict to the operation the result is passed to.
 
@@ -65,7 +67,8 @@ The cells and coordinates they answer are upstream's to change, and may change w
 ## The Additive Batch Calls
 
 [`latLngsToCells`](../packages/react-native-nitro-h3/docs/api.md#latlngstocells), [`cellsToLatLngs`](../packages/react-native-nitro-h3/docs/api.md#cellstolatlngs) and [`cellsToBoundaries`](../packages/react-native-nitro-h3/docs/api.md#cellstoboundaries) run a scalar operation over a whole typed array in one native call.
-`h3-js` exports none of them, so they are additive rather than a difference in behaviour: element for element they answer what a [`latLngToCell`](../packages/react-native-nitro-h3/docs/api.md#latlngtocell), [`cellToLatLng`](../packages/react-native-nitro-h3/docs/api.md#celltolatlng) or [`cellToBoundary`](../packages/react-native-nitro-h3/docs/api.md#celltoboundary) loop answers, which `parity/batches.test.ts` proves over the corpus.
+`h3-js` exports none of them, so they are additive rather than a difference in behaviour.
+Element for element they answer what a [`latLngToCell`](../packages/react-native-nitro-h3/docs/api.md#latlngtocell), [`cellToLatLng`](../packages/react-native-nitro-h3/docs/api.md#celltolatlng) or [`cellToBoundary`](../packages/react-native-nitro-h3/docs/api.md#celltoboundary) loop answers, which `parity/batches.test.ts` proves over the corpus.
 `parity/divergences.test.ts` asserts that `h3-js` has none of the three exports, so the day it grows one this section fails rather than ages.
 
 | Case | This package | `h3-js` |
@@ -103,9 +106,10 @@ Do not parse it.
 ## Arithmetic
 
 Both sides run the same C source, so a difference here is the compiler's, not the algorithm's.
-The host and device builds are arm64 and contract a multiply and an add into one instruction; Emscripten does not.
+The host and device builds are arm64 and contract a multiply and an add into one instruction.
+Emscripten does not.
 
-That shows only where the arithmetic is ill-conditioned: near a pole, and on a cell small enough that a length or an area is the difference of near-equal terms.
+That shows only where the arithmetic is ill-conditioned, near a pole and on a cell small enough that a length or an area is the difference of near-equal terms.
 Every figure below is the worst case measured over the corpus, and each is asserted at two to four times itself.
 
 | Measurement | Agreement | Why |
@@ -123,7 +127,8 @@ Every figure below is the worst case measured over the corpus, and each is asser
 The bounds they are asserted against live in `parity/divergences.test.ts`, `parity/scalars.test.ts`, `parity/cellSets.test.ts` and `parity/geometry.test.ts`.
 The probe is built with `-DCMAKE_BUILD_TYPE=Release`, the configuration those bounds were measured on.
 
-These are host figures read off a local arm64 run by hand, so nothing in CI reproduces them: `.github/workflows/parity.yml` builds the probe on `ubuntu-latest` and re-checks the bounds rather than the worst cases, and no device run is reduced into this table.
+These are host figures read off a local arm64 run by hand, so nothing in CI reproduces them.
+`.github/workflows/parity.yml` builds the probe on `ubuntu-latest` and re-checks the bounds rather than the worst cases, and no device run is reduced into this table.
 Cutoff 2026-08-28, against `h3-js` 4.5.0 and the vendored H3 `v4.5.0`.
 
 ## Shape and Surface

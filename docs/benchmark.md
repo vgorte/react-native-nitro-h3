@@ -17,12 +17,13 @@ What the numbers below show is one axis, the cost of the JavaScript boundary on 
 ## Headline Metric
 
 The README reports the largest measured speedup, [`compactCells`](../packages/react-native-nitro-h3/docs/api.md#compactcells) on the iPhone XS, as about 800×.
-The table below reads 862.1× for that row, and the headline stays under it on purpose: the same row landed at 807× on the other run on record, so the conservative figure is the one both runs support.
+The table below reads 862.1× for that row, and the headline stays under it on purpose.
+The same row landed at 807× on the other run on record, so the conservative figure is the one both runs support.
 
 This workload is intentionally included because it exposes the cost of crossing the JavaScript/Emscripten boundary with large cell sets.
 
 Read that factor with its own median in mind.
-[`compactCells`](../packages/react-native-nitro-h3/docs/api.md#compactcells) finishes in 0.085 ms on the iPhone XS, at the resolution of the clock, so a jitter of a few hundredths of a millisecond moves the factor by tens of percent: across the two iPhone XS runs on record it landed at 807× and 862×.
+[`compactCells`](../packages/react-native-nitro-h3/docs/api.md#compactcells) finishes in 0.085 ms on the iPhone XS, at the resolution of the clock, so a jitter of a few hundredths of a millisecond moves the factor by tens of percent, and across the two iPhone XS runs on record it landed at 807× and 862×.
 [`polygonToCells`](../packages/react-native-nitro-h3/docs/api.md#polygontocells) is the stable large factor.
 
 Its 220.7 ms median sits far above clock resolution, and the same two runs put it at 337× and 341×.
@@ -50,11 +51,11 @@ Each workload is timed using the following sequence:
 
 - **Warm-up:** One untimed warm-up pass so neither library pays the initialisation cost of its first call.
 - **Timed Passes:** 20 timed passes for most workloads.
-  (Exceptions: `W3` and `W2d` get three passes, as a single `h3-js` run of either takes seconds; `W0` takes 1,000 passes of one call.)
+  (`W3` and `W2d` get three passes, as a single `h3-js` run of either takes seconds, and `W0` takes 1,000 passes of one call.)
 - **Event Loop Yielding:** Between samples, the thread yields to the event loop.
   This prevents the app from freezing during minutes-long runs.
   The pause occurs strictly outside the timed windows.
-  (Exception: `W0` yields every hundredth sample, because a macrotask costs more than the single call it would separate.)
+  (The exception is `W0`, which yields every hundredth sample, because a macrotask costs more than the single call it would separate.)
 - **Statistical Aggregation:** The published figure is the median (the upper of the two middle samples on an even count).
   The p95 (by nearest rank, the 19th sample out of 20), minimum, and maximum are recorded beside it.
   A `W0` sample is one call, so its median and p95 describe a single call rather than a pass.
@@ -78,7 +79,7 @@ Result equivalence is checked outside the timed loop, from the warm-up value or 
 The set is chosen so the headline rows can be read in context rather than alone.
 The notes below cover only the workloads whose framing is not obvious from the id table:
 
-- `W0` is the map tap: one call per sample, where no batch hides the cost of a single crossing.
+- `W0` is the map tap, one call per sample, where no batch hides the cost of a single crossing.
 - `W2a` to `W2d` vary `k` over the same loop, so a factor can be read against the work one call does.
 - `W6` and `W7` cycle the 1,261 cells of a `k=20` disk rather than one repeated cell.
 - `W8` sizes its result with [`cellToChildrenSize`](../packages/react-native-nitro-h3/docs/api.md#celltochildrensize) before the run and targets the highest resolution that stays inside a 4,000,000 cell budget the benchmark sets for itself, so the row label names the resolution actually measured.
@@ -90,8 +91,10 @@ The notes below cover only the workloads whose framing is not obvious from the i
 - **Paired Bars:** `img/benchmark.svg` shows the four headline workloads (`W1`, `W3`, `W4` and `W7`) as paired bars, `react-native-nitro-h3` above `h3-js`, each pair scaled linearly so the `h3-js` bar spans the full width.
   The remaining workloads are in the tables below.
 - **The Batch Chart:** `img/benchmark-batch.svg` is rendered from the same payload and puts one batch call against the `h3-js` loop and against this package's own per-call loop.
-  Its `W1` against `W11` pair carries a footnote, because that pair is not input-matched; see The Batch Rows below.
-- **Where the Headline Comes From:** `bun run benchmark:svg` prints the widest factor of a payload as a `HEADLINE` line; the screen reports rows and their per-row factors and nothing else.
+  Its `W1` against `W11` pair carries a footnote, because that pair is not input-matched.
+  See The Batch Rows below.
+- **Where the Headline Comes From:** `bun run benchmark:svg` prints the widest factor of a payload as a `HEADLINE` line.
+  The screen reports rows and their per-row factors and nothing else.
   Which factor deserves a headline is a judgement made when the numbers are published, not by the app that measures them.
 - **A Payload Keeps Its Factors:** a payload whose rows carry a `factor` field is published with the factor the screen displayed, because recomputing one from medians rounded for the screen drifts from what was measured.
 
@@ -120,7 +123,8 @@ The notes below cover only the workloads whose framing is not obvious from the i
 ![react-native-nitro-h3 against h3-js, median milliseconds per workload, lower is better](../img/benchmark.svg)
 
 Both runs come from a physical phone in a Release build, driven end to end by `bun run benchmark:device`.
-CI does not produce these figures: an emulator on a shared runner says nothing about a phone.
+CI does not produce these figures.
+An emulator on a shared runner says nothing about a phone.
 
 All timing figures represent the median execution time in milliseconds, and the speedup factor is the `h3-js` median divided by the `react-native-nitro-h3` median, computed from the unrounded medians in the payload.
 
@@ -213,7 +217,7 @@ The figures above were read from the run's captured JSON before it was discarded
 Nothing in the repository reproduces them without a new device run.
 
 Note: `W0`, `W2a` to `W2c`, `W4`, `W5`, `W8` and `W9` finish in under ten milliseconds on the native side, and each device figure is a single run.
-Repeating a run on the same device with the same build moved the factors of those rows by up to about half: the Galaxy S23's [`compactCells`](../packages/react-native-nitro-h3/docs/api.md#compactcells) factor moved from 205.9× on an earlier uncommitted run of the same build to 321.4× here, on an own-side change of 0.028 ms.
+Repeating a run on the same device with the same build moved the factors of those rows by up to about half, with the Galaxy S23's [`compactCells`](../packages/react-native-nitro-h3/docs/api.md#compactcells) factor moving from 205.9× on an earlier uncommitted run of the same build to 321.4× here, on an own-side change of 0.028 ms.
 The rows in the hundreds of milliseconds moved considerably less, so read a factor as an order of magnitude rather than as a constant.
 
 Note: `W0` runs first and times a single call rather than a pass, so both of its medians are measured on a phone that has just come out of idle.
@@ -240,10 +244,10 @@ Read the two pairs differently, because only one of them is input-matched:
 
 - **`W6` against `W12` is a clean pair.** The `h3-js` sides bracket each other closely on both devices, 1,303.1 ms against 1,315.3 ms on the iPhone XS and 786.9 ms against 800.8 ms on the Galaxy S23, which is the evidence that the two workloads are comparable despite `W6` cycling 1,261 distinct cells where `W12` uses 100,000.
 - **`W1` against `W11` is not, and its figure is a floor.** `W1` repeats one coordinate 100,000 times where `W11` uses 100,000 distinct ones, so the batch call does the harder work.
-  The `h3-js` sides show it: 17 % apart on the iPhone XS, 49 % apart on the Galaxy S23.
+  The `h3-js` sides show it, at 17 % apart on the iPhone XS and 49 % apart on the Galaxy S23.
   Quote 1.70× as a lower bound, never as the win.
   A `W1` variant fed the same 100,000 distinct coordinates is the clean way to get the real figure, and that variant does not exist yet.
-- **The saving is bridge crossings, not a faster inner loop.** A host build of the same `h3ops` layer, timed over the same 100,000 elements, puts the native work of a batch call within about 2 % of the native work of the loop it replaces, so what the batch removes is the per-element crossing: roughly 0.38 and 0.89 microseconds per element on the A12, 0.28 and 1.04 on the Galaxy S23.
+- **The saving is bridge crossings, not a faster inner loop.** A host build of the same `h3ops` layer, timed over the same 100,000 elements, puts the native work of a batch call within about 2 % of the native work of the loop it replaces, so what the batch removes is the per-element crossing, roughly 0.38 and 0.89 microseconds per element on the A12, 0.28 and 1.04 on the Galaxy S23.
   That measurement is not committed, and nothing in the repository reproduces it.
 - **[`cellsToLatLngs`](../packages/react-native-nitro-h3/docs/api.md#cellstolatlngs) wins more than [`latLngsToCells`](../packages/react-native-nitro-h3/docs/api.md#latlngstocells)** on both devices, because its scalar sibling returns a fresh coordinate object per call, which is the expensive crossing, where the batch returns one `Float64Array`.
 - **100,000 elements is a favourable size by construction.** Below a few hundred, one crossing plus a typed-array allocation is a larger share of the total, and that crossover is unmeasured.
@@ -267,14 +271,15 @@ The bytecode figures come from two Metro bundles of the example app that differ 
 The example app holds that import in one place, `apps/example/src/benchmarkWorkloads.ts`.
 The native figures are the stored sizes in `apps/example/android/app/build/outputs/apk/release/app-release.apk`, of which 333 kB on `arm64-v8a` is executable code and the rest is read-only data, symbol tables and C++ unwind information.
 
-An Android App Bundle ships one ABI per device, so a phone pays one of those rows, not four; an app with no other Nitro module also carries `libNitroModules.so` from `react-native-nitro-modules` (980 kB on `arm64-v8a`).
+An Android App Bundle ships one ABI per device, so a phone pays one of those rows, not four.
+An app with no other Nitro module also carries `libNitroModules.so` from `react-native-nitro-modules` (980 kB on `arm64-v8a`).
 iOS was not measured.
 
 ## The Cost of Unbounded Requests (What the Cell Ceiling Guards)
 
 Neither library caps a request by default.
 `h3-js` bounds only its own Emscripten heap at 2 GB, building JavaScript arrays of hexadecimal strings on top of it without a bound, and it offers no setting to change that.
-`react-native-nitro-h3` allocates whatever is asked for too, until [`configure({ maxCellCount })`](../packages/react-native-nitro-h3/docs/api.md#configure) sets a cell ceiling; from then on an oversized request is refused before anything is allocated.
+`react-native-nitro-h3` allocates whatever is asked for too, until [`configure({ maxCellCount })`](../packages/react-native-nitro-h3/docs/api.md#configure) sets a cell ceiling, and from then on an oversized request is refused before anything is allocated.
 
 To show what an unbounded request costs, the numbers below come from hardware far larger than a phone (Apple M5 Pro, 24 GB RAM, macOS 26.5.2, bun 1.3.14, from [`latLngToCell(37.7749, -122.4194, 9)`](../packages/react-native-nitro-h3/docs/api.md#latlngtocell), measured 2026-08-28):
 
@@ -285,11 +290,11 @@ To show what an unbounded request costs, the numbers below come from hardware fa
 
 **Context:** "Packed size" is the memory footprint if those cells were stored as 64-bit integers (8 bytes each).
 As an array of hexadecimal strings in `h3-js` they cost considerably more, which is where the wall-clock time is largely spent.
-[`gridDisk(cell, 8000)`](../packages/react-native-nitro-h3/docs/api.md#griddisk) (192,024,001 cells) was not run: the array of strings it builds forces even an M5 Pro into swap.
+[`gridDisk(cell, 8000)`](../packages/react-native-nitro-h3/docs/api.md#griddisk) (192,024,001 cells) was not run, because the array of strings it builds forces even an M5 Pro into swap.
 
 Note: a phone has neither that memory nor those seconds to spare, and the allocation happens inside the app's own heap.
 When it fails, the OS kills the process, and no JavaScript `try/catch` sees it.
-That is exactly what a cell ceiling guards against: `react-native-nitro-h3` sizes every result up front, so a ceiling can refuse the request with a catchable [`H3Error`](../packages/react-native-nitro-h3/docs/api.md#h3error).
+That is exactly what a cell ceiling guards against, and `react-native-nitro-h3` sizes every result up front, so a ceiling can refuse the request with a catchable [`H3Error`](../packages/react-native-nitro-h3/docs/api.md#h3error).
 
 ## Regenerating the Benchmarks
 
@@ -308,7 +313,7 @@ scripts/build-device-release.sh android <adb-serial>
 ### 2. Capture the Payload
 
 `bun run benchmark:device` drives the run and writes the payload the screen logs.
-It needs the `agent-device` CLI on the path, and on a physical iOS device the three runner variables the reference `.mcp.json` carries: `AGENT_DEVICE_IOS_TEAM_ID`, `AGENT_DEVICE_IOS_RUNNER_APP_BUNDLE_ID` and `AGENT_DEVICE_IOS_RUNNER_TEST_BUNDLE_ID`.
+It needs the `agent-device` CLI on the path, and on a physical iOS device the three runner variables the reference `.mcp.json` carries (`AGENT_DEVICE_IOS_TEAM_ID`, `AGENT_DEVICE_IOS_RUNNER_APP_BUNDLE_ID` and `AGENT_DEVICE_IOS_RUNNER_TEST_BUNDLE_ID`).
 
 The same three variables have to be in the environment of the `agent-device` background daemon.
 The first `agent-device` call of a session spawns that daemon and it outlives the call, so a daemon started without them builds the runner with ids this team cannot sign.
@@ -326,7 +331,7 @@ Three flags shape the run:
 
 - `--timeout-minutes`: the ceiling for the whole run, against about ten minutes for a Galaxy S23 run and about twenty for an iPhone XS (default 45).
 - `--stall-minutes`: how long the script waits between two of those progress lines before it gives up on a wedged run (default 10).
-- `--workloads`: a comma separated subset such as `W13,W7`, which measures only those rows (default: every workload).
+- `--workloads`: a comma separated subset such as `W13,W7`, which measures only those rows (default all workloads).
 
 A subset run is not publishable, so the script refuses `--workloads` together with `--publish` and marks the summary of any run the screen reports as a subset.
 The **Workloads** field above the button takes the same ids by hand, and a card's own **Run** button measures that one workload.
@@ -335,7 +340,8 @@ Submit the field with the return key or with the button, which reads **Run selec
 Two rules the script exists to enforce, because breaking either costs the whole run:
 
 - The automation runner is installed and log capture is started **before** the first tap.
-  On a physical iOS device, starting capture relaunches the app through `devicectl --console`, which reads stdout and stderr only; `apps/example/ios/H3Example/AppDelegate.swift` mirrors every React Native log line to stderr so the payload reaches the host at all.
+  On a physical iOS device, starting capture relaunches the app through `devicectl --console`, which reads stdout and stderr only.
+  `apps/example/ios/H3Example/AppDelegate.swift` mirrors every React Native log line to stderr so the payload reaches the host at all.
 - Nothing relaunches the app **after** a run.
   The results live only in the screen's React state, so a relaunch discards them.
   On a timeout or an error the script saves a screenshot beside `--out` and exits non-zero, leaving the app exactly as it stands.
@@ -343,7 +349,8 @@ Two rules the script exists to enforce, because breaking either costs the whole 
 ### 3. Render the Charts
 
 Review the run, then copy it to `apps/example/benchmark.json` and render.
-Copy only a full run: a subset payload carries no marker of its own, so nothing downstream would notice.
+Copy only a full run.
+A subset payload carries no marker of its own, so nothing downstream would notice.
 
 ```sh
 cp run.json apps/example/benchmark.json
@@ -353,7 +360,8 @@ bun run benchmark:svg
 The script validates the JSON (and refuses a `Debug` payload), renders both charts (`img/benchmark.svg` and `img/benchmark-batch.svg`), and prints the widest factor of the payload as a `HEADLINE` line.
 `bun run benchmark:device` refuses to write `apps/example/benchmark.json` unless `--publish` is passed, so an unreviewed run cannot overwrite the published payload by accident.
 
-Then run `bun install` and `bun run og` in `website/` and commit the two PNGs it writes under `website/public/`; the social preview of the site's landing page is a raster copy of `img/benchmark.svg`.
+Then run `bun install` and `bun run og` in `website/` and commit the two PNGs it writes under `website/public/`.
+The social preview of the site's landing page is a raster copy of `img/benchmark.svg`.
 
 ### 4. Publish
 
