@@ -128,7 +128,7 @@ cd packages/react-native-nitro-h3
 npm pack --dry-run
 ```
 
-The `prepack` guard runs first. Expect it to print `Pack list OK: 222 files`, the number of files in
+The `prepack` guard runs first. Expect it to print `Pack list OK: 221 files`, the number of files in
 the package tarball, before npm lists the simulated tarball contents.
 
 `lib/` contains build outputs ignored by git, which is why `bun run build` comes first.

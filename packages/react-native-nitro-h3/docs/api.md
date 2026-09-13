@@ -27,7 +27,7 @@ Every function throws [`H3Error`](#h3error) on failure. Cells are `bigint`; cell
 ### cellToBoundary
 
 ```ts
-function cellToBoundary(cell: bigint): LatLng[]
+function cellToBoundary(cell: bigint): CoordPair[]
 ```
 
 Finds the boundary of a cell, in degrees, counter-clockwise.
@@ -37,21 +37,21 @@ ten, because H3 inserts the edge crossings.
 
 - `cell`: The cell.
 
-Returns: The boundary vertices, whose first point is not repeated at the end.
+Returns: The boundary vertices as `[latitude, longitude]` pairs, whose first point is not repeated at the end.
 
 Throws: `H3Error` if the cell is not valid.
 
 ### cellToLatLng
 
 ```ts
-function cellToLatLng(cell: bigint): LatLng
+function cellToLatLng(cell: bigint): CoordPair
 ```
 
 Finds the centre of a cell, in degrees.
 
 - `cell`: The cell.
 
-Returns: The centre coordinate.
+Returns: The centre as a `[latitude, longitude]` pair.
 
 Throws: `H3Error` if the cell is not valid.
 
@@ -523,13 +523,14 @@ Throws: `H3Error` if a cell is not valid or finer than `res`, or `res` is fracti
 ### cellsToMultiPolygon
 
 ```ts
-function cellsToMultiPolygon(cells: BigUint64Array): LatLng[][][]
+function cellsToMultiPolygon(cells: BigUint64Array): CoordPair[][][]
 ```
 
 Finds the outline of a set of cells, as GeoJSON-shaped polygons.
 
-The result nests polygons, then loops, then points. The first loop of each polygon is its outer
-ring and any further loops are holes; no loop repeats its first point at the end.
+The result nests polygons, then loops, then points, and each point is a `[latitude, longitude]`
+pair. The first loop of each polygon is its outer ring and any further loops are holes, and no
+loop repeats its first point at the end.
 
 - `cells`: The cells to outline. They must all be valid, unique and of the same resolution.
 
@@ -618,7 +619,7 @@ Throws: `H3Error` if either index is not a valid cell, or they are not neighbour
 ### directedEdgeToBoundary
 
 ```ts
-function directedEdgeToBoundary(edge: bigint): LatLng[]
+function directedEdgeToBoundary(edge: bigint): CoordPair[]
 ```
 
 Finds the geometry of a directed edge, in degrees.
@@ -628,7 +629,7 @@ H3 inserts the crossing point.
 
 - `edge`: The directed edge.
 
-Returns: The points along the edge.
+Returns: The points along the edge, as `[latitude, longitude]` pairs.
 
 Throws: `H3Error` if the index is not a valid directed edge.
 
@@ -791,7 +792,7 @@ Throws: `H3Error` if the index is not a valid cell.
 ### vertexToLatLng
 
 ```ts
-function vertexToLatLng(vertex: bigint): LatLng
+function vertexToLatLng(vertex: bigint): CoordPair
 ```
 
 Reads the coordinate of a vertex, in degrees.
@@ -800,7 +801,7 @@ Diverges from `h3-js`, which measures any index it is handed, a cell included.
 
 - `vertex`: The vertex.
 
-Returns: The point the vertex sits on.
+Returns: The point the vertex sits on, as a `[latitude, longitude]` pair.
 
 Throws: `H3Error` if the index is not a valid vertex.
 
@@ -854,47 +855,50 @@ Throws: `H3Error` if the cell is not valid.
 ### greatCircleDistanceKm
 
 ```ts
-function greatCircleDistanceKm(lat1: number, lng1: number, lat2: number, lng2: number): number
+function greatCircleDistanceKm(a: CoordPair, b: CoordPair): number
 ```
 
 Measures the great-circle distance between two coordinates in kilometres.
 
-- `lat1`: Latitude of the first point in degrees.
-- `lng1`: Longitude of the first point in degrees.
-- `lat2`: Latitude of the second point in degrees.
-- `lng2`: Longitude of the second point in degrees.
+h3-js spells this `greatCircleDistance(a, b, 'km')`. Here the unit is part of the name, so
+nothing about the unit crosses the bridge at call time.
+
+- `a`: The first point, `[latitude, longitude]` in degrees.
+- `b`: The second point, `[latitude, longitude]` in degrees.
 
 Returns: The distance in kilometres.
+
+Throws: `H3Error` if either argument is not a pair of finite numbers.
 
 ### greatCircleDistanceM
 
 ```ts
-function greatCircleDistanceM(lat1: number, lng1: number, lat2: number, lng2: number): number
+function greatCircleDistanceM(a: CoordPair, b: CoordPair): number
 ```
 
 Measures the great-circle distance between two coordinates in metres.
 
-- `lat1`: Latitude of the first point in degrees.
-- `lng1`: Longitude of the first point in degrees.
-- `lat2`: Latitude of the second point in degrees.
-- `lng2`: Longitude of the second point in degrees.
+- `a`: The first point, `[latitude, longitude]` in degrees.
+- `b`: The second point, `[latitude, longitude]` in degrees.
 
 Returns: The distance in metres.
+
+Throws: `H3Error` if either argument is not a pair of finite numbers.
 
 ### greatCircleDistanceRads
 
 ```ts
-function greatCircleDistanceRads(lat1: number, lng1: number, lat2: number, lng2: number): number
+function greatCircleDistanceRads(a: CoordPair, b: CoordPair): number
 ```
 
 Measures the great-circle distance between two coordinates in radians.
 
-- `lat1`: Latitude of the first point in degrees.
-- `lng1`: Longitude of the first point in degrees.
-- `lat2`: Latitude of the second point in degrees.
-- `lng2`: Longitude of the second point in degrees.
+- `a`: The first point, `[latitude, longitude]` in degrees.
+- `b`: The second point, `[latitude, longitude]` in degrees.
 
 Returns: The distance in radians, on the unit sphere.
+
+Throws: `H3Error` if either argument is not a pair of finite numbers.
 
 ## Angle conversion
 
@@ -1108,7 +1112,7 @@ Throws: `H3Error` if the length of `coords` is odd, a pair is rejected (the mess
 ### cellsToMultiPolygonAsync
 
 ```ts
-async function cellsToMultiPolygonAsync(cells: BigUint64Array): Promise<LatLng[][][]>
+async function cellsToMultiPolygonAsync(cells: BigUint64Array): Promise<CoordPair[][][]>
 ```
 
 Finds the outline of a set of cells as `cellsToMultiPolygon` does, off the JS thread.
@@ -1312,24 +1316,21 @@ interface CoordIJ {
 
 Represents local IJ hexagon coordinates, whose axes are spaced 120 degrees apart.
 
-### LatLng
+### CoordPair
 
 ```ts
-interface LatLng {
-  lat: number
-  lng: number
-}
+type CoordPair = [lat: number, lng: number]
 ```
 
-Represents a latitude and longitude in degrees.
+Represents a coordinate as a `[latitude, longitude]` pair in degrees, the `h3-js` `CoordPair`.
 
 ### Ring
 
 ```ts
-type Ring = [lat: number, lng: number][]
+type Ring = CoordPair[]
 ```
 
-Represents a ring of `[latitude, longitude]` pairs in degrees, whose first point is not repeated at the end.
+Represents a ring of `CoordPair` points whose first point is not repeated at the end.
 
 ## Correctness
 
