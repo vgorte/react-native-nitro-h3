@@ -66,7 +66,6 @@ const { lat, lng } = cellToLatLng(0x89283082803ffffn)
 [`cellToLatLng`](../packages/react-native-nitro-h3/docs/api.md#celltolatlng), [`cellToBoundary`](../packages/react-native-nitro-h3/docs/api.md#celltoboundary), [`directedEdgeToBoundary`](../packages/react-native-nitro-h3/docs/api.md#directededgetoboundary), [`vertexToLatLng`](../packages/react-native-nitro-h3/docs/api.md#vertextolatlng) and [`cellsToMultiPolygon`](../packages/react-native-nitro-h3/docs/api.md#cellstomultipolygon) answer `{ lat, lng }` objects, where `h3-js` answers `[lat, lng]` arrays from all five.
 Polygon input keeps the `[latitude, longitude]` pair on both sides.
 
-
 A polygon with a single loop still passes it as [`Ring[]`](../packages/react-native-nitro-h3/docs/api.md#ring), where `h3-js` also accepts the loop unwrapped as `number[][]`.
 [`Ring`](../packages/react-native-nitro-h3/docs/api.md#ring) is a tuple type, so `tsc` rejects a bare `number[][]` against it.
 
