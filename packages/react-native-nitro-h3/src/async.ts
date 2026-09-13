@@ -2,7 +2,7 @@ import { toBuffer } from './buffers'
 import { toContainmentFlags } from './containment'
 import { rethrowAsH3Error } from './H3Error'
 import { native } from './native'
-import type { ContainmentModeName, ContainmentModeValue, LatLng, Ring } from './types'
+import type { ContainmentModeName, ContainmentModeValue, CoordPair, Ring } from './types'
 
 /**
  * Finds the cells covering a polygon as {@linkcode polygonToCells} does, off the JS thread.
@@ -67,7 +67,7 @@ export async function polygonToCellsExperimentalAsync(
  * @returns One entry per disjoint outline.
  * @throws {@linkcode H3Error} if the set is invalid, mixes resolutions or contains duplicates.
  */
-export async function cellsToMultiPolygonAsync(cells: BigUint64Array): Promise<LatLng[][][]> {
+export async function cellsToMultiPolygonAsync(cells: BigUint64Array): Promise<CoordPair[][][]> {
   try {
     return await native.cellsToMultiPolygonAsync(toBuffer(cells))
   } catch (error) {

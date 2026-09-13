@@ -1,8 +1,5 @@
-/** Represents a latitude and longitude in degrees. */
-export interface LatLng {
-  lat: number
-  lng: number
-}
+/** Represents a coordinate as a `[latitude, longitude]` pair in degrees, the `h3-js` `CoordPair`. */
+export type CoordPair = [lat: number, lng: number]
 
 /** Represents local IJ hexagon coordinates, whose axes are spaced 120 degrees apart. */
 export interface CoordIJ {
@@ -10,8 +7,8 @@ export interface CoordIJ {
   j: number
 }
 
-/** Represents a ring of `[latitude, longitude]` pairs in degrees, whose first point is not repeated at the end. */
-export type Ring = [lat: number, lng: number][]
+/** Represents a ring of {@linkcode CoordPair} points whose first point is not repeated at the end. */
+export type Ring = CoordPair[]
 
 /**
  * Holds the boundaries of a whole cell set, as {@linkcode cellsToBoundaries} answers them.
