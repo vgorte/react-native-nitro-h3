@@ -61,8 +61,8 @@ export type ASingleLoopIsRejected = Expect<
 export type GridDiskDistancesIsTypedArrays = Expect<
   IsExactly<ReturnType<typeof api.gridDiskDistances>, BigUint64Array[]>
 >
-export type GreatCircleDistanceTakesFourScalars = Expect<
-  IsExactly<Parameters<typeof api.greatCircleDistanceKm>, [number, number, number, number]>
+export type GreatCircleDistanceTakesTwoPairs = Expect<
+  IsExactly<Parameters<typeof api.greatCircleDistanceKm>, [CoordPair, CoordPair]>
 >
 // the four functions h3-js gives a GeoJSON flag take no such argument here
 export type BoundaryTakesNoFlag = Expect<IsExactly<Parameters<typeof api.cellToBoundary>, [bigint]>>
