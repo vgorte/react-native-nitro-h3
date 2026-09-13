@@ -2,11 +2,10 @@
 
 <video src="https://raw.githubusercontent.com/vgorte/react-native-nitro-h3/main/img/showcase.mp4" autoplay muted loop playsinline controls style="width: 100%"></video>
 
-[Watch the video](../img/showcase.mp4).
-
 The showcase is not a benchmark.
-It puts the package where it will actually run: under a map, inside a gesture, on a JS thread that also has to animate.
-It shows what a hexagonal grid buys you once it is cheap: a grid that follows the viewport, a drill-down that costs one call, a neighbourhood that grows ring by ring, a million points folded into a few hundred cells, and a track stored as cells instead of coordinates.
+It puts the package where it will actually run, under a map, inside a gesture, on a JS thread that also has to animate.
+It shows what a hexagonal grid buys you once it is cheap.
+The grid follows the viewport, a drill-down costs one call, a neighbourhood grows ring by ring, a million points fold into a few hundred cells, and a track is stored as cells instead of coordinates.
 
 A readout in every act watches the JS thread and reports the longest block of the run, making the true cost of every step visible.
 

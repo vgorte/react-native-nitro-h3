@@ -19,6 +19,4 @@ The `build-ios.yml` and `build-android.yml` workflows compile the example app ag
 
 > [!PLATFORM]
 > The package has no web implementation, so importing it on the `web` platform throws instead of falling back.
-> Use `h3-js` there.
-
-[Getting Started](./getting-started.md) installs the package once these versions are in place.
+> Use [`h3-js`](https://github.com/uber/h3-js) there.
