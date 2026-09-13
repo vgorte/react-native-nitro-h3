@@ -28,14 +28,15 @@ Every row is read off the upstream header named under Provenance.
 | Distinct C functions bound | **75** (79 declared - 4 deliberately unbound) |
 | C functions deliberately unbound | **4** |
 
-Note on the exported surface: the 64 above are the parity functions, the ones this table enumerates from upstream.
+Note: the 64 above are the parity functions, the ones this table enumerates from upstream.
 The package also exports the 3 additive batch functions [`latLngsToCells`](../packages/react-native-nitro-h3/docs/api.md#latlngstocells), [`cellsToLatLngs`](../packages/react-native-nitro-h3/docs/api.md#cellstolatlngs) and [`cellsToBoundaries`](../packages/react-native-nitro-h3/docs/api.md#cellstoboundaries), which `h3-js` does not have and which therefore have no row here, plus 4 `Async` variants of functions already listed and [`configure`](../packages/react-native-nitro-h3/docs/api.md#configure).
-`__tests__/exports.test.ts` asserts the whole surface of 72 names; `docs/h3-js-divergences.md` records the additive functions.
+`__tests__/exports.test.ts` asserts the whole surface of 72 names, and `docs/h3-js-divergences.md` records the additive functions.
 
 Notation used below:
 
-- Signatures are verbatim from `h3api.h.in` with `DECLSPEC ` removed and `H3_EXPORT(x)` collapsed to `x` (that is what `H3_EXPORT` expands to when `H3_PREFIX` is undefined, line 38: `#define H3_EXPORT(name) name`).
-  Line wrapping in the header is joined; no token is otherwise changed.
+- Signatures are verbatim from `h3api.h.in` with `DECLSPEC ` removed and `H3_EXPORT(x)` collapsed to `x` (that is what `H3_EXPORT` expands to when `H3_PREFIX` is undefined, since line 38 reads `#define H3_EXPORT(name) name`).
+  Line wrapping in the header is joined.
+  No token is otherwise changed.
 - "size source" names the C size function, or a compile-time constant with its value, or `caller input length`, or `n/a`.
 - Shape ids `S1` to `S14` are this document's own taxonomy, defined under Shape Taxonomy.
 
@@ -114,8 +115,9 @@ Sorted by shape (S1..S14, then ONE-OFF), alphabetically within each shape.
 
 **Row count: 64.**
 
-Public functions with async twins (not separate rows above): [`polygonToCellsAsync`](../packages/react-native-nitro-h3/docs/api.md#polygontocellsasync), [`polygonToCellsExperimentalAsync`](../packages/react-native-nitro-h3/docs/api.md#polygontocellsexperimentalasync), [`cellsToMultiPolygonAsync`](../packages/react-native-nitro-h3/docs/api.md#cellstomultipolygonasync), [`uncompactCellsAsync`](../packages/react-native-nitro-h3/docs/api.md#uncompactcellsasync).
-Counting those, [`configure`](../packages/react-native-nitro-h3/docs/api.md#configure) and the three additive batch functions, the package exports 72 functions; see Export Surface.
+Public functions with async twins, not separate rows above, are [`polygonToCellsAsync`](../packages/react-native-nitro-h3/docs/api.md#polygontocellsasync), [`polygonToCellsExperimentalAsync`](../packages/react-native-nitro-h3/docs/api.md#polygontocellsexperimentalasync), [`cellsToMultiPolygonAsync`](../packages/react-native-nitro-h3/docs/api.md#cellstomultipolygonasync) and [`uncompactCellsAsync`](../packages/react-native-nitro-h3/docs/api.md#uncompactcellsasync).
+Counting those, [`configure`](../packages/react-native-nitro-h3/docs/api.md#configure) and the three additive batch functions, the package exports 72 functions.
+See Export Surface.
 
 ---
 
@@ -128,7 +130,7 @@ Counting those, [`configure`](../packages/react-native-nitro-h3/docs/api.md#conf
 | `gridDiskDistancesSafe` | `H3Error gridDiskDistancesSafe(H3Index origin, int k, H3Index *out, int *distances);` (header line 273) | no | Internal fallback; `gridDiskDistances` already dispatches to it. Binding both would ship the same operation twice. |
 | `gridDisksUnsafe` | `H3Error gridDisksUnsafe(H3Index *h3Set, int length, int k, H3Index *out);` (header line 277) | no | Batch-of-disks helper with no `h3-js` counterpart and no documented output size (`length * maxGridDiskSize(k)` is only implied). Excluded as unsafe + undocumented-size. |
 
-**Bound but not exposed as a public TS function** (used internally; not in the table above and not in the
+**Bound but not exposed as a public TS function** (used internally, not in the table above and not in the
 "not bound" list):
 
 | C function | signature | role |
@@ -145,7 +147,8 @@ Counting those, [`configure`](../packages/react-native-nitro-h3/docs/api.md#conf
 | `pentagonCount` | `int pentagonCount(void);` (501) | S3; size source for `getPentagons`; returns 12 |
 | `destroyLinkedMultiPolygon` | `void destroyLinkedMultiPolygon(LinkedGeoPolygon *polygon);` (348) | teardown half of `cellsToMultiPolygon` |
 
-[`cellToChildrenSize`](../packages/react-native-nitro-h3/docs/api.md#celltochildrensize) is a public TS function (`h3-js` exports it) and the size source for [`cellToChildren`](../packages/react-native-nitro-h3/docs/api.md#celltochildren) at once; it is listed as a public row above.
+[`cellToChildrenSize`](../packages/react-native-nitro-h3/docs/api.md#celltochildrensize) is a public TS function (`h3-js` exports it) and the size source for [`cellToChildren`](../packages/react-native-nitro-h3/docs/api.md#celltochildren) at once.
+It is listed as a public row above.
 
 **`h3-js` cross-check.** `h3-js` v4.5.0 exports 56 functions.
 Two are JS-only workarounds for Emscripten's lack of 64-bit integer arguments and have no C counterpart:
@@ -225,7 +228,7 @@ typedef enum {
 ```
 
 Codes 0..19 are contiguous with no gaps, and `H3_ERROR_END` == 20 is a sentinel rather than a real error.
-This binding keeps no table of its own: `h3core::throwOnError` hands the code to `describeH3Error`, which guards the range itself and answers `Invalid error code` past the end.
+This binding keeps no table of its own, because `h3core::throwOnError` hands the code to `describeH3Error`, which guards the range itself and answers `Invalid error code` past the end.
 `cpp/test/H3ErrorMappingTest.cpp` pins both halves, every defined code and an out-of-range one.
 
 ### `LatLng`, `CellBoundary`, `MAX_CELL_BNDRY_VERTS` (Lines 131-150)
@@ -282,8 +285,8 @@ typedef struct {
 } GeoMultiPolygon;
 ```
 
-`GeoMultiPolygon` is declared but is not an argument or return type of any function in the header; it
-is unused by this binding.
+`GeoMultiPolygon` is declared but is not an argument or return type of any function in the header.
+It is unused by this binding.
 
 ### `ContainmentMode` (Lines 177-187)
 
@@ -302,8 +305,8 @@ typedef enum {
 ```
 
 Note: `polygonToCellsExperimental` takes `uint32_t flags`, not `ContainmentMode`. `CONTAINMENT_INVALID`
-(4) is a sentinel, so valid input is `0 <= flags < 4`; validate at the boundary and return
-`E_OPTION_INVALID` semantics rather than passing through.
+(4) is a sentinel, so valid input is `0 <= flags < 4`.
+Validate at the boundary and return `E_OPTION_INVALID` semantics rather than passing through.
 
 ### Linked Geo Structures (Lines 189-216)
 
@@ -384,7 +387,7 @@ typedef struct {
 | ... called directly by a public TS function | 64 |
 | ... internal only (size functions, `describeH3Error`, `destroyLinkedMultiPolygon`) | 11 |
 
-(`cellToChildrenSize` is counted once, in the 64: it is both public and a size source.)
+(`cellToChildrenSize` is counted once, in the 64, because it is both public and a size source.)
 
 ## Shape Taxonomy
 
@@ -411,7 +414,7 @@ typedef struct {
 44 + 11 - 1 (the `uncompactCells` overlap) = **54**. Balanced.
 
 Per shape, counting **table rows** (after the unit split, including `cellToString`/`cellFromString`):
-S1 2, S2 8, S4 6, S5 5, S6 3, S7 3, S8 3, S9 3, S10 2, S11 2, S12 3, S13 8, S14 2 = 50 shape rows;
+S1 2, S2 8, S4 6, S5 5, S6 3, S7 3, S8 3, S9 3, S10 2, S11 2, S12 3, S13 8, S14 2 = 50 shape rows.
 ONE-OFF = 14 rows (the 11 operations above with `greatCircleDistance` expanded to 3, minus the
 `uncompactCells` row already counted under S13, plus `cellToString` and `cellFromString`).
 50 + 14 = **64**.
@@ -489,7 +492,8 @@ The implementation doc is likewise numberless:
 The value 2 is inferable only from the prose ("origin, destination pair") and from `h3-js`'s `const count = 2;` (`h3core.js:1463`).
 `grep -rn -i "overestimate\|must be of size\|length >=" ` over the tarball confirms no size statement for this function.
 
-**How the binding handles this:** `cpp/core/BufferSizes.hpp` pins all three as named constants, each carrying the header or implementation text it comes from; for `directedEdgeToCells`, where there is no header text to quote, it cites the implementation prose and the `h3-js` constant.
+**How the binding handles this:** `cpp/core/BufferSizes.hpp` pins all three as named constants, each carrying the header or implementation text it comes from.
+For `directedEdgeToCells`, where there is no header text to quote, it cites the implementation prose and the `h3-js` constant.
 `cpp/test/BufferSizesTest.cpp` asserts the count H3 actually writes for each one, including for a pentagon, so a future upstream change fails a test rather than corrupting the heap.
 
 ### H2. Buffers H3 Requires to Be Pre-Zeroed
@@ -534,7 +538,7 @@ typedef struct {
 ```
 (h3api.h.in lines 147-150)
 
-`LatLng` is `{ double; double; }` so it has 8-byte alignment; `verts` therefore starts at offset 8 with 4 bytes of padding after `numVerts`.
+`LatLng` is `{ double; double; }` so it has 8-byte alignment, and `verts` therefore starts at offset 8 with 4 bytes of padding after `numVerts`.
 Use `offsetof(CellBoundary, verts)`, never `sizeof(int)`.
 `sizeof(CellBoundary)` is 8 + 10*16 = 168 on every mainstream ABI.
 
@@ -550,10 +554,12 @@ DECLSPEC void H3_EXPORT(destroyLinkedMultiPolygon)(LinkedGeoPolygon *polygon);
 ```
 (h3api.h.in lines 343-348)
 
-`out` is a caller-provided root node (stack is fine); every `LinkedGeoLoop`, `LinkedLatLng` and sibling `LinkedGeoPolygon` reachable from it is heap-allocated by H3 and must be released by `destroyLinkedMultiPolygon`, **including on the error path**, since partial structure may already be linked.
+`out` is a caller-provided root node (stack is fine).
+Every `LinkedGeoLoop`, `LinkedLatLng` and sibling `LinkedGeoPolygon` reachable from it is heap-allocated by H3 and must be released by `destroyLinkedMultiPolygon`, **including on the error path**, since partial structure may already be linked.
 `destroyLinkedMultiPolygon` returns `void` and does not free the root itself.
 
-Also note `const int numHexes` (not `int64_t`): input sets larger than `INT_MAX` must be rejected at the boundary before the call.
+Also note `const int numHexes` (not `int64_t`).
+Input sets larger than `INT_MAX` must be rejected at the boundary before the call.
 
 ### H5. `GeoPolygon` Must Outlive Both Calls
 
@@ -580,8 +586,9 @@ DECLSPEC H3Error H3_EXPORT(gridRingUnsafe)(H3Index origin, int k, H3Index *out);
 ```
 (h3api.h.in lines 301-302)
 
-The header itself gives no warning; `h3-js` documents it as "Unlike gridDisk, this function will throw an error if there is a pentagon anywhere in the ring" (`h3core.js`, `gridRingUnsafe` doc block).
-On `E_PENTAGON` the buffer holds partial output; discard it entirely rather than compacting and returning it.
+The header itself gives no warning.
+`h3-js` documents it as "Unlike gridDisk, this function will throw an error if there is a pentagon anywhere in the ring" (`h3core.js`, `gridRingUnsafe` doc block).
+On `E_PENTAGON` the buffer holds partial output, so discard it entirely rather than compacting and returning it.
 
 ### H7. Every Size Function except the Two Nullary Counters Returns `H3Error`
 
@@ -594,7 +601,8 @@ All other size sources (`maxGridDiskSize`, `maxGridRingSize`, `maxPolygonToCells
 
 ### H8. The Size Query Itself Can Request an Unbounded Allocation
 
-`maxPolygonToCellsSize` returns an `int64_t` with no upper bound, which is what the optional cell ceiling guards; note that `getNumCells(15)` = 569,707,381,193,162 cells is the theoretical maximum, i.e. ~4.5 petabytes at 8 bytes each.
+`maxPolygonToCellsSize` returns an `int64_t` with no upper bound, which is what the optional cell ceiling guards.
+Note that `getNumCells(15)` = 569,707,381,193,162 cells is the theoretical maximum, i.e. ~4.5 petabytes at 8 bytes each.
 The ceiling must be applied to the returned size, before any allocation, and must produce a clean `H3Error` (`E_MEMORY_ALLOC` is the closest upstream code) rather than an OOM abort.
 
 ### H9. `mode` Parameters That Must Be 0
@@ -623,7 +631,8 @@ The same file also warns:
 ```
 (`src/h3lib/lib/localij.c:523-524`)
 
-The TS JSDoc carries this: `src/traversal.ts` documents that local IJ coordinates are not a serialisation format, because H3 does not guarantee them across its own versions.
+The TS JSDoc carries this.
+`src/traversal.ts` documents that local IJ coordinates are not a serialisation format, because H3 does not guarantee them across its own versions.
 
 ### H10. `h3ToString` Has No Documented Buffer Size
 
@@ -635,7 +644,7 @@ DECLSPEC H3Error H3_EXPORT(h3ToString)(H3Index h, char *str, size_t sz);
 
 Implementation doc gives nothing more than "@param sz Size of the buffer `str`" (`src/h3lib/lib/h3Index.c:190-195`).
 A `uint64_t` in lowercase hex is at most 16 characters, so 17 bytes including the NUL.
-`cpp/core/BufferSizes.hpp` pins that as `kH3ToStringBufferSize` alongside the H1 constants, and `cpp/test/BufferSizesTest.cpp` pins it from both sides: 17 bytes succeed for an all-ones index, 16 return `E_MEMORY_BOUNDS`.
+`cpp/core/BufferSizes.hpp` pins that as `kH3ToStringBufferSize` alongside the H1 constants, and `cpp/test/BufferSizesTest.cpp` pins it from both sides, with 17 bytes succeeding for an all-ones index and 16 returning `E_MEMORY_BOUNDS`.
 Too small a buffer yields `E_MEMORY_BOUNDS`, not a crash, so the failure is at least clean.
 
 ## Correctness

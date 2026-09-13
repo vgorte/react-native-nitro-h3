@@ -32,14 +32,12 @@ It vendors the H3 C sources and calls them directly from C++ instead of running 
 
 ## 🚀 Installation
 
-Install from npm together with Nitro Modules:
+Install from npm together with Nitro Modules and see [Getting Started](https://vgorte.github.io/react-native-nitro-h3/getting-started/).
 
 ```sh
 bun add react-native-nitro-h3 react-native-nitro-modules
 cd ios && pod install
 ```
-
-[Getting Started](https://vgorte.github.io/react-native-nitro-h3/getting-started/) has the npm and Expo commands and the New Architecture note, and [Requirements](https://vgorte.github.io/react-native-nitro-h3/requirements/) has the platform and toolchain versions.
 
 ---
 
@@ -58,21 +56,20 @@ const id = cellToString(cell) // '89283082803ffff'
 const neighbours = gridDisk(cell, 1) // BigUint64Array(7)
 ```
 
-Coming from `h3-js`, read the [migration guide](https://vgorte.github.io/react-native-nitro-h3/migrating-from-h3-js/): the `h3-js` names with unit suffixes instead of a unit argument, cells as `bigint`, cell sets as `BigUint64Array`.
+Coming from `h3-js`, read the [migration guide](https://vgorte.github.io/react-native-nitro-h3/migrating-from-h3-js/).
 
 ---
 
 ### Links
 
-- [Documentation](https://vgorte.github.io/react-native-nitro-h3/)
-- [`llms.txt`](https://vgorte.github.io/react-native-nitro-h3/llms.txt): the docs for agents and assistants
-- [Showcase](https://vgorte.github.io/react-native-nitro-h3/showcase/): five acts of one app
-- [Getting Started](https://vgorte.github.io/react-native-nitro-h3/getting-started/): install and first call
-- [Requirements](https://vgorte.github.io/react-native-nitro-h3/requirements/): platform and toolchain versions
-- [Migrating from `h3-js`](https://vgorte.github.io/react-native-nitro-h3/migrating-from-h3-js/)
-- [API Reference](https://vgorte.github.io/react-native-nitro-h3/api/): every exported function
-- [Example app](https://github.com/vgorte/react-native-nitro-h3/tree/main/apps/example): the benchmark and harness app
-- [Contributing](https://github.com/vgorte/react-native-nitro-h3/blob/main/CONTRIBUTING.md): build, test, add an operation
+- [Getting Started](https://vgorte.github.io/react-native-nitro-h3/getting-started/)
+- [Requirements](https://vgorte.github.io/react-native-nitro-h3/requirements/)
+- [API](https://vgorte.github.io/react-native-nitro-h3/api/)
+- [Migration](https://vgorte.github.io/react-native-nitro-h3/migrating-from-h3-js/)
+- [Showcase App](https://vgorte.github.io/react-native-nitro-h3/showcase/)
+- [Example App](https://github.com/vgorte/react-native-nitro-h3/tree/main/apps/example): benchmark
+- [Contributing](https://github.com/vgorte/react-native-nitro-h3/blob/main/CONTRIBUTING.md)
+- [llms.txt](https://vgorte.github.io/react-native-nitro-h3/llms.txt)
 
 ---
 

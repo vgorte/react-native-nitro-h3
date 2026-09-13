@@ -2,11 +2,10 @@
 
 <video src="https://raw.githubusercontent.com/vgorte/react-native-nitro-h3/main/img/showcase.mp4" autoplay muted loop playsinline controls style="width: 100%"></video>
 
-[Watch the video](../img/showcase.mp4).
-
 The showcase is not a benchmark.
-It puts the package where it will actually run: under a map, inside a gesture, on a JS thread that also has to animate.
-It shows what a hexagonal grid buys you once it is cheap: a grid that follows the viewport, a drill-down that costs one call, a neighbourhood that grows ring by ring, a million points folded into a few hundred cells, and a track stored as cells instead of coordinates.
+It puts the package where it will actually run, under a map, inside a gesture, on a JS thread that also has to animate.
+It shows what a hexagonal grid buys you once it is cheap.
+The grid follows the viewport, a drill-down costs one call, a neighbourhood grows ring by ring, a million points fold into a few hundred cells, and a track is stored as cells instead of coordinates.
 
 A readout in every act watches the JS thread and reports the longest block of the run, making the true cost of every step visible.
 
@@ -18,7 +17,7 @@ A readout in every act watches the JS thread and reports the longest block of th
 
 A grid that picks its resolution from the zoom and rebuilds while you pinch, at most every 120 ms, then once more where the map settles.
 Each cell is coloured by its ring distance inside its parent.
-This act takes the classic path, cell boundaries as a GeoJSON string for MapLibre, and the panel shows what that string costs next to the JS thread readout.
+This act takes the classic path, cell boundaries as a GeoJSON string for the map layer, and the panel shows what that string costs next to the JS thread readout.
 
 <p class="use"><strong>Derive spatial layers directly from the viewport.</strong></p>
 
@@ -28,7 +27,8 @@ Coverage layers, pricing zones, service areas, cells instead of polygons.
 
 [`cellToChildren`](../packages/react-native-nitro-h3/docs/api.md#celltochildren) · [`cellToParent`](../packages/react-native-nitro-h3/docs/api.md#celltoparent)
 
-Tap a cell and it splits into its seven children; long-press and they fold back into the parent.
+Tap a cell and it splits into its seven children.
+Long-press and they fold back into the parent.
 Every split is one call, so the detail follows your finger.
 
 <p class="use"><strong>Drill down where the data is dense.</strong></p>

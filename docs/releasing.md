@@ -29,13 +29,13 @@
 ### 1. Verify CI is green
 
 The `main` branch must be completely green. Path filters apply to pull requests only, so the last
-push to `main` reports the true status of all nine core workflows: `CI`, `Nitrogen drift`,
+push to `main` reports the true status of all nine core workflows (`CI`, `Nitrogen drift`,
 `Lint C++`, `C++ tests`, `Parity`, `Build Android`, `Harness Android`, `iOS pod lockfile`, and
-`Build iOS`.
+`Build iOS`).
 
 A tenth workflow, `Fuzz nightly`, runs on a schedule rather than on push, so it never appears in
 that status. Check its latest run in the Actions tab before releasing. GitHub disables a scheduled
-workflow after 60 days without repository activity; if it shows as disabled, re-enable it and
+workflow after 60 days without repository activity. If it shows as disabled, re-enable it and
 dispatch a run by hand.
 
 ### 2. Local iOS validation
@@ -145,7 +145,7 @@ bun release --dry-run --ci
 ```
 
 **The verification gate.** Before simulating the publish, the script strictly enforces the
-verification gate. It runs: install, lint, typecheck, build, specs, and the TypeScript test suite.
+verification gate. It runs install, lint, typecheck, build, specs, and the TypeScript test suite.
 Finally, it compiles the parity probe and executes the parity suite against it.
 
 **Simulated outputs.** Because this is a dry run, release-it modifies nothing.
@@ -162,7 +162,7 @@ Finally, it compiles the parity probe and executes the parity suite against it.
 - Hooks are listed but not executed. Consequently, the root hook's `pod install` will not touch
   `apps/example/ios`.
 - `Writing changelog to undefined` is expected behavior. The repository keeps no `CHANGELOG.md`
-  file; the changelog goes directly into the GitHub Release body.
+  file. The changelog goes directly into the GitHub Release body.
 
 **Post-rehearsal verification.** Confirm that the repository remains pristine and no tags were
 created:
@@ -189,8 +189,8 @@ to guarantee this supply-chain security.
 ### 8. Trusted publishing (one-time setup)
 
 Authentication is npm Trusted Publishing. No `NPM_TOKEN` exists anywhere in this repository and
-none is needed: the job's `id-token: write` permission is the entire credential. Configure the
-counterpart once on npmjs.com:
+none is needed, because the job's `id-token: write` permission is the entire credential. Configure
+the counterpart once on npmjs.com:
 
 1. Open the package page for `react-native-nitro-h3` and go to **Settings → Publishing access**.
 2. Add a **GitHub Actions** trusted publisher.
@@ -242,7 +242,7 @@ strict phases:
    `H3_PARITY_REQUIRED`. This guarantees the parity suite runs in strict mode and cannot silently
    skip itself if the probe is missing. The root hook still runs its own
    `H3_PARITY_REQUIRED=1 bun run --cwd packages/react-native-nitro-h3 parity` afterwards, relying on
-   `H3_PARITY_PROBE` already being exported by the gate; it is a cheap last check that the
+   `H3_PARITY_PROBE` already being exported by the gate. It is a cheap last check that the
    published code still matches h3-js, not a repeat of the full gate.
 2. **Package publishing (`packages/react-native-nitro-h3`):** Executes a pure `npm publish` for the
    package, strictly without any git operations.
@@ -274,14 +274,14 @@ them runs per dispatch, selected by the `dry_run` input (which defaults to check
   `environment: npm`, so a required reviewer can be added on the repository's Environments page
   without editing the workflow.
 
-> **Why Node 22 next to Bun?** Bun runs the gate, but it does not publish; `npm publish` does.
+> **Why Node 22 next to Bun?** Bun runs the gate, but it does not publish. `npm publish` does.
 > Trusted publishing needs npm 11.5 or newer, so the job prints `npm --version` and upgrades npm
 > when the runner image ships anything older.
 
 ## After going public
 
-The repository has been public since 2026-08-30. Three of the four tasks that switch brings are done;
-one is still open.
+The repository has been public since 2026-08-30. Three of the four tasks that switch brings are
+done. One is still open.
 
 ### 1. Verify assets and badges (done)
 
@@ -302,7 +302,7 @@ can no longer reach a release unnoticed. The iOS harness workflow, covering the 
 - **The reason:** macOS runner minutes bill at 10× the Linux rate, which is why all three were left
   out while the repository was private.
 - **The action:** those minutes are free for public repositories now. The harness workflow is the
-  last one; until it lands, step 2 of the detailed procedure runs it by hand.
+  last one. Until it lands, step 2 of the detailed procedure runs it by hand.
 
 ### 3. Enforce branch protection on `main` (done)
 
@@ -320,5 +320,5 @@ gh api -X POST repos/vgorte/react-native-nitro-h3/pages -f build_type=workflow
 ```
 
 The `github-pages` environment the deploy job uses is created by the first deployment. The
-repository's "About" homepage and the package's `homepage` field both point at the site; npm shows
-the new link with the next publish, because it reads the field from the published manifest.
+repository's "About" homepage and the package's `homepage` field both point at the site, and npm
+shows the new link with the next publish, because it reads the field from the published manifest.

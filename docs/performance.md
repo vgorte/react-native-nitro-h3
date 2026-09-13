@@ -19,8 +19,10 @@ Three things are cheap on this path and expensive on the other:
   `h3-js` formats and parses a hexadecimal string per cell on the way in and out.
 - **No marshalling below the boundary.** The `h3ops` layer validates arguments, sizes the result and applies the cell ceiling, then makes plain C calls into the vendored core.
 
-The difference is largest where `h3-js`'s string handling dominates the work the call does: [`compactCells`](../packages/react-native-nitro-h3/docs/api.md#compactcells) on a `k=20` disk of 1,261 cells is about 800× faster on the iPhone XS (iOS 18.7.9, React Native 0.87.0, Hermes, 20-run median, 2026-09-01).
-Where a call does little work per element, the factor is smaller: [`latLngToCell`](../packages/react-native-nitro-h3/docs/api.md#latlngtocell) over 100,000 calls is 24×.
+The difference is largest where `h3-js`'s string handling dominates the work the call does.
+[`compactCells`](../packages/react-native-nitro-h3/docs/api.md#compactcells) on a `k=20` disk of 1,261 cells is about 800× faster on the iPhone XS (iOS 18.7.9, React Native 0.87.0, Hermes, 20-run median, 2026-09-01).
+Where a call does little work per element, the factor is smaller.
+[`latLngToCell`](../packages/react-native-nitro-h3/docs/api.md#latlngtocell) over 100,000 calls is 24×.
 Both rows are in [Benchmark Report](benchmark.md).
 
 ## When a Batch Call Pays
@@ -39,13 +41,16 @@ The contract of all three calls is in [Typed Arrays and Batch Calls](concepts/ty
 
 ## The Cell Ceiling in Detail
 
-There is no cell limit until you set one: a call returns whatever you ask for, exactly as `h3-js` does.
+There is no cell limit until you set one.
+A call returns whatever you ask for, exactly as `h3-js` does.
 Sizes grow fast, and a cell costs 8 bytes in the returned `BigUint64Array`.
-A batch call that answers coordinates weighs more per cell: [`cellsToBoundaries`](../packages/react-native-nitro-h3/docs/api.md#cellstoboundaries) costs 161 bytes, so the same ceiling admits about twenty times the memory there.
+A batch call that answers coordinates weighs more per cell.
+[`cellsToBoundaries`](../packages/react-native-nitro-h3/docs/api.md#cellstoboundaries) costs 161 bytes, so the same ceiling admits about twenty times the memory there.
 
 [`gridDisk(cell, k)`](../packages/react-native-nitro-h3/docs/api.md#griddisk) returns `1 + 3k(k+1)` cells, so `k` of 1,155 is 4,005,541 cells or 32 MB, and [`polygonToCells`](../packages/react-native-nitro-h3/docs/api.md#polygontocells) over San Francisco at resolution 12 is 412,377.
 
-A request keeps growing from there: [`gridDisk(cell, 4000)`](../packages/react-native-nitro-h3/docs/api.md#griddisk) is 48,012,001 cells, 384 MB packed, and a polygon covering a country at resolution 15 reports far more.
+A request keeps growing from there.
+[`gridDisk(cell, 4000)`](../packages/react-native-nitro-h3/docs/api.md#griddisk) is 48,012,001 cells, 384 MB packed, and a polygon covering a country at resolution 15 reports far more.
 
 > [!WARNING]
 > On a mobile device an allocation at that scale is not a slow call.
@@ -75,6 +80,8 @@ The value must be a positive integer or `Infinity`, and it applies to every sync
 ### How It Compares to `h3-js`
 
 `h3-js` offers no equivalent setting, and bounds only its Emscripten heap, at 2 GB.
-A heavy call there executes: [`gridDisk(cell, 1155)`](../packages/react-native-nitro-h3/docs/api.md#griddisk) allocates all 4,005,541 cells, measured on a desktop machine in [Benchmark Report](benchmark.md#the-cost-of-unbounded-requests-what-the-cell-ceiling-guards).
+A heavy call there executes.
+[`gridDisk(cell, 1155)`](../packages/react-native-nitro-h3/docs/api.md#griddisk) allocates all 4,005,541 cells, measured on a desktop machine in [Benchmark Report](benchmark.md#the-cost-of-unbounded-requests-what-the-cell-ceiling-guards).
 
-The four async variants and what a thread hop costs are in [Sync and Async](concepts/sync-and-async.md); the [`H3Error`](../packages/react-native-nitro-h3/docs/api.md#h3error) contract and the ceiling from the caller's side are in [Errors and Memory Safety](concepts/errors-and-memory-safety.md).
+The four async variants and what a thread hop costs are in [Sync and Async](concepts/sync-and-async.md).
+The [`H3Error`](../packages/react-native-nitro-h3/docs/api.md#h3error) contract and the ceiling from the caller's side are in [Errors and Memory Safety](concepts/errors-and-memory-safety.md).
