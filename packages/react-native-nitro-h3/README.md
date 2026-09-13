@@ -66,8 +66,8 @@ Coming from `h3-js`, read the [migration guide](https://vgorte.github.io/react-n
 - [Requirements](https://vgorte.github.io/react-native-nitro-h3/requirements/)
 - [API](https://vgorte.github.io/react-native-nitro-h3/api/)
 - [Migration](https://vgorte.github.io/react-native-nitro-h3/migrating-from-h3-js/)
-- [Showcase](https://vgorte.github.io/react-native-nitro-h3/showcase/)
-- [Example Benchmark App](https://github.com/vgorte/react-native-nitro-h3/tree/main/apps/example)
+- [Showcase App](https://vgorte.github.io/react-native-nitro-h3/showcase/)
+- [Example App](https://github.com/vgorte/react-native-nitro-h3/tree/main/apps/example): benchmark
 - [Contributing](https://github.com/vgorte/react-native-nitro-h3/blob/main/CONTRIBUTING.md)
 - [llms.txt](https://vgorte.github.io/react-native-nitro-h3/llms.txt)
 
