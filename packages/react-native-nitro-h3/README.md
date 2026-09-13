@@ -32,7 +32,7 @@ It vendors the H3 C sources and calls them directly from C++ instead of running 
 
 ## 🚀 Installation
 
-Install from npm together with Nitro Modules, and see [Getting Started](https://vgorte.github.io/react-native-nitro-h3/getting-started/) for Expo and the requirements:
+Install from npm together with Nitro Modules and see [Getting Started](https://vgorte.github.io/react-native-nitro-h3/getting-started/).
 
 ```sh
 bun add react-native-nitro-h3 react-native-nitro-modules
