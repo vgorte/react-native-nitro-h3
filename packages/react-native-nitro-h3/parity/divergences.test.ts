@@ -2,7 +2,7 @@
  * Pins every difference from h3-js that is meant, so none can slip through as a bug.
  *
  * The comparison runs through the probe, whose answers are JSON, so cells are hexadecimal strings
- * and cell sets are arrays. The `bigint`, `BigUint64Array` and `LatLng` shapes of the public API
+ * and cell sets are arrays. The `bigint`, `BigUint64Array` and `CoordPair` shapes of the public API
  * are not under test here, and neither are the h3-js containment mode names the wrapper also takes.
  */
 
@@ -16,7 +16,7 @@ import {
   type ContainmentModeName,
   type ContainmentModeValue,
   type CoordIJ,
-  type LatLng,
+  type CoordPair,
   type Ring,
 } from '../src/types'
 import {
@@ -43,14 +43,14 @@ export type CellIsABigint = Expect<IsExactly<ReturnType<typeof api.latLngToCell>
 export type CellSetIsATypedArray = Expect<
   IsExactly<ReturnType<typeof api.gridDisk>, BigUint64Array>
 >
-export type CentreIsAnObject = Expect<IsExactly<ReturnType<typeof api.cellToLatLng>, LatLng>>
-export type BoundaryIsObjects = Expect<IsExactly<ReturnType<typeof api.cellToBoundary>, LatLng[]>>
-export type EdgeBoundaryIsObjects = Expect<
-  IsExactly<ReturnType<typeof api.directedEdgeToBoundary>, LatLng[]>
+export type CentreIsAPair = Expect<IsExactly<ReturnType<typeof api.cellToLatLng>, CoordPair>>
+export type BoundaryIsPairs = Expect<IsExactly<ReturnType<typeof api.cellToBoundary>, CoordPair[]>>
+export type EdgeBoundaryIsPairs = Expect<
+  IsExactly<ReturnType<typeof api.directedEdgeToBoundary>, CoordPair[]>
 >
-export type VertexIsAnObject = Expect<IsExactly<ReturnType<typeof api.vertexToLatLng>, LatLng>>
-export type MultiPolygonIsObjects = Expect<
-  IsExactly<ReturnType<typeof api.cellsToMultiPolygon>, LatLng[][][]>
+export type VertexIsAPair = Expect<IsExactly<ReturnType<typeof api.vertexToLatLng>, CoordPair>>
+export type MultiPolygonIsPairs = Expect<
+  IsExactly<ReturnType<typeof api.cellsToMultiPolygon>, CoordPair[][][]>
 >
 export type RingsAreTuples = Expect<
   IsNotAssignable<number[][][], Parameters<typeof api.polygonToCells>[0]>
@@ -61,8 +61,8 @@ export type ASingleLoopIsRejected = Expect<
 export type GridDiskDistancesIsTypedArrays = Expect<
   IsExactly<ReturnType<typeof api.gridDiskDistances>, BigUint64Array[]>
 >
-export type GreatCircleDistanceTakesFourScalars = Expect<
-  IsExactly<Parameters<typeof api.greatCircleDistanceKm>, [number, number, number, number]>
+export type GreatCircleDistanceTakesTwoPairs = Expect<
+  IsExactly<Parameters<typeof api.greatCircleDistanceKm>, [CoordPair, CoordPair]>
 >
 // the four functions h3-js gives a GeoJSON flag take no such argument here
 export type BoundaryTakesNoFlag = Expect<IsExactly<Parameters<typeof api.cellToBoundary>, [bigint]>>
@@ -386,6 +386,24 @@ describe.skipIf(skipWithoutProbe)('divergence: a malformed polygon', () => {
         3,
       ),
     ).toHaveLength(41)
+  })
+})
+
+describe('divergence: a distance coordinate that is not a pair', () => {
+  // the three `greatCircleDistance*` functions refuse every input below in TypeScript, before the
+  // native call the probe drives, so `__tests__/measurement.test.ts` proves this package's half
+  test('h3-js answers what this package refuses', () => {
+    const notAFinitePair: number[][] = [[Number.NaN, 0], [Number.POSITIVE_INFINITY, 0], [0]]
+    for (const argument of notAFinitePair) {
+      expect(h3.greatCircleDistance(argument, [1, 1], 'km'), String(argument)).toBeNaN()
+    }
+    expect(
+      h3.greatCircleDistance({ lat: 0, lng: 0 } as unknown as number[], [1, 1], 'km'),
+    ).toBeNaN()
+    // a third element goes unread and a numeric string is coerced
+    const fromAPair = h3.greatCircleDistance([0, 0], [1, 1], 'km')
+    expect(h3.greatCircleDistance([0, 0, 0], [1, 1], 'km')).toBe(fromAPair)
+    expect(h3.greatCircleDistance(['0', 0] as unknown as number[], [1, 1], 'km')).toBe(fromAPair)
   })
 })
 
@@ -720,8 +738,8 @@ describe.skipIf(skipWithoutProbe)('divergence: the shape of the public surface',
     expect(typeof (disk[0] as string)).toBe('string')
   })
 
-  test('the five coordinate functions answer arrays in h3-js', () => {
-    // the `LatLng` object this package answers is proved by `tsc` in the assertions above
+  test('the five coordinate functions answer pairs in h3-js too', () => {
+    // the `CoordPair` this package answers is proved by `tsc` in the assertions above
     const vertex = h3.cellToVertexes(CELL)[0] as string
     const edge = h3.originToDirectedEdges(CELL)[0] as string
     expect(h3.cellToLatLng(CELL)).toHaveLength(2)

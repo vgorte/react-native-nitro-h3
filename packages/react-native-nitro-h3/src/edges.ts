@@ -1,7 +1,7 @@
 import type { UInt64 } from 'react-native-nitro-modules'
 import { rethrowAsH3Error } from './H3Error'
 import { native } from './native'
-import type { LatLng } from './types'
+import type { CoordPair } from './types'
 
 /**
  * Reports whether two cells share an edge.
@@ -124,10 +124,10 @@ export function originToDirectedEdges(origin: bigint): BigUint64Array {
  * H3 inserts the crossing point.
  *
  * @param edge The directed edge.
- * @returns The points along the edge.
+ * @returns The points along the edge, as `[latitude, longitude]` pairs.
  * @throws {@linkcode H3Error} if the index is not a valid directed edge.
  */
-export function directedEdgeToBoundary(edge: bigint): LatLng[] {
+export function directedEdgeToBoundary(edge: bigint): CoordPair[] {
   try {
     return native.directedEdgeToBoundary(edge as UInt64)
   } catch (error) {

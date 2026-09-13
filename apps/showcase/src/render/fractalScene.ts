@@ -1,9 +1,15 @@
 import { Skia, type SkPath, type SkPoint } from '@shopify/react-native-skia'
-import { getResolution, type LatLng } from 'react-native-nitro-h3'
+import { getResolution } from 'react-native-nitro-h3'
 import { boundariesOf } from '../engine/cells'
 import { bucketOfResolution, type Tree } from '../engine/fractal'
 import { buildMesh } from '../engine/mesh'
-import { mercatorX, mercatorY, type ProjectedCells, projectCells } from '../engine/projection'
+import {
+  type LatLng,
+  mercatorX,
+  mercatorY,
+  type ProjectedCells,
+  projectCells,
+} from '../engine/projection'
 import { BUCKETS } from '../theme/tokens'
 import { type CellScene, recordCellScene } from './CellPictures'
 import type { CameraAnchor } from './useCamera'

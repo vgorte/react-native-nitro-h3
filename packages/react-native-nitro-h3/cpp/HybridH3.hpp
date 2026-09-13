@@ -22,8 +22,8 @@ public:
 
   // Indexing
   uint64_t latLngToCell(double lat, double lng, double res) override;
-  LatLng cellToLatLng(uint64_t cell) override;
-  std::vector<LatLng> cellToBoundary(uint64_t cell) override;
+  std::tuple<double, double> cellToLatLng(uint64_t cell) override;
+  std::vector<std::tuple<double, double>> cellToBoundary(uint64_t cell) override;
 
   // Traversal
   std::shared_ptr<ArrayBuffer> gridDisk(uint64_t origin, double k) override;
@@ -43,7 +43,7 @@ public:
   uint64_t reverseDirectedEdge(uint64_t edge) override;
   std::shared_ptr<ArrayBuffer> directedEdgeToCells(uint64_t edge) override;
   std::shared_ptr<ArrayBuffer> originToDirectedEdges(uint64_t origin) override;
-  std::vector<LatLng> directedEdgeToBoundary(uint64_t edge) override;
+  std::vector<std::tuple<double, double>> directedEdgeToBoundary(uint64_t edge) override;
   double edgeLengthKm(uint64_t edge) override;
   double edgeLengthM(uint64_t edge) override;
   double edgeLengthRads(uint64_t edge) override;
@@ -51,10 +51,11 @@ public:
   // Vertexes
   uint64_t cellToVertex(uint64_t cell, double vertexNum) override;
   std::shared_ptr<ArrayBuffer> cellToVertexes(uint64_t cell) override;
-  LatLng vertexToLatLng(uint64_t vertex) override;
+  std::tuple<double, double> vertexToLatLng(uint64_t vertex) override;
 
   // Regions
-  std::vector<std::vector<std::vector<LatLng>>> cellsToMultiPolygon(const std::shared_ptr<ArrayBuffer>& cells) override;
+  std::vector<std::vector<std::vector<std::tuple<double, double>>>>
+  cellsToMultiPolygon(const std::shared_ptr<ArrayBuffer>& cells) override;
   std::shared_ptr<ArrayBuffer> polygonToCells(const std::vector<std::vector<std::vector<double>>>& rings,
                                               double res) override;
   std::shared_ptr<ArrayBuffer> polygonToCellsExperimental(const std::vector<std::vector<std::vector<double>>>& rings,
@@ -117,7 +118,7 @@ public:
   std::shared_ptr<Promise<std::shared_ptr<ArrayBuffer>>>
   polygonToCellsExperimentalAsync(const std::vector<std::vector<std::vector<double>>>& rings, double res,
                                   double flags) override;
-  std::shared_ptr<Promise<std::vector<std::vector<std::vector<LatLng>>>>>
+  std::shared_ptr<Promise<std::vector<std::vector<std::vector<std::tuple<double, double>>>>>>
   cellsToMultiPolygonAsync(const std::shared_ptr<ArrayBuffer>& cells) override;
   std::shared_ptr<Promise<std::shared_ptr<ArrayBuffer>>> uncompactCellsAsync(const std::shared_ptr<ArrayBuffer>& cells,
                                                                              double res) override;

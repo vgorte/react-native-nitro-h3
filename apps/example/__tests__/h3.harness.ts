@@ -1,18 +1,20 @@
 import { expect, test } from 'react-native-harness'
 import {
   ContainmentMode,
+  type CoordPair,
   cellsToBoundaries,
   cellsToLatLngs,
   cellsToMultiPolygon,
   cellToBoundary,
   cellToLatLng,
+  cellToVertex,
   getResolution,
   gridDisk,
   H3Error,
-  type LatLng,
   latLngsToCells,
   latLngToCell,
   polygonToCellsExperimental,
+  vertexToLatLng,
 } from 'react-native-nitro-h3'
 
 const SAN_FRANCISCO_RES_9 = 0x89283082803ffffn
@@ -108,14 +110,14 @@ test('a negative k is rejected by the C layer', () => {
 })
 
 test('three-level nesting crosses the bridge intact', () => {
-  // `LatLng[][][]` is expressible in nitrogen but is not covered by Nitro's own test module.
+  // `CoordPair[][][]` is expressible in nitrogen but is not covered by Nitro's own test module.
   const single = cellsToMultiPolygon(new BigUint64Array([SAN_FRANCISCO_RES_9]))
   expect(Array.isArray(single)).toBe(true)
   expect(single.length).toBe(1)
   expect(single[0]?.length).toBe(1)
   expect(single[0]?.[0]?.length).toBe(6)
-  expect(typeof single[0]?.[0]?.[0]?.lat).toBe('number')
-  expect(typeof single[0]?.[0]?.[0]?.lng).toBe('number')
+  expect(typeof single[0]?.[0]?.[0]?.[0]).toBe('number')
+  expect(typeof single[0]?.[0]?.[0]?.[1]).toBe('number')
 })
 
 test('a multi-cell outline keeps its shape', () => {
@@ -125,16 +127,22 @@ test('a multi-cell outline keeps its shape', () => {
   expect(disk[0]?.[0]?.length).toBe(18)
 })
 
-test('a cell boundary is a flat array of structs', () => {
+test('a cell boundary is a flat array of pairs', () => {
   const boundary = cellToBoundary(SAN_FRANCISCO_RES_9)
   expect(boundary.length).toBe(6)
-  expect(boundary[0]?.lat).toBeCloseTo(37.7720104773324, 9)
-  expect(boundary[0]?.lng).toBeCloseTo(-122.41701147197293, 9)
+  expect(boundary[0]?.[0]).toBeCloseTo(37.7720104773324, 9)
+  expect(boundary[0]?.[1]).toBeCloseTo(-122.41701147197293, 9)
 })
 
 test('a cell centre round-trips to the same cell', () => {
-  const centre = cellToLatLng(SAN_FRANCISCO_RES_9)
-  expect(latLngToCell(centre.lat, centre.lng, 9)).toBe(SAN_FRANCISCO_RES_9)
+  const [lat, lng] = cellToLatLng(SAN_FRANCISCO_RES_9)
+  expect(latLngToCell(lat, lng, 9)).toBe(SAN_FRANCISCO_RES_9)
+})
+
+test('a vertex answers its coordinate latitude first', () => {
+  const [lat, lng] = vertexToLatLng(cellToVertex(SAN_FRANCISCO_RES_9, 0))
+  expect(lat).toBeCloseTo(37.7720104773324, 9)
+  expect(lng).toBeCloseTo(-122.41701147197293, 9)
 })
 
 test('getResolution answers -1 for anything that is not a cell', () => {
@@ -183,9 +191,9 @@ test('cellsToLatLngs equals element-wise cellToLatLng across the bridge', () => 
   expect(centres).toBeInstanceOf(Float64Array)
   expect(centres.length).toBe(4)
   for (let i = 0; i < cells.length; i++) {
-    const centre = cellToLatLng(cells[i] as bigint)
-    expect(centres[2 * i]).toBe(centre.lat)
-    expect(centres[2 * i + 1]).toBe(centre.lng)
+    const [lat, lng] = cellToLatLng(cells[i] as bigint)
+    expect(centres[2 * i]).toBe(lat)
+    expect(centres[2 * i + 1]).toBe(lng)
   }
 })
 
@@ -219,10 +227,10 @@ test('cellsToBoundaries equals element-wise cellToBoundary across the bridge', (
     expect(vertexCounts[i]).toBe(BOUNDARY_VERTEX_COUNTS[i] as number)
     expect(boundary.length).toBe(BOUNDARY_VERTEX_COUNTS[i] as number)
     for (let v = 0; v < boundary.length; v++) {
-      const point = boundary[v] as LatLng
+      const point = boundary[v] as CoordPair
       // exact equality: the batch runs the same native conversion, so a lat/lng swap cannot pass
-      expect(vertices[i * stride + 2 * v]).toBe(point.lat)
-      expect(vertices[i * stride + 2 * v + 1]).toBe(point.lng)
+      expect(vertices[i * stride + 2 * v]).toBe(point[0])
+      expect(vertices[i * stride + 2 * v + 1]).toBe(point[1])
     }
     for (let slot = 2 * boundary.length; slot < stride; slot++) {
       expect(vertices[i * stride + slot]).toBeNaN()

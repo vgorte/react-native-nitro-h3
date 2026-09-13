@@ -1,6 +1,11 @@
-import type { LatLng } from 'react-native-nitro-h3'
 import type { ViewExtent } from './atlas'
-import { mercatorToLatLng, mercatorX, mercatorY, zoomForMetresPerPixel } from './projection'
+import {
+  type LatLng,
+  mercatorToLatLng,
+  mercatorX,
+  mercatorY,
+  zoomForMetresPerPixel,
+} from './projection'
 
 /** Holds the ground a settle left the map standing over, in the order MapLibre answers it. */
 export interface ViewBounds {

@@ -80,7 +80,7 @@ export type {
   ContainmentModeName,
   ContainmentModeValue,
   CoordIJ,
-  LatLng,
+  CoordPair,
   Ring,
 } from './types'
 export { ContainmentMode } from './types'

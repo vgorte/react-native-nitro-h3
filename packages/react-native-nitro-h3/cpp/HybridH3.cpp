@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -39,13 +40,13 @@ uint64_t HybridH3::latLngToCell(double lat, double lng, double res) {
   return h3ops::latLngToCell(lat, lng, res);
 }
 
-LatLng HybridH3::cellToLatLng(uint64_t cell) {
+std::tuple<double, double> HybridH3::cellToLatLng(uint64_t cell) {
   const h3core::Point centre = h3ops::cellToLatLng(cell);
-  return LatLng(centre.lat, centre.lng);
+  return {centre.lat, centre.lng};
 }
 
-std::vector<LatLng> HybridH3::cellToBoundary(uint64_t cell) {
-  return toLatLngs(h3ops::cellToBoundary(cell));
+std::vector<std::tuple<double, double>> HybridH3::cellToBoundary(uint64_t cell) {
+  return toCoordPairs(h3ops::cellToBoundary(cell));
 }
 
 std::shared_ptr<ArrayBuffer> HybridH3::gridDisk(uint64_t origin, double k) {
@@ -116,8 +117,8 @@ std::shared_ptr<ArrayBuffer> HybridH3::originToDirectedEdges(uint64_t origin) {
   return toArrayBuffer(h3ops::originToDirectedEdges(origin));
 }
 
-std::vector<LatLng> HybridH3::directedEdgeToBoundary(uint64_t edge) {
-  return toLatLngs(h3ops::directedEdgeToBoundary(edge));
+std::vector<std::tuple<double, double>> HybridH3::directedEdgeToBoundary(uint64_t edge) {
+  return toCoordPairs(h3ops::directedEdgeToBoundary(edge));
 }
 
 double HybridH3::edgeLengthKm(uint64_t edge) {
@@ -140,14 +141,15 @@ std::shared_ptr<ArrayBuffer> HybridH3::cellToVertexes(uint64_t cell) {
   return toArrayBuffer(h3ops::cellToVertexes(cell));
 }
 
-LatLng HybridH3::vertexToLatLng(uint64_t vertex) {
+std::tuple<double, double> HybridH3::vertexToLatLng(uint64_t vertex) {
   const h3core::Point point = h3ops::vertexToLatLng(vertex);
-  return LatLng(point.lat, point.lng);
+  return {point.lat, point.lng};
 }
 
-std::vector<std::vector<std::vector<LatLng>>> HybridH3::cellsToMultiPolygon(const std::shared_ptr<ArrayBuffer>& cells) {
+std::vector<std::vector<std::vector<std::tuple<double, double>>>>
+HybridH3::cellsToMultiPolygon(const std::shared_ptr<ArrayBuffer>& cells) {
   const CellSpan span = toCellSpan(cells);
-  return toLatLngGrid(h3ops::cellsToMultiPolygon(span.data, span.count));
+  return toCoordPairGrid(h3ops::cellsToMultiPolygon(span.data, span.count));
 }
 
 std::shared_ptr<ArrayBuffer> HybridH3::polygonToCells(const std::vector<std::vector<std::vector<double>>>& rings,

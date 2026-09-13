@@ -10,6 +10,7 @@ Test paths below are relative to `packages/react-native-nitro-h3/`.
 Every row and section below is proved by a test in `parity/divergences.test.ts`, except the error contract's package half, proved in `__tests__/H3Error.test.ts`, and the section on functions that follow upstream H3, which quotes the vendored sources instead of asserting against a test.
 Where `parity/divergences.test.ts` does the proving, it asserts both sides.
 The type-surface rows are proved there for `h3-js` at run time and for this package by `tsc`, because the probe the suite drives speaks JSON.
+The distance pair row is proved there for `h3-js` at run time and for this package by `__tests__/measurement.test.ts`, because that refusal happens in TypeScript before the native call the probe drives.
 The additive batch section leans on `parity/batches.test.ts` as well, which is where the three calls are compared with `h3-js` element for element.
 
 `h3-js` runs anywhere JavaScript does, needs no native build step and no New Architecture, and its cells are strings that serialise without a thought.
@@ -28,6 +29,7 @@ This page lists where the two answer differently, not where one is better.
 | A polygon point that is not a `[lat, lng]` pair | throws `Each polygon point must be a [latitude, longitude] pair` | throws `E_FAILED` (code 1) | Saying what a point has to be is more useful than a generic failure. |
 | A polygon coordinate that is not finite | throws `Polygon coordinates must be finite numbers` | throws `E_FAILED` (code 1) | As above. |
 | A polygon coordinate outside the globe | throws `Polygon coordinates must be within [-90, 90] latitude and [-180, 180] longitude`, with no `code` | normalises and answers: `polygonToCells([[[91, 0], [0, 0], [1, 1]]], 3)` is 41 cells | H3 builds a polygon's bounding box from raw vertex extrema with no range check (`polygonAlgos.h:176`), so one vertex off the globe engulfs it: the experimental fill then scans the whole cell hierarchy, measured once at about 36 seconds for a single `polygonToCellsExperimental` call over a five-point ring on an Apple M-series host at `-O3`, with no committed reproduction. Rejecting rather than wrapping keeps a ring across the antimeridian where it was drawn. |
+| A `greatCircleDistance*` argument that is not a `[lat, lng]` pair of finite numbers | throws `Each coordinate must be a [latitude, longitude] pair`, with no `code` | answers `NaN` for a non-finite or a missing element, ignores a third element and coerces a numeric string | Saying what a coordinate has to be is more useful than a silent `NaN`. |
 | `compactCells` over a set with an invalid member | throws `E_CELL_INVALID` (code 5) | throws `E_RES_MISMATCH` (code 12), because H3 reads the invalid member as another resolution | The boundary check runs before H3 sees the set. |
 | `uncompactCells` over a set with an invalid member | throws `E_CELL_INVALID` (code 5) | throws `E_MEMORY_BOUNDS` (code 14) after sizing the output from the invalid member, an allocation that leaves its Emscripten heap unusable for the rest of the process | As above. |
 | `constructCell` with a digit count that is not the resolution | throws `constructCell needs exactly res digits`, with no `code` | throws `E_DIGIT_DOMAIN` (code 18) with `, value: 3` | H3 never sees the digit count, so it cannot report on it. |
@@ -141,11 +143,10 @@ These are the differences a migration notices first, and nothing outside them an
 | A cell | `bigint` | hexadecimal `string` |
 | A cell set | `BigUint64Array` | `string[]` |
 | A cell argument | a `bigint` and nothing else | a hexadecimal `string` or a `[lower, upper]` pair of 32-bit numbers, the `H3IndexInput` type |
-| A coordinate | a `LatLng` object, `{ lat, lng }`, from `cellToLatLng`, `cellToBoundary`, `directedEdgeToBoundary`, `vertexToLatLng` and `cellsToMultiPolygon` | a `CoordPair` array, `[lat, lng]`, from all five |
 | GeoJSON output | no counterpart | `formatAsGeoJson` on `cellToBoundary`, `directedEdgeToBoundary` and `cellsToMultiPolygon` closes the loop and answers `[lng, lat]`; `isGeoJson` on `polygonToCells` and `polygonToCellsExperimental` reads `[lng, lat]` input |
 | A polygon | `Ring[]`, so a single loop is still wrapped in an array, and `Ring` is a tuple type that a bare `number[][]` fails `tsc` against | `number[][] \| number[][][]`, so a single loop may be passed unwrapped and a ring is a plain `number[][]` |
 | Units | separate functions (`cellAreaKm2`) | a string argument (`cellArea(cell, 'km2')`), and an `E_UNKNOWN_UNIT` this package cannot raise |
-| `greatCircleDistance` | four scalars with the unit in the name: `greatCircleDistanceKm(lat1, lng1, lat2, lng2)` | two arrays and a unit string: `greatCircleDistance([lat1, lng1], [lat2, lng2], 'km')` |
+| `greatCircleDistance` | two pairs with the unit in the name, `greatCircleDistanceKm([lat1, lng1], [lat2, lng2])` | two pairs and a unit string, `greatCircleDistance([lat1, lng1], [lat2, lng2], 'km')` |
 | `gridDiskDistances` | one `BigUint64Array` per ring, so `BigUint64Array[]` | one `H3Index[]` per ring, so `string[][]` |
 | `UNITS`, `POLYGON_TO_CELLS_FLAGS` | no counterpart: the unit is in the function name and a containment mode is a number | two frozen objects of strings |
 | `ContainmentMode` | a frozen object of H3's four `ContainmentMode` numbers | no counterpart |

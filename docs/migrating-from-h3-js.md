@@ -49,25 +49,13 @@ Array.from(ring, (cell) => cellToLatLng(cell))
 
 Use `Array.from` with a mapping function, or loop with `for...of`.
 
-## Coordinates as `{ lat, lng }` Objects
-
-A coordinate answers as an object with named fields rather than a positional pair:
-
-```ts title="h3-js"
-const [lat, lng] = cellToLatLng('89283082803ffff')
-```
-
-The same call answers an object here, so the fields come out by name:
-
-```ts title="react-native-nitro-h3"
-const { lat, lng } = cellToLatLng(0x89283082803ffffn)
-```
-
-[`cellToLatLng`](../packages/react-native-nitro-h3/docs/api.md#celltolatlng), [`cellToBoundary`](../packages/react-native-nitro-h3/docs/api.md#celltoboundary), [`directedEdgeToBoundary`](../packages/react-native-nitro-h3/docs/api.md#directededgetoboundary), [`vertexToLatLng`](../packages/react-native-nitro-h3/docs/api.md#vertextolatlng) and [`cellsToMultiPolygon`](../packages/react-native-nitro-h3/docs/api.md#cellstomultipolygon) answer `{ lat, lng }` objects, where `h3-js` answers `[lat, lng]` arrays from all five.
-Polygon input keeps the `[latitude, longitude]` pair on both sides.
+## Polygons and Coordinates as Pairs
 
 A polygon with a single loop still passes it as [`Ring[]`](../packages/react-native-nitro-h3/docs/api.md#ring), where `h3-js` also accepts the loop unwrapped as `number[][]`.
 [`Ring`](../packages/react-native-nitro-h3/docs/api.md#ring) is a tuple type, so `tsc` rejects a bare `number[][]` against it.
+
+[`cellToLatLng`](../packages/react-native-nitro-h3/docs/api.md#celltolatlng), [`cellToBoundary`](../packages/react-native-nitro-h3/docs/api.md#celltoboundary), [`directedEdgeToBoundary`](../packages/react-native-nitro-h3/docs/api.md#directededgetoboundary), [`vertexToLatLng`](../packages/react-native-nitro-h3/docs/api.md#vertextolatlng) and [`cellsToMultiPolygon`](../packages/react-native-nitro-h3/docs/api.md#cellstomultipolygon) answer [`CoordPair`](../packages/react-native-nitro-h3/docs/api.md#coordpair) arrays, `[lat, lng]`, the same shape `h3-js` answers.
+A call site that destructures a coordinate needs no change.
 
 ## Unit Suffixes instead of Unit Arguments
 
@@ -84,11 +72,11 @@ The unit sits in the function name here:
 ```ts title="react-native-nitro-h3"
 cellAreaKm2(cell)
 edgeLengthM(edge)
-greatCircleDistanceKm(lat1, lng1, lat2, lng2)
+greatCircleDistanceKm([lat1, lng1], [lat2, lng2])
 ```
 
 The `E_UNKNOWN_UNIT` error of `h3-js` is therefore one this package cannot raise, and there is no `UNITS` constant to import.
-[`greatCircleDistanceKm`](../packages/react-native-nitro-h3/docs/api.md#greatcircledistancekm) takes four scalars rather than two coordinate arrays.
+[`greatCircleDistanceKm`](../packages/react-native-nitro-h3/docs/api.md#greatcircledistancekm) takes the same two coordinate pairs as `h3-js`, with the unit in the name rather than in a third argument.
 
 ## Strict Validation
 

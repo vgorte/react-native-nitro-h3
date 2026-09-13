@@ -20,7 +20,6 @@ import {
   cellToParent,
   getHexagonEdgeLengthAvgM,
   gridDiskDistances,
-  type LatLng,
   latLngToCell,
 } from 'react-native-nitro-h3'
 import { runOnJS, useDerivedValue, useFrameCallback, useSharedValue } from 'react-native-reanimated'
@@ -46,6 +45,7 @@ import {
   DEG_TO_RAD,
   EARTH_RADIUS_M,
   type GlobeView,
+  type LatLng,
   latLngToXyz,
   project,
   projectCellsGlobeLocal,

@@ -1,4 +1,4 @@
-import type { LatLng } from 'react-native-nitro-h3'
+import type { LatLng } from '../engine/projection'
 
 /** Holds the centre and the zoom an act's map camera last stood at. */
 export interface MapPosition {

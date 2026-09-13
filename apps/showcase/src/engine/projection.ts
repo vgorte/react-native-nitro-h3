@@ -1,4 +1,10 @@
-import type { CellBoundaries, LatLng } from 'react-native-nitro-h3'
+import type { CellBoundaries } from 'react-native-nitro-h3'
+
+/** Holds a geographic point in degrees, which the app carries by name rather than as a pair. */
+export interface LatLng {
+  lat: number
+  lng: number
+}
 
 export const EARTH_RADIUS_M = 6378137
 export const DEG_TO_RAD = Math.PI / 180

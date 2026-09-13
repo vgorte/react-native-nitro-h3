@@ -2,7 +2,6 @@ import type { Transforms3d } from '@shopify/react-native-skia'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useWindowDimensions } from 'react-native'
 import { type ComposedGesture, Gesture } from 'react-native-gesture-handler'
-import type { LatLng } from 'react-native-nitro-h3'
 import {
   type DerivedValue,
   runOnJS,
@@ -12,7 +11,13 @@ import {
   useFrameCallback,
   useSharedValue,
 } from 'react-native-reanimated'
-import { type Bounds, mercatorX, mercatorY, reanchorLimitM } from '../engine/projection'
+import {
+  type Bounds,
+  type LatLng,
+  mercatorX,
+  mercatorY,
+  reanchorLimitM,
+} from '../engine/projection'
 import {
   type CameraAnchor,
   fitTo,

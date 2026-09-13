@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <tuple>
 #include <vector>
 
 #include "HybridH3Spec.hpp"
@@ -123,25 +124,26 @@ inline DoubleSpan toDoubleSpan(const std::shared_ptr<ArrayBuffer>& buffer) {
   return DoubleSpan{reinterpret_cast<const double*>(data), static_cast<int64_t>(bytes / sizeof(double))};
 }
 
-/** Copies a ring of degrees into the generated Nitro struct. */
-inline std::vector<LatLng> toLatLngs(const h3core::Ring& ring) {
-  std::vector<LatLng> points;
+/** Copies a ring of degrees into the tuple pairs nitrogen maps a `CoordPair` to. */
+inline std::vector<std::tuple<double, double>> toCoordPairs(const h3core::Ring& ring) {
+  std::vector<std::tuple<double, double>> points;
   points.reserve(ring.size());
   for (const h3core::Point& point : ring) {
-    points.push_back(LatLng(point.lat, point.lng));
+    points.emplace_back(point.lat, point.lng);
   }
   return points;
 }
 
 /** Builds the three-level nesting nitrogen returns for `cellsToMultiPolygon` from an `h3core::MultiPolygon`. */
-inline std::vector<std::vector<std::vector<LatLng>>> toLatLngGrid(const h3core::MultiPolygon& polygons) {
-  std::vector<std::vector<std::vector<LatLng>>> result;
+inline std::vector<std::vector<std::vector<std::tuple<double, double>>>>
+toCoordPairGrid(const h3core::MultiPolygon& polygons) {
+  std::vector<std::vector<std::vector<std::tuple<double, double>>>> result;
   result.reserve(polygons.size());
   for (const h3core::Polygon& polygon : polygons) {
-    std::vector<std::vector<LatLng>> loops;
+    std::vector<std::vector<std::tuple<double, double>>> loops;
     loops.reserve(polygon.size());
     for (const h3core::Ring& ring : polygon) {
-      loops.push_back(toLatLngs(ring));
+      loops.push_back(toCoordPairs(ring));
     }
     result.push_back(std::move(loops));
   }

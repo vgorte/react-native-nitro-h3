@@ -1,7 +1,7 @@
 import type { UInt64 } from 'react-native-nitro-modules'
 import { rethrowAsH3Error } from './H3Error'
 import { native } from './native'
-import type { LatLng } from './types'
+import type { CoordPair } from './types'
 
 /**
  * Finds one vertex of a cell, by number.
@@ -47,10 +47,10 @@ export function cellToVertexes(cell: bigint): BigUint64Array {
  * Diverges from `h3-js`, which measures any index it is handed, a cell included.
  *
  * @param vertex The vertex.
- * @returns The point the vertex sits on.
+ * @returns The point the vertex sits on, as a `[latitude, longitude]` pair.
  * @throws {@linkcode H3Error} if the index is not a valid vertex.
  */
-export function vertexToLatLng(vertex: bigint): LatLng {
+export function vertexToLatLng(vertex: bigint): CoordPair {
   try {
     return native.vertexToLatLng(vertex as UInt64)
   } catch (error) {

@@ -1,4 +1,6 @@
 import { describe, expect, test } from 'bun:test'
+import type { CoordPair as ExportedCoordPair } from '../src/index'
+import type { CoordPair, Ring } from '../src/types'
 import { CONTAINMENT_MODE_BY_NAME, ContainmentMode } from '../src/types'
 
 describe('containment modes', () => {
@@ -23,3 +25,14 @@ describe('containment modes', () => {
     expect(unknown).toBeUndefined()
   })
 })
+
+/** Fails to compile unless its argument is `true`, which is how a type-level row is proved. */
+type Expect<T extends true> = T
+
+/** Answers `true` only when the two types are the same in both directions. */
+type IsExactly<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false
+
+// the pair is the public shape of every coordinate answer, and only `tsc` can prove it
+export type CoordPairIsATuple = Expect<IsExactly<CoordPair, [number, number]>>
+export type RingIsCoordPairs = Expect<IsExactly<Ring, CoordPair[]>>
+export type BarrelExportsCoordPair = Expect<IsExactly<ExportedCoordPair, CoordPair>>
