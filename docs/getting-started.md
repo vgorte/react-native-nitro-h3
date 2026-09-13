@@ -80,6 +80,4 @@ const hex = cellToString(cell) // "89283082803ffff"
 [`latLngToCell`](../packages/react-native-nitro-h3/docs/api.md#latlngtocell) returns a `bigint`, and [`gridDisk`](../packages/react-native-nitro-h3/docs/api.md#griddisk) returns a `BigUint64Array`.
 Both are explained in [Cell Indexes and bigint](./concepts/cells-and-bigint.md).
 
-The build needs the New Architecture, React Native 0.76 or newer and a C++20 toolchain, and [Requirements](./requirements.md) lists every version in full.
-
 From here, [Migrating from h3-js](./migrating-from-h3-js.md) covers a move off `h3-js`, [Typed Arrays and Batch Calls](./concepts/typed-arrays-and-batch.md) covers workloads over many cells, and the [API Reference](../packages/react-native-nitro-h3/docs/api.md) documents every exported function.
