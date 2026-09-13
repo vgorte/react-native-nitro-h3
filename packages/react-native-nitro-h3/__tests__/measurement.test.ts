@@ -23,11 +23,19 @@ mock.module('../src/native', () => ({
 }))
 
 describe('greatCircleDistance', () => {
-  test('unpacks the two pairs into the four scalars the native method takes', async () => {
-    const { greatCircleDistanceKm } = await import('../src/measurement')
-    calls.length = 0
-    greatCircleDistanceKm([37.7749, -122.4194], [51.5074, -0.1278])
-    expect(calls).toEqual([[37.7749, -122.4194, 51.5074, -0.1278]])
+  test('unpacks the two pairs into the four scalars the native method takes, in every unit', async () => {
+    const measurement = await import('../src/measurement')
+    const functions = [
+      measurement.greatCircleDistanceKm,
+      measurement.greatCircleDistanceM,
+      measurement.greatCircleDistanceRads,
+    ]
+    // asymmetric coordinates, so a transposed argument would change the recorded row
+    for (const distance of functions) {
+      calls.length = 0
+      distance([37.7749, -122.4194], [51.5074, -0.1278])
+      expect(calls).toEqual([[37.7749, -122.4194, 51.5074, -0.1278]])
+    }
   })
 
   test('refuses an argument that is not a pair, in every unit', async () => {
