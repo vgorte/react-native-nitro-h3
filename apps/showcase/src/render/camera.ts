@@ -1,8 +1,8 @@
 import type { SkRect } from '@shopify/react-native-skia'
-import type { LatLng } from 'react-native-nitro-h3'
 import {
   type Bounds,
   DEG_TO_RAD,
+  type LatLng,
   mercatorToLatLng,
   mercatorX,
   mercatorY,

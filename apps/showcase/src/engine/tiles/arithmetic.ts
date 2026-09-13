@@ -1,5 +1,4 @@
-import type { LatLng } from 'react-native-nitro-h3'
-import { EARTH_RADIUS_M } from '../projection'
+import { EARTH_RADIUS_M, type LatLng } from '../projection'
 import type { StyleClass } from './decode'
 
 /** Names a tile in the slippy-map scheme. */

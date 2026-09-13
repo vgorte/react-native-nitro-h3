@@ -313,7 +313,8 @@ export function FractalCity({ active, inspected, onInspect }: ActProps) {
       const children = childrenOf(cell, next.res + 1)
       const grown = record(children.value, bucketsOf(children.value), anchor)
       const parent = shapeOf(cell, anchor)
-      const centre = sceneOf(cellToLatLng(cell), anchor)
+      const [cellLat, cellLng] = cellToLatLng(cell)
+      const centre = sceneOf({ lat: cellLat, lng: cellLng }, anchor)
 
       // the cell stays a leaf while its children grow over it, and becomes an underlay at the merge
       merged.current = {
@@ -373,7 +374,8 @@ export function FractalCity({ active, inspected, onInspect }: ActProps) {
       // the parent is framed at the size it had before its split, which undoes that split's zoom
       const shape = shapeOf(parent, anchor)
       const span = shape.bounds.maxX - shape.bounds.minX
-      zoomAbout(sceneOf(cellToLatLng(parent), anchor), OPEN_CELL_PX / span)
+      const [parentLat, parentLng] = cellToLatLng(parent)
+      zoomAbout(sceneOf({ lat: parentLat, lng: parentLng }, anchor), OPEN_CELL_PX / span)
     },
     [tree, growth, anchor, leafAt, zoomAbout],
   )

@@ -26,11 +26,11 @@ import {
 } from 'react-native'
 import {
   areNeighborCells,
+  type CoordPair,
   cellAreaKm2,
   cellToLatLng,
   getHexagonEdgeLengthAvgM,
   H3Error,
-  type LatLng,
   latLngToCell,
 } from 'react-native-nitro-h3'
 import { pathBetween } from '../engine/cells'
@@ -41,6 +41,7 @@ import {
   MAX_IMAGE_PIXELS,
   projectPoints,
 } from '../engine/imageLayer'
+import type { LatLng } from '../engine/projection'
 import { formatAreaKm2, formatCount, formatMs, formatUs } from '../engine/stats'
 import { timed } from '../engine/timed'
 import {
@@ -409,13 +410,13 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
 
   const centreOn = useCallback(
     (cell: bigint, zoom: number | undefined, duration: number): void => {
-      const centre = cellToLatLng(cell)
+      const [centreLat, centreLng] = cellToLatLng(cell)
       // a stop with a duration and no easing is a jump on iOS, which is what a follow must not be.
       // A re-frame can cross seven zoom levels between the ends of the resolution ladder, which a
       // straight interpolation leaves the map unable to draw; that is the flight `fly` is for
       const easing = zoom === undefined ? 'linear' : 'fly'
       move({
-        center: [centre.lng, centre.lat],
+        center: [centreLng, centreLat],
         zoom,
         duration,
         easing: duration > 0 ? easing : undefined,
@@ -744,7 +745,7 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
   // the dot marks the head of the trail that is on screen, not the fix the act has since taken: a
   // time lapse walks several cells between two images, and a dot on the newest fix would run ahead
   // of the cells behind it
-  const head = useMemo<LatLng | null>(
+  const head = useMemo<CoordPair | null>(
     () => (scene?.head == null ? null : cellToLatLng(scene.head)),
     [scene],
   )
@@ -763,7 +764,7 @@ export function Trail({ active, inspected, onInspect }: ActProps) {
       if (head === null) return
       // the head is a dot in the image's own pixels, so the fix reads wherever the cells are dim
       const at = new Float32Array(2)
-      if (projectPoints(Float64Array.of(head.lat, head.lng), frame, at) === 0) return
+      if (projectPoints(Float64Array.of(head[0], head[1]), frame, at) === 0) return
       canvas.drawCircle(at[0], at[1], (HEAD_RADIUS_PT * frame.width) / width, headPaint)
     },
     [frame, scene, anchor, head, width],
