@@ -8,5 +8,7 @@
     "paths": {
       "react-native-nitro-h3": ["../../packages/react-native-nitro-h3/src/index.ts"]
     }
-  }
+  },
+  // the promo cut under `promo/` is its own project with its own install and config
+  "exclude": ["node_modules", "metro.config.js", "android", "ios", "promo"]
 }
