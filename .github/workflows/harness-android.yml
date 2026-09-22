@@ -79,7 +79,7 @@ jobs:
             -PnitroSanitizer=${{ matrix.sanitizer.gradle_property }}
 
       - name: Run Harness tests
-        uses: callstackincubator/react-native-harness@v1.4.1
+        uses: callstackincubator/react-native-harness@v1.5.0
         with:
           runner: android
           projectRoot: apps/example
