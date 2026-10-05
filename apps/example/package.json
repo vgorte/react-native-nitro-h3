@@ -17,7 +17,7 @@
     "react-native": "0.87.1",
     "react-native-nitro-h3": "workspace:*",
     "react-native-nitro-modules": "0.37.1",
-    "react-native-safe-area-context": "^5.10.0"
+    "react-native-safe-area-context": "^5.10.1"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
