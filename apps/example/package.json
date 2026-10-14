@@ -17,14 +17,14 @@
     "react-native": "0.87.1",
     "react-native-nitro-h3": "workspace:*",
     "react-native-nitro-modules": "0.37.1",
-    "react-native-safe-area-context": "^5.10.0"
+    "react-native-safe-area-context": "^5.10.1"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
     "@babel/plugin-transform-class-static-block": "^7.27.1",
     "@babel/plugin-transform-react-jsx": "^7.25.0",
     "@babel/preset-env": "^7.25.3",
-    "@babel/runtime": "^7.25.0",
+    "@babel/runtime": "^7.29.10",
     "@react-native-community/cli": "20.2.0",
     "@react-native-community/cli-platform-android": "20.2.0",
     "@react-native-community/cli-platform-ios": "20.2.0",
