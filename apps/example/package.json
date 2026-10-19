@@ -17,19 +17,19 @@
     "react-native": "0.87.1",
     "react-native-nitro-h3": "workspace:*",
     "react-native-nitro-modules": "0.37.1",
-    "react-native-safe-area-context": "^5.10.0"
+    "react-native-safe-area-context": "^5.10.1"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
     "@babel/plugin-transform-class-static-block": "^7.27.1",
     "@babel/plugin-transform-react-jsx": "^7.25.0",
     "@babel/preset-env": "^7.25.3",
-    "@babel/runtime": "^7.25.0",
+    "@babel/runtime": "^7.29.10",
     "@react-native-community/cli": "20.2.0",
     "@react-native-community/cli-platform-android": "20.2.0",
     "@react-native-community/cli-platform-ios": "20.2.0",
-    "@react-native-harness/platform-android": "1.5.0",
-    "@react-native-harness/platform-apple": "1.5.0",
+    "@react-native-harness/platform-android": "1.6.0",
+    "@react-native-harness/platform-apple": "1.6.0",
     "@react-native/babel-preset": "0.87.1",
     "@react-native/codegen": "0.87.1",
     "@react-native/gradle-plugin": "0.87.1",
@@ -43,7 +43,7 @@
     "metro-cache": "^0.87.0",
     "metro-config": "^0.87.0",
     "metro-resolver": "^0.87.0",
-    "react-native-harness": "1.5.0",
+    "react-native-harness": "1.6.0",
     "typescript": "^6.0.3"
   },
   "engines": {
