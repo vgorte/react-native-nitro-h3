@@ -96,15 +96,15 @@
     "react-native-nitro-modules": ">=0.37.0"
   },
   "dependencies": {
-    "@babel/runtime": "^7.25.0"
+    "@babel/runtime": "^7.29.13"
   },
   "devDependencies": {
     "@types/react": "^19.2.0",
     "h3-js": "4.5.0",
-    "nitrogen": "0.37.1",
+    "nitrogen": "0.37.2",
     "react": "19.2.8",
     "react-native": "0.87.1",
-    "react-native-nitro-modules": "0.37.1",
+    "react-native-nitro-modules": "0.37.2",
     "typescript": "^6.0.3"
   }
 }
